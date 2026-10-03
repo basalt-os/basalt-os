@@ -1,0 +1,5 @@
+qwen3-0.6b-q8_0 t=4 loaded: VmHWM: 921112 kB RssAnon: 286456 kB RssFile: 634656 kB  | after 40 translations + decisions: VmHWM: 1246008 kB RssAnon: 600984 kB RssFile: 634848 kB 
+qwen3-0.6b-q4_k_m t=4 loaded: VmHWM: 976944 kB RssAnon: 496112 kB RssFile: 480832 kB  | after 40 translations + decisions: VmHWM: 1302096 kB RssAnon: 810816 kB RssFile: 481088 kB 
+qwen3-1.7b-q8_0 t=4 loaded: VmHWM: 2088064 kB RssAnon: 286436 kB RssFile: 1801628 kB  | after 40 translations + decisions: VmHWM: 2415144 kB RssAnon: 601860 kB RssFile: 1801820 kB 
+qwen3-1.7b-q4_k_m t=4 loaded: VmHWM: 2202832 kB RssAnon: 947700 kB RssFile: 1255132 kB  | after 40 translations + decisions: VmHWM: 2567052 kB RssAnon: 1302080 kB RssFile: 1255324 kB 
+qwen3-4b-q4_k_m t=4 loaded: VmHWM: 4511312 kB RssAnon: 2075940 kB RssFile: 2435372 kB  | after 40 translations + decisions: VmHWM: 4872436 kB RssAnon: 2359604 kB RssFile: 2435628 kB 

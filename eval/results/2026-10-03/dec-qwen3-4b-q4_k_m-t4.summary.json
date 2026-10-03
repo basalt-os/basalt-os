@@ -1,0 +1,337 @@
+{
+  "cases": 238,
+  "instances": 254,
+  "label": "qwen3-4b-q4_k_m-t4",
+  "model": {
+    "accuracy": 0.772,
+    "brier": 0.406,
+    "by_question": {
+      "avc.class": {
+        "accuracy": 0.738,
+        "brier": 0.421,
+        "ece": 0.156,
+        "n": 65,
+        "nll": 1.104
+      },
+      "disk.cause": {
+        "accuracy": 0.48,
+        "brier": 1.017,
+        "ece": 0.502,
+        "n": 25,
+        "nll": 6.231
+      },
+      "dnf.next": {
+        "accuracy": 0.435,
+        "brier": 1.105,
+        "ece": 0.558,
+        "n": 23,
+        "nll": 4.605
+      },
+      "unit.cause": {
+        "accuracy": 0.894,
+        "brier": 0.176,
+        "ece": 0.09,
+        "n": 141,
+        "nll": 0.537
+      }
+    },
+    "by_source": {
+      "generated": {
+        "accuracy": 0.794,
+        "brier": 0.38,
+        "ece": 0.165,
+        "n": 189,
+        "nll": 1.68
+      },
+      "lab": {
+        "accuracy": 0.771,
+        "brier": 0.361,
+        "ece": 0.214,
+        "n": 35,
+        "nll": 0.615
+      },
+      "lab-daemon": {
+        "accuracy": 0.633,
+        "brier": 0.616,
+        "ece": 0.326,
+        "n": 30,
+        "nll": 2.338
+      }
+    },
+    "ece": 0.18,
+    "n": 254,
+    "nll": 1.611,
+    "reliability": [
+      {
+        "accuracy": 1,
+        "bin": "0.3-0.4",
+        "confidence": 0.361,
+        "n": 1
+      },
+      {
+        "accuracy": 0.5,
+        "bin": "0.4-0.5",
+        "confidence": 0.467,
+        "n": 4
+      },
+      {
+        "accuracy": 0.571,
+        "bin": "0.5-0.6",
+        "confidence": 0.564,
+        "n": 7
+      },
+      {
+        "accuracy": 0.333,
+        "bin": "0.6-0.7",
+        "confidence": 0.649,
+        "n": 9
+      },
+      {
+        "accuracy": 0.222,
+        "bin": "0.7-0.8",
+        "confidence": 0.749,
+        "n": 9
+      },
+      {
+        "accuracy": 0.273,
+        "bin": "0.8-0.9",
+        "confidence": 0.861,
+        "n": 11
+      },
+      {
+        "accuracy": 0.85,
+        "bin": "0.9-1.0",
+        "confidence": 0.995,
+        "n": 213
+      }
+    ]
+  },
+  "model_latency_ms_p50": 7903,
+  "model_latency_ms_p95": 13504,
+  "model_temperature_cv": {
+    "accuracy": 0.772,
+    "brier": 0.303,
+    "by_question": {
+      "avc.class": {
+        "accuracy": 0.738,
+        "brier": 0.37,
+        "ece": 0.178,
+        "n": 65,
+        "nll": 0.826
+      },
+      "disk.cause": {
+        "accuracy": 0.48,
+        "brier": 0.673,
+        "ece": 0.152,
+        "n": 25,
+        "nll": 1.267
+      },
+      "dnf.next": {
+        "accuracy": 0.435,
+        "brier": 0.634,
+        "ece": 0.343,
+        "n": 23,
+        "nll": 0.854
+      },
+      "unit.cause": {
+        "accuracy": 0.894,
+        "brier": 0.153,
+        "ece": 0.045,
+        "n": 141,
+        "nll": 0.325
+      }
+    },
+    "by_source": {
+      "generated": {
+        "accuracy": 0.794,
+        "brier": 0.276,
+        "ece": 0.061,
+        "n": 189,
+        "nll": 0.52
+      },
+      "lab": {
+        "accuracy": 0.771,
+        "brier": 0.268,
+        "ece": 0.18,
+        "n": 35,
+        "nll": 0.479
+      },
+      "lab-daemon": {
+        "accuracy": 0.633,
+        "brier": 0.519,
+        "ece": 0.244,
+        "n": 30,
+        "nll": 1.194
+      }
+    },
+    "ece": 0.056,
+    "n": 254,
+    "nll": 0.594,
+    "reliability": [
+      {
+        "accuracy": 1,
+        "bin": "0.2-0.3",
+        "confidence": 0.281,
+        "n": 1
+      },
+      {
+        "accuracy": 0.444,
+        "bin": "0.3-0.4",
+        "confidence": 0.369,
+        "n": 9
+      },
+      {
+        "accuracy": 0.308,
+        "bin": "0.4-0.5",
+        "confidence": 0.455,
+        "n": 13
+      },
+      {
+        "accuracy": 0.294,
+        "bin": "0.5-0.6",
+        "confidence": 0.547,
+        "n": 17
+      },
+      {
+        "accuracy": 0.585,
+        "bin": "0.6-0.7",
+        "confidence": 0.663,
+        "n": 41
+      },
+      {
+        "accuracy": 0.6,
+        "bin": "0.7-0.8",
+        "confidence": 0.748,
+        "n": 10
+      },
+      {
+        "accuracy": 0.8,
+        "bin": "0.8-0.9",
+        "confidence": 0.848,
+        "n": 35
+      },
+      {
+        "accuracy": 0.969,
+        "bin": "0.9-1.0",
+        "confidence": 0.966,
+        "n": 128
+      }
+    ]
+  },
+  "rules": {
+    "accuracy": 0.921,
+    "brier": 0.187,
+    "by_question": {
+      "avc.class": {
+        "accuracy": 0.985,
+        "brier": 0.108,
+        "ece": 0.195,
+        "n": 65,
+        "nll": 0.299
+      },
+      "disk.cause": {
+        "accuracy": 0.92,
+        "brier": 0.169,
+        "ece": 0.176,
+        "n": 25,
+        "nll": 0.407
+      },
+      "dnf.next": {
+        "accuracy": 0.87,
+        "brier": 0.145,
+        "ece": 0.217,
+        "n": 23,
+        "nll": 0.267
+      },
+      "unit.cause": {
+        "accuracy": 0.901,
+        "brier": 0.233,
+        "ece": 0.212,
+        "n": 141,
+        "nll": 0.601
+      }
+    },
+    "by_source": {
+      "generated": {
+        "accuracy": 0.921,
+        "brier": 0.158,
+        "ece": 0.186,
+        "n": 189,
+        "nll": 0.405
+      },
+      "lab": {
+        "accuracy": 0.886,
+        "brier": 0.307,
+        "ece": 0.226,
+        "n": 35,
+        "nll": 0.773
+      },
+      "lab-daemon": {
+        "accuracy": 0.967,
+        "brier": 0.23,
+        "ece": 0.297,
+        "n": 30,
+        "nll": 0.562
+      }
+    },
+    "ece": 0.191,
+    "n": 254,
+    "nll": 0.474,
+    "reliability": [
+      {
+        "accuracy": 0.56,
+        "bin": "0.2-0.3",
+        "confidence": 0.234,
+        "n": 25
+      },
+      {
+        "accuracy": 1,
+        "bin": "0.3-0.4",
+        "confidence": 0.365,
+        "n": 5
+      },
+      {
+        "accuracy": 0.6,
+        "bin": "0.4-0.5",
+        "confidence": 0.451,
+        "n": 5
+      },
+      {
+        "accuracy": 0.842,
+        "bin": "0.5-0.6",
+        "confidence": 0.547,
+        "n": 19
+      },
+      {
+        "accuracy": 1,
+        "bin": "0.6-0.7",
+        "confidence": 0.645,
+        "n": 35
+      },
+      {
+        "accuracy": 1,
+        "bin": "0.7-0.8",
+        "confidence": 0.763,
+        "n": 50
+      },
+      {
+        "accuracy": 0.945,
+        "bin": "0.8-0.9",
+        "confidence": 0.854,
+        "n": 55
+      },
+      {
+        "accuracy": 0.983,
+        "bin": "0.9-1.0",
+        "confidence": 0.957,
+        "n": 60
+      }
+    ]
+  },
+  "temperatures_full_fit": {
+    "avc.class": 2.462,
+    "disk.cause": 7.728,
+    "dnf.next": 7.728,
+    "unit.cause": 2.462
+  }
+}

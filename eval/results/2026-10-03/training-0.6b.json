@@ -1,0 +1,81 @@
+{
+ "base": "/llm/hf/Qwen3-0.6B",
+ "data": "train.jsonl",
+ "examples": 3800,
+ "validation": 200,
+ "epochs": 2.0,
+ "lr": 0.0002,
+ "batch": 16,
+ "rank": 16,
+ "four_bit": false,
+ "device": "cuda",
+ "gpu": "NVIDIA GeForce GTX 1070",
+ "prompt": "Translate the request to the Basalt OS system assistant into one JSON intent (status, why, fix_selinux, snapshots, disk, pending, show, apply, clarify, none). Never run anything.",
+ "history": [
+  {
+   "step": 0,
+   "val_loss": 3.477020196914673
+  },
+  {
+   "step": 50,
+   "loss": 0.0191,
+   "val_loss": 0.0697,
+   "elapsed_s": 114
+  },
+  {
+   "step": 100,
+   "loss": 0.0393,
+   "val_loss": 0.0357,
+   "elapsed_s": 224
+  },
+  {
+   "step": 150,
+   "loss": 0.0018,
+   "val_loss": 0.0219,
+   "elapsed_s": 335
+  },
+  {
+   "step": 200,
+   "loss": 0.0229,
+   "val_loss": 0.0062,
+   "elapsed_s": 445
+  },
+  {
+   "step": 250,
+   "loss": 0.0015,
+   "val_loss": 0.0034,
+   "elapsed_s": 556
+  },
+  {
+   "step": 300,
+   "loss": 0.0003,
+   "val_loss": 0.003,
+   "elapsed_s": 666
+  },
+  {
+   "step": 350,
+   "loss": 0.0001,
+   "val_loss": 0.0008,
+   "elapsed_s": 777
+  },
+  {
+   "step": 400,
+   "loss": 0.0001,
+   "val_loss": 0.0008,
+   "elapsed_s": 888
+  },
+  {
+   "step": 450,
+   "loss": 0.0002,
+   "val_loss": 0.0008,
+   "elapsed_s": 998
+  },
+  {
+   "step": 476,
+   "loss": 0.0001,
+   "val_loss": 0.0008,
+   "elapsed_s": 1061
+  }
+ ],
+ "train_seconds": 1061
+}

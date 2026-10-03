@@ -1,8 +1,11 @@
 # The Basalt OS system assistant
 
-Status: pre-alpha, milestone 2a. The assistant diagnoses the system and
-proposes fixes without any language model. A model can be added later
-behind the same interfaces; nothing below depends on one.
+Status: pre-alpha, milestone 2b. The assistant diagnoses the system and
+proposes fixes without any language model. An optional local model
+(package `basalt-llm`, [local-model.md](local-model.md)) can translate
+requests in natural language into the commands below (`basalt ask`) and
+can answer the decision layer's questions; both are off by default and
+nothing below depends on them.
 
 Package: `basalt-assistant` (and `basalt-assistant-selinux`), source in
 `packages/basalt-assistant/` (Go, no third-party modules).
@@ -41,6 +44,7 @@ Read-only, no confirmation:
 | `basalt disk` | btrfs usage, the space each snapshot holds alone (`btrfs filesystem du`), journal and package cache size, a fullness forecast from stored samples |
 | `basalt pending [--all]`, `basalt show ID` | proposals |
 | `basalt audit [N]`, `basalt audit verify` | the audit log and its hash chain |
+| `basalt ask "REQUEST"` | (optional, needs the local model) the request translated into one of the commands above, which then runs; a change (apply, rollback) is only printed, see [local-model.md](local-model.md) |
 
 Changes (root):
 
@@ -109,7 +113,7 @@ that same argv, no shell) and is adapted from tui-kit's runner (MIT).
 
 `/var/log/basalt-assistant/audit.jsonl`, one JSON record per line:
 sequence number, time, type (`decision`, `finding`, `proposal`, `confirm`,
-`decline`, `refuse`, `apply`, `ignore`, `suppress`, `start`, `stop`), actor
+`decline`, `refuse`, `apply`, `ignore`, `suppress`, `start`, `stop`, `ask`), actor
 (program, uid, login uid, sudo user), text, data, the previous record's
 hash and its own SHA-256. Editing, removing or reordering a record breaks
 the chain (`basalt audit verify`). The file is root-owned, mode 0600, and
@@ -171,13 +175,17 @@ SELinux, no change is proposed. Every decision is written to the audit log
 with its question, features, options, probabilities, threshold, backend,
 the rules that fired and the action taken.
 
-The model seam: `decide.Backend` (`Answer(ctx, Question) (Answer, error)`).
-`backend = openai-compatible` selects a backend for a local
-OpenAI-compatible server (llama.cpp, Ollama, vLLM) that is not implemented
-in this release; it fails and the rules answer instead, marked
-`(fallback)` in every logged decision. The intended implementation
-constrains the output to the valid options and reads each option's
-probability from token log-probabilities.
+A second backend, `openai-compatible`, asks a language model behind an
+OpenAI-compatible endpoint (normally the local `basalt-llm` service): the
+options are numbered, the output is constrained to one number, and the
+probability of each option comes from the token log-probabilities, with
+an optional per-question temperature (`[calibration]`). It answers only
+the questions the shared evaluation suite measures (`unit.cause`,
+`avc.class`, `dnf.next`, `disk.cause`); severity, notification and
+routing stay with the rules, and the rules answer, marked `(fallback)`,
+whenever the model fails. The rules stay the default: on the evaluation
+suite they are more accurate than the small models
+([milestone-2b-report.md](milestone-2b-report.md)).
 
 ## MCP tools
 
@@ -224,7 +232,8 @@ as a second, independent fence.
 
 ## Configuration
 
-`/etc/basalt/assistant.conf` (INI): decision backend and thresholds, disk
+`/etc/basalt/assistant.conf` (INI): decision backend, thresholds and
+calibration, the translator (`[translator]`: enabled, endpoint, prompt), disk
 thresholds (warn 85 %, critical 95 %, what counts as large), event timings
 (dedup window, hourly limit, disk interval, settle times). Restart the
 daemon after a change.

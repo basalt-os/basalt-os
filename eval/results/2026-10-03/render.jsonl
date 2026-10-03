@@ -1,0 +1,2 @@
+{"model":"qwen3-1.7b-q4_k_m","result":{"latency_ms_p50":5698,"latency_ms_p95":7605,"names_unit":22,"texts":40,"with_invented_terms":0}}
+{"model":"qwen3-4b-q4_k_m","result":{"latency_ms_p50":14231,"latency_ms_p95":18187,"names_unit":38,"texts":40,"with_invented_terms":0}}

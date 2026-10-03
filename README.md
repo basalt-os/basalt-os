@@ -30,7 +30,8 @@ Defaults from the first boot:
 How it works and why: [docs/design.md](docs/design.md),
 [docs/secure-boot.md](docs/secure-boot.md) and, for the system assistant
 (`basalt status`, `basalt why`, `basalt fix selinux`, proposals that are
-applied only after confirmation), [docs/assistant.md](docs/assistant.md). Current state and measurements:
+applied only after confirmation), [docs/assistant.md](docs/assistant.md); its optional
+local language model: [docs/local-model.md](docs/local-model.md). Current state and measurements:
 [docs/milestone-1-report.md](docs/milestone-1-report.md) (and
 [milestone 0](docs/milestone-0-report.md)).
 
@@ -42,6 +43,8 @@ packages/basalt-logos/       branding: logos, icons, Plymouth and GRUB themes (s
 packages/basalt-snapshots/   snapper config, dnf5 hook, snapshot boot menu, setup and rollback tools
 packages/basalt-security/    basalt-tpm and basalt-secureboot: TPM2 unlock, MOK and module signing
 packages/basalt-assistant/   the system assistant: basalt CLI, basalt-assistantd, basalt-mcp, SELinux module (Go)
+packages/basalt-llm/         optional local model service: llama.cpp server for the CPU, no network, own SELinux domain
+eval/                        shared evaluation suite: labeled decision cases, translator test set, generators
 packages/lab/                test fixtures for the lab (never published)
 kickstart/basalt-server.ks   the installer profile
 scripts/                     build-rpms.sh, repo.sh (signed repository), iso.sh (installer ISO)
