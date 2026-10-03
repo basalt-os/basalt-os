@@ -146,7 +146,8 @@ kcur="$(vm 'uname -r')"
 log "C1. basalt-rollback $init (initial state, kernel(s) $kinit); running kernel $kcur"
 out="$(vm "basalt-rollback --yes $init")"
 printf '%s\n' "$out" | tail -5
-back="$(printf '%s\n' "$out" | sed -n 's/.*read-only snapshot of .*(Snapshot \([0-9]*\)).*/\1/p')"
+back="$(printf '%s\n' "$out" | sed -n 's/.*read-only snapshot of .*(Snapshot \([0-9]*\)\.).*/\1/p')"
+[[ -n "$back" ]] || die "could not read the kept snapshot number from basalt-rollback"
 vm 'systemctl reboot' || true
 sleep 10
 "$L/vm.sh" wait-ssh 300

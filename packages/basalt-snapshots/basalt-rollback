@@ -29,13 +29,16 @@ yes=0 num=""
 for a in "$@"; do
   case "$a" in
     --yes|-y) yes=1 ;;
-    [0-9]*) num="$a" ;;
+    [0-9]|[0-9]*[0-9]) num="$a" ;;
     *) sed -n '2,13p' "$0"; exit 2 ;;
   esac
 done
 [[ $EUID -eq 0 ]] || { echo "basalt-rollback: run as root" >&2; exit 1; }
 
-booted="$(findmnt -no OPTIONS / | tr ',' '\n' | sed -n 's|^subvol=.*/\.snapshots/\([0-9]*\)/snapshot$|\1|p')"
+# A snapshot booted from the GRUB snapshot menu carries basalt.snapshot=N on
+# the kernel command line. (After a rollback the normal root is also a
+# snapshot subvolume, so the mounted path alone does not tell.)
+booted="$(tr ' ' '\n' </proc/cmdline | sed -n 's/^basalt\.snapshot=\([0-9]*\)$/\1/p')"
 if [[ -z "$num" ]]; then
   [[ -n "$booted" ]] || { echo "basalt-rollback: not booted from a snapshot; give a snapshot number (snapper list)" >&2; exit 1; }
   echo "Booted from snapshot $booted (read-only). Rolling back to it."

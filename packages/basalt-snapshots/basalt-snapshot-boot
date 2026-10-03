@@ -84,13 +84,9 @@ candidate_snapshots() {
   done | sort -rn
 }
 
-# Is the root file system mounted from a snapshot (booted from this menu)?
+# Booted from this menu? Its entries add basalt.snapshot=N to the command line.
 booted_snapshot() {
-  local sv
-  sv="$(findmnt -no OPTIONS / | tr ',' '\n' | sed -n 's/^subvol=//p')"
-  if [[ "$sv" =~ /\.snapshots/([0-9]+)/snapshot$ ]]; then
-    printf '%s\n' "${BASH_REMATCH[1]}"
-  fi
+  tr ' ' '\n' </proc/cmdline | sed -n 's/^basalt\.snapshot=\([0-9]*\)$/\1/p'
 }
 
 generate() {

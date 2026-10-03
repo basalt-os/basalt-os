@@ -4,7 +4,7 @@
 
 Name:           basalt-snapshots
 Version:        0.1.0
-Release:        7%{?dist}
+Release:        8%{?dist}
 Summary:        Snapshots of the root file system around every dnf transaction
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -99,6 +99,10 @@ fi
 %config(noreplace) %{_sysconfdir}/basalt/snapshots.conf
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-8
+- Detect a boot from the snapshot menu by basalt.snapshot= on the kernel
+  command line: after a rollback the normal root is a snapshot subvolume too.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-7
 - The first snapshot is taken on the first boot (basalt-initial-snapshot.service),
   not inside the installer, where files are not labeled yet.
