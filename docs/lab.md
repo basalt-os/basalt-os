@@ -13,8 +13,9 @@ scripts at the host's own TPM or disks.
 ## One-time setup
 
 ```sh
-make lab-tools      # tool image with virt-fw-vars (edits OVMF variable stores)
+make lab-tools      # tool image: virt-fw-vars (OVMF variable stores), sbsign, efitools
 make lab-keys       # dev signing key, lab SSH key, site files for the lab ISO
+make lab-sb-keys    # dev Secure Boot keys: PK, KEK, db, module CA, module signing certificate
 make rpms-lab repo  # packages (plus the canary test package), signed repository
 make iso-fetch iso  # Fedora netinst ISO (verified) -> Basalt lab ISO
 ```
@@ -29,13 +30,21 @@ make iso-fetch iso  # Fedora netinst ISO (verified) -> Basalt lab ISO
 | `repo/` | the signed repository; `repo/lab/` holds test fixtures only | |
 | `recovery/<vm>.txt` | LUKS recovery key of each lab install | dir 0700, file 0600 |
 | `sb/` | saved VM variable stores, a foreign test certificate | 0700 |
+| `sb-keys/` | development PK, KEK, db, module CA and module signing keys and certificates, owner GUID | dir 0700, keys 0600 |
+| `kmod/<kernel>/` | the test module built for a kernel, unsigned and signed three ways | |
+| `tang/` | the lab Tang server's keys | dir 0700, keys 0600 |
+| `site-<name>/` | site file variants for extra lab ISOs (`site-variant.sh`) | 0644 |
 
 ## Network and repository
 
 `vm.sh net-up` defines an isolated NAT network (`VM_SUBNET`.0/24, fixed
-addresses `.10` to `.13` by MAC). `repo-serve.sh up` serves `REPO_DIR` with
+addresses `.10` to `.19` by MAC, added to an existing network too). `repo-serve.sh up` serves `REPO_DIR` with
 a busybox httpd container bound to the network's gateway address, so only lab
 VMs reach it. HTTP is enough: packages and metadata are signed and checked.
+
+`tang-serve.sh up` runs a Tang server (Fedora container, socat and
+`tangd`) on the same gateway address, port `TANG_PORT`, for network
+unlock tests; `tang-serve.sh thp` prints the thumbprint clients pin.
 
 ## Install
 
@@ -52,7 +61,15 @@ make lab-install          # scripts/lab/install.sh
    the VM.
 
 A second VM (for example an unencrypted install or a release upgrade test)
-uses the same scripts with `VM_NAME=<name> VM_HOST=11`.
+uses the same scripts with `VM_NAME=<name> VM_HOST=11`. Other install
+choices get their own ISO from a site variant:
+
+```sh
+scripts/lab/site-variant.sh tang BASALT_UNLOCK=tang BASALT_TANG_URL=http://<gateway>:7500 \
+  BASALT_TANG_THP="$(scripts/lab/tang-serve.sh thp)" BASALT_PROFILE=minimal
+SITE_DIR=$LAB_DIR/site-tang SITE_NAME=lab-tang make iso
+VM_NAME=<name> VM_HOST=13 scripts/lab/install.sh build/iso/basalt-os-<version>-x86_64-lab-tang.iso
+```
 
 ## Tests
 
@@ -61,12 +78,29 @@ make lab-snapshot-test    # dnf install/upgrade: pre/post snapshots, packages pe
 make lab-rollback-test    # canary updates: rollback from the system, then from the GRUB menu
 make lab-sb-test          # Secure Boot disabled / foreign db cert: TPM refuses, recovery key works
 make lab-measure          # ISO size, installed size, boot time, idle memory, denials, snapshot space
+make lab-mok-test         # MOK mode: module CA enrolled through MokManager, module signature matrix
+make lab-sb-custom-test   # custom db mode: own PK/KEK/db, re-signed shim, TPM suspend and reenroll
+make lab-tang-test        # Tang and TPM2+Tang unlock: server down, back, recovery key, PCR 7 change
+make lab-kernels-test     # orphaned kernels after a rollback: detection and cleanup
+scripts/lab/upgrade-test.sh 45 && scripts/lab/upgrade-rollback-test.sh   # release upgrade, then back and forth
 ```
 
+`mok-test.sh --sb-off` also boots once with Secure Boot disabled to check
+the command line enforcement. Each test logs PCR values where they matter
+and counts SELinux denials after every boot.
+
 The rollback test drives the GRUB menu over the serial console
-(`grub-console.py`): it opens the "Basalt OS snapshots" submenu and boots the
-snapshot taken before the broken update. `console-unlock.py` types the
-recovery key at the LUKS prompt the same way. Neither prints key material.
+(`grub-console.py`): it opens the "Basalt OS snapshots" submenu with its
+hotkey `s`, moves with Ctrl-N and boots with Ctrl-F, all single bytes (an
+arrow key's escape sequence split by the serial line reads as a lone ESC
+and opens GRUB's prompt; that made milestone 0's runs flaky). It then
+requires GRUB's "Booting snapshot N" line for the expected N, so a wrong
+selection fails instead of booting another snapshot. `--top N` boots a
+top-level entry, for example an older kernel. `console-unlock.py` types the
+recovery key at the LUKS prompt, `mok-console.py` confirms a MOK request
+in MokManager with the one-time password, `serial-watch.py` waits for a
+line. None of them prints key material. Firmware messages printed before a
+console attaches are read from the serial log libvirt keeps.
 
 ## Host notes
 
@@ -95,5 +129,6 @@ recovery key at the LUKS prompt the same way. Neither prints key material.
 | Repository server | `make lab-repo-down` |
 | Network | `virsh net-destroy $VM_NETWORK && virsh net-undefine $VM_NETWORK` |
 | Keys, repository, site files, recovery keys, logs | `rm -rf "$LAB_DIR"` |
-| Tool images | `sudo podman rmi localhost/basalt-lab-tools localhost/basalt-iso-tools:44` |
+| Tang server | `scripts/lab/tang-serve.sh down` |
+| Tool images | `sudo podman rmi localhost/basalt-lab-tools localhost/basalt-lab-tang localhost/basalt-iso-tools:44` |
 | Serial logs | `sudo rm /var/log/libvirt/qemu/$VM_NAME-serial.log` |

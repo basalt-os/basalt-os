@@ -218,6 +218,11 @@ which is still on `/boot` after the upgrade, so the menu offers it).
 
 ## Gaps and follow-ups
 
+Milestone 1 ([milestone-1-report.md](milestone-1-report.md)) addressed
+gaps 1 (orphaned kernels), 2 (decision: PCR 7 stays; own Secure Boot keys),
+5 (minimal profile), 7 (pre-upgrade snapshot booted), 8 (Tang) and 9 (GRUB
+automation).
+
 1. Kernels and rollback. After a rollback across a kernel update, the newer
    kernel stays on `/boot` with its boot entry although the rolled-back rpm
    database does not know it; the next kernel update will not remove it.

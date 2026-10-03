@@ -1,8 +1,10 @@
 # Basalt OS design
 
-Status: pre-alpha, milestone 0. This document describes how Basalt OS is put
+Status: pre-alpha, milestone 1. This document describes how Basalt OS is put
 together and why. Measurements and open gaps are in
-[milestone-0-report.md](milestone-0-report.md).
+[milestone-0-report.md](milestone-0-report.md) and
+[milestone-1-report.md](milestone-1-report.md); Secure Boot, module
+signing and disk unlock in detail in [secure-boot.md](secure-boot.md).
 
 ## Goals
 
@@ -44,13 +46,15 @@ packages, and all updates to them, come from Fedora's mirrors.
 | `basalt-release-server` | Server defaults: SSH hardening drop-in, firewalld zone `basalt` (SSH only) made the default on first install, LLMNR and multicast DNS off, a warning if SELinux is not enforcing. |
 | `basalt-logos` and subpackages | Logos and icons (`LOGO=basalt-logo-icon`), `basalt-logos-httpd`, `plymouth-theme-basalt`, `basalt-grub2-theme`, `basalt-backgrounds`, `basalt-logos-compat`. Provides `system-logos`, conflicts with `fedora-logos` and `generic-logos`. Artwork under CC-BY-SA-4.0. |
 | `basalt-snapshots` | snapper template, dnf5 hook, snapshot boot menu, setup and rollback tools (below). |
+| `basalt-security` | `basalt-tpm` (TPM2 unlock state, re-enrollment, one-boot suspend before a planned change) and `basalt-secureboot` (Secure Boot state, enrollment of the Basalt kernel module CA as a MOK, module signing certificates loaded at boot). See [secure-boot.md](secure-boot.md). |
 
 The release package keeps the file names other software reads
 (`/etc/fedora-release`, `/etc/redhat-release`, `/etc/system-release`) with
 Basalt content, as `generic-release` does.
 
 Presets (`80-basalt.preset`, read before Fedora's `90-default.preset`):
-firewalld, sshd, auditd, snapper cleanup and the snapshot boot menu on;
+firewalld, sshd, auditd, snapper cleanup, the snapshot boot menu and the
+module signing certificate loader on;
 hourly snapper timeline, ModemManager, Bluetooth, Avahi and CUPS off. The
 remaining presets are Fedora's, unchanged.
 
@@ -87,7 +91,12 @@ install time (the Basalt packages travel on the ISO). A branded Anaconda
 The kickstart (`kickstart/basalt-server.ks`):
 
 - installs `@core` plus the Basalt packages, with `fedora-release` and
-  `fedora-logos` excluded so the Basalt ones are chosen;
+  `fedora-logos` excluded so the Basalt ones are chosen. `basalt.profile=minimal`
+  leaves out hardware firmware, CPU microcode and fwupd (and what they pull
+  in: udisks2, polkit, Bluetooth, mdadm and others), for virtual machines;
+  `kernel-core` only recommends `linux-firmware`. Leaving out all weak
+  dependencies was measured too and rejected: it also drops `logrotate`,
+  `crypto-policies-scripts` and `systemd-pam`;
 - partitions the first fixed disk (or `basalt.disk=`): ESP, `/boot` (ext4,
   unencrypted, because GRUB reads it), and one btrfs file system on LUKS2
   (`basalt.encrypt=0` for plain btrfs);
@@ -97,6 +106,12 @@ The kickstart (`kickstart/basalt-server.ks`):
 - sets a serial-first boot (GRUB menu and kernel console on the serial port
   and the screen, no `rhgb quiet`), the Basalt Plymouth theme for screens,
   and a visible 5 second boot menu;
+- adds `lockdown=integrity module.sig_enforce=1` to the kernel command line
+  (`basalt.lockdown=0` to leave them out): Fedora kernels already lock down
+  under Secure Boot; these keep unsigned modules out with Secure Boot off;
+- sets up the disk unlock chosen with `basalt.unlock=`: `tpm2` (default),
+  `tang` or `tpm2+tang` (Clevis; `basalt.tang=URL`, `basalt.tang-thp=`
+  thumbprint; adds `rd.neednet=1`);
 - runs `basalt-snapshots-setup --no-initial-snapshot` last, which also
   writes the GRUB configuration. No snapshot is taken inside the installer:
   files written there are only labeled for SELinux at the end of the
@@ -106,7 +121,8 @@ The kickstart (`kickstart/basalt-server.ks`):
   boot instead.
 
 Optional site files on the media (`/basalt/site.conf`, `/basalt/site.ks`)
-make the install fully unattended (accounts, encryption choice, end action).
+make the install fully unattended (accounts, encryption, unlock method,
+profile, end action).
 
 ## Storage
 
@@ -143,8 +159,8 @@ and wrote everything uncompressed).
 
 ## Encryption and unlock
 
-LUKS2 (aes-xts-plain64, argon2id) holds the btrfs file system. After the
-install it has two key slots:
+LUKS2 (aes-xts-plain64, argon2id) holds the btrfs file system. With the
+default unlock method (`tpm2`) it has two key slots after the install:
 
 - a TPM2 key bound to PCR 7 (`systemd-cryptenroll --tpm2-pcrs=7`, given
   explicitly: without `--tpm2-pcrs` current systemd binds no PCR at all). PCR
@@ -163,6 +179,16 @@ recovery key is the only key and is asked for at every boot.
 
 Booting a snapshot from the GRUB menu uses the same signed kernel and boot
 loader, so PCR 7 is the same and the disk still unlocks by itself.
+
+With `tang` the TPM2 slot is replaced by a Clevis binding to a Tang server;
+with `tpm2+tang` by a Clevis Shamir binding that needs both the TPM (PCR 7)
+and the Tang server. The installer's temporary passphrase is removed by its
+slot number (tested slot by slot with token plugins off), because a Clevis
+slot also counts as a "password" slot for `systemd-cryptenroll`.
+
+Why PCR 7 alone, what it does not cover, and how to change the Secure Boot
+state without losing unattended boots (`basalt-tpm suspend`, `reenroll`):
+[secure-boot.md](secure-boot.md#disk-unlock-and-the-tpm).
 
 ## Snapshots
 
@@ -205,9 +231,26 @@ detected as a transactional system.
 Kernels live on `/boot`, outside the snapshots. When the target snapshot
 predates a kernel update, the newest boot entry has no modules in it, so
 `basalt-rollback` makes the newest kernel whose modules exist in the target
-the default entry (`grub2-set-default`). The newer kernel stays on `/boot`
-although the rolled-back rpm database no longer knows it (see the report's
-gaps).
+the default entry (`grub2-set-default`).
+
+The newer kernel stays on `/boot` although the rolled-back rpm database no
+longer knows it, so dnf will never remove it. `basalt-rollback --kernels`
+lists every kernel on `/boot` as running, installed (owned by a package),
+kept (no package, but a snapshot holds its modules: rolling forward to that
+snapshot needs it) or orphaned (neither). Orphaned kernels are reported
+after every dnf transaction and removed on request with
+`basalt-rollback --clean-kernels` (preview and confirmation,
+`kernel-install remove`); the running kernel, kernels the package database
+owns and kernels held by a snapshot are never removed, and nothing is
+removed while a rollback is pending or the system runs from a read-only
+snapshot. Kernels become orphaned when the retention policy deletes the
+last snapshot that held them.
+
+A snapshot booted from the menu runs its own, possibly older, copy of
+`basalt-rollback`. When the installed system (the default subvolume) has a
+newer `basalt-snapshots`, the snapshot's copy hands over to that one: the
+milestone 1 tests met a pre-upgrade snapshot whose copy predated the
+kernel selection above.
 
 ### Booting a snapshot from GRUB
 
@@ -219,7 +262,7 @@ regenerating `grub.cfg`. Basalt OS uses a small generator instead:
 - `/etc/grub.d/42_basalt_snapshots` adds one line to `grub.cfg` (once, at
   setup): source `/boot/grub2/basalt-snapshots.cfg` if it exists.
 - `basalt-snapshot-boot update` rewrites that file: a "Basalt OS snapshots
-  (read-only)" submenu with the newest pre and single snapshots (8 by
+  (read-only, key s)" submenu (the `s` key opens it from the main menu) with the newest pre and single snapshots (8 by
   default). It runs after every pre and post snapshot, after snapper cleanup
   and at boot, so the menu never lists a deleted snapshot. No
   `grub2-mkconfig` run is needed for updates.
@@ -245,7 +288,9 @@ offers the way back. The Basalt repository publishes `basalt-release` (and
 the other Basalt packages) for each Fedora release under
 `$releasever/$basearch`; the project tests each upgrade path in VMs before
 announcing it. The rpm database, the kernel set on `/boot` and the snapshots
-after a release upgrade are discussed in the milestone report.
+after a release upgrade are discussed in the milestone reports; milestone 1
+booted the pre-upgrade snapshot after a 44 to 45 upgrade, rolled back to
+44 and forward to 45 again.
 
 ## Security defaults
 
@@ -257,4 +302,9 @@ after a release upgrade are discussed in the milestone report.
 - firewalld default zone `basalt`, SSH only.
 - auditd on, so denials are recorded.
 - Secure Boot with the distribution's signed chain (Microsoft-signed shim,
-  Fedora-signed GRUB and kernel). Own keys and signed modules are planned.
+  Fedora-signed GRUB and kernel); Basalt's own keys in two modes: the
+  Basalt kernel module CA as a MOK (signed Basalt modules load under
+  lockdown), and an advanced custom db mode where the firmware trusts only
+  Basalt's PK, KEK and db. See [secure-boot.md](secure-boot.md).
+- Kernel lockdown (`integrity`) and module signature enforcement on the
+  command line, also when Secure Boot is off.

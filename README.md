@@ -17,15 +17,18 @@ Defaults from the first boot:
 | Base | Fedora 44 packages from Fedora's own mirrors; only Basalt's few packages come from the Basalt repository |
 | Identity | `basalt-release` replaces `fedora-release` (`ID=basalt`, `ID_LIKE=fedora`); `basalt-logos` replaces `fedora-logos` |
 | SELinux | enforcing, targeted policy |
-| Disk | btrfs with zstd compression on LUKS2; TPM2 unlock bound to the Secure Boot state (PCR 7) and a recovery key; encryption can be turned off at install |
+| Disk | btrfs with zstd compression on LUKS2; TPM2 unlock bound to the Secure Boot state (PCR 7), or network unlock through Tang, or both, and always a recovery key; encryption can be turned off at install |
+| Boot | Secure Boot with Fedora's signed chain; Basalt's kernel module CA can be enrolled as a MOK, or the firmware can trust only Basalt's own keys; kernel lockdown and module signature enforcement on the command line |
 | Layout | the system in one subvolume; `/home`, `/srv`, `/var/log`, `/var/cache`, `/var/tmp`, `/var/spool` and the container, VM and database directories in their own subvolumes, so a rollback never touches data |
 | Snapshots | snapper pre/post snapshots around every dnf transaction (libdnf5 actions plugin), retention policy, snapshots bootable from the GRUB menu, `basalt-rollback` |
 | SSH | public keys only; root only with a key |
 | Firewall | firewalld on, zone `basalt`: only SSH allowed in |
 | Other | auditd on; LLMNR and multicast DNS off; serial console first (GRUB and kernel) |
 
-How it works and why: [docs/design.md](docs/design.md). Current state and
-measurements: [docs/milestone-0-report.md](docs/milestone-0-report.md).
+How it works and why: [docs/design.md](docs/design.md) and
+[docs/secure-boot.md](docs/secure-boot.md). Current state and measurements:
+[docs/milestone-1-report.md](docs/milestone-1-report.md) (and
+[milestone 0](docs/milestone-0-report.md)).
 
 ## Layout
 
@@ -33,6 +36,7 @@ measurements: [docs/milestone-0-report.md](docs/milestone-0-report.md).
 packages/basalt-release/     release identity, repository, presets, server defaults (spec + sources)
 packages/basalt-logos/       branding: logos, icons, Plymouth and GRUB themes (spec + artwork tree)
 packages/basalt-snapshots/   snapper config, dnf5 hook, snapshot boot menu, setup and rollback tools
+packages/basalt-security/    basalt-tpm and basalt-secureboot: TPM2 unlock, MOK and module signing
 packages/lab/                test fixtures for the lab (never published)
 kickstart/basalt-server.ks   the installer profile
 scripts/                     build-rpms.sh, repo.sh (signed repository), iso.sh (installer ISO)
@@ -65,6 +69,9 @@ Boot the ISO (UEFI, Secure Boot can stay on: the Fedora boot chain is
 unchanged). The kickstart installs a minimal server:
 
 - encrypted by default; add `basalt.encrypt=0` to the boot entry for plain btrfs;
+- `basalt.unlock=tang basalt.tang=URL basalt.tang-thp=THUMBPRINT` (or
+  `tpm2+tang`) for network unlock through a Tang server;
+- `basalt.profile=minimal` for virtual machines (no hardware firmware);
 - `basalt.disk=sdX` to pick the disk (default: the first fixed disk; it is wiped);
 - the installer asks for a root password or a user unless the ISO carries a
   site file with accounts (`SITE_DIR`, see `scripts/lab/keys.sh` for an example).
@@ -74,7 +81,9 @@ the Secure Boot configuration is unchanged. A recovery key is generated, shown
 on the console and stored in `/root/basalt-recovery-key.txt`: copy it off the
 machine and delete the file. If Secure Boot is turned off, its keys change or
 the TPM is cleared, the boot stops at a prompt (also on the serial console)
-that accepts the recovery key.
+that accepts the recovery key; `basalt-tpm reenroll` then seals the TPM key
+to the new state. Before a planned change, `basalt-tpm suspend` lets the
+next boot unlock unattended and re-seal by itself.
 
 ## Update and roll back
 
@@ -82,6 +91,7 @@ that accepts the recovery key.
 dnf upgrade                       # snapshots before and after, automatically
 snapper list                      # the snapshots
 basalt-rollback 42                # make snapshot 42 the new root, then reboot
+basalt-rollback --kernels         # kernels on /boot; --clean-kernels removes orphaned ones
 ```
 
 If an update leaves the system unbootable or unreachable, pick "Basalt OS
