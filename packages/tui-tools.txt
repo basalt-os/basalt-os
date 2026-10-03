@@ -1,0 +1,13 @@
+# tui-tools for a server: every change is shown as a command and confirmed.
+tui-tools
+tui-systemd
+tui-logs
+tui-firewall
+tui-disk
+tui-network
+tui-secure
+tui-snapper
+tui-ssh
+tui-users
+tui-update
+tui-cert

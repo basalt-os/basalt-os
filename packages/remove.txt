@@ -1,0 +1,2 @@
+# Packages removed from the base. Fedora branding is replaced by generic-release
+# in image/build.sh; this list is for anything else the server does not need.

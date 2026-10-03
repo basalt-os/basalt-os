@@ -1,0 +1,5 @@
+# Kernel console on the first VGA console and the first serial port. The last
+# console= is /dev/console, so boot prompts (for example a LUKS passphrase when
+# TPM2 unlock fails) appear on the serial port, which is what headless servers
+# and virtual machines expose.
+kargs = ["console=tty0", "console=ttyS0,115200n8"]

@@ -1,0 +1,12 @@
+# Packages added on top of the Fedora bootc base. One per line; comments allowed.
+# Host firewall, on by default.
+firewalld
+# Audit daemon and ausearch: SELinux denials are recorded and searchable.
+audit
+# SELinux tooling: semanage, audit2why, sesearch.
+policycoreutils-python-utils
+setools-console
+# English locale (the base ships only the minimal langpack).
+glibc-langpack-en
+# btrfs compression report.
+compsize

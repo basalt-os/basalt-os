@@ -1,0 +1,13 @@
+# tui-tools: terminal tools with a command preview before every change.
+# Packages and repository metadata are both signature-checked against the key
+# shipped in the image (fingerprint 767CFB337B01F32FFC073F3F389120B277E4FB44,
+# verified at build time). On an image-based system packages come with the
+# image; this file is kept so the source of those packages is documented.
+[tui-tools]
+name=tui-tools
+baseurl=https://pkgs.tui.tools/rpm/$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools
+metadata_expire=1h

@@ -1,0 +1,13 @@
+# Defaults for `bootc install` and bootc-image-builder.
+# btrfs is the Basalt OS root file system, with zstd compression.
+[install.filesystem.root]
+type = "btrfs"
+
+[install]
+# Allowed block setups; the first is the default for plain `bootc install`.
+# basalt-install always asks for tpm2-luks explicitly (encryption by default).
+block = ["direct", "tpm2-luks"]
+# Applied at install time only, so they stay valid for the file system chosen
+# here. Installing with a different --filesystem must also drop this karg
+# (--karg-delete rootflags=compress=zstd:1).
+kargs = ["rootflags=compress=zstd:1"]

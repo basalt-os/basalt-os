@@ -1,0 +1,7 @@
+; Basalt OS local policy: bootupd.
+; bootloader-update.service (bootupctl, domain bootupd_t) runs lsblk at boot,
+; which reads /proc/swaps and lists /proc. Fedora 44's policy (bootupd_t is a
+; permissive domain) does not allow it yet, so every boot logs AVC records.
+; Allow exactly those reads and nothing more.
+(allow bootupd_t proc_t (file (read open getattr)))
+(allow bootupd_t proc_t (dir (read open getattr search)))

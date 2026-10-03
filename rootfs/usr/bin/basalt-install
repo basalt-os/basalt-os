@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# basalt-install: install Basalt OS to a whole disk with the default storage
+# layout: btrfs (zstd) on LUKS2, unlocked automatically by the TPM2 only while
+# the Secure Boot state (PCR 7) is unchanged, plus a recovery key.
+#
+# Run it from the Basalt OS image itself, on the machine being installed (the
+# disk is sealed to that machine's TPM):
+#
+#   podman run --rm --privileged --pid=host --security-opt label=type:unconfined_t \
+#     -v /var/lib/containers:/var/lib/containers -v /dev:/dev \
+#     <image> basalt-install [options] /dev/DISK > recovery-key.txt
+#
+# Options:
+#   --tpm2-pcrs LIST    PCRs the TPM2 key is bound to (default: 7)
+#   --no-encryption     plain btrfs, no LUKS (encryption is on by default)
+#   --                  everything after is passed to `bootc install to-disk`
+#                       (e.g. --target-imgref, --enforce-container-sigpolicy,
+#                       --root-ssh-authorized-keys)
+#
+# The recovery key is the only thing written to standard output. Store it
+# somewhere safe: it unlocks the disk when the TPM2 refuses (firmware or Secure
+# Boot changes, a different machine, a cleared TPM). Progress goes to stderr.
+#
+# Why the extra steps after bootc: `bootc install to-disk --block-setup
+# tpm2-luks` (bootc 1.16) enrolls the TPM2 with no PCR binding (any boot chain
+# unlocks), creates no recovery key and sets luks.options=...,headless=true,
+# which suppresses the passphrase prompt that a recovery key needs.
+set -euo pipefail
+
+pcrs=7
+encrypt=1
+bootc_args=()
+disk=""
+
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+log() { printf 'basalt-install: %s\n' "$*" >&2; }
+die() { printf 'basalt-install: error: %s\n' "$*" >&2; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tpm2-pcrs) pcrs="${2:?}"; shift 2 ;;
+    --tpm2-pcrs=*) pcrs="${1#*=}"; shift ;;
+    --no-encryption) encrypt=0; shift ;;
+    -h|--help) usage ;;
+    --) shift; bootc_args+=("$@"); break ;;
+    -*) die "unknown option $1 (pass bootc options after --)" ;;
+    *) [[ -z "$disk" ]] || die "only one disk"; disk="$1"; shift ;;
+  esac
+done
+[[ -n "$disk" ]] || usage
+[[ -b "$disk" ]] || die "$disk is not a block device"
+
+if [[ $encrypt == 0 ]]; then
+  log "installing to $disk without encryption"
+  bootc install to-disk --block-setup direct --wipe "${bootc_args[@]}" "$disk" >&2
+  exit 0
+fi
+
+[[ -c /dev/tpmrm0 ]] || die "no TPM2 device (/dev/tpmrm0); use --no-encryption or a passphrase-based install"
+
+log "installing to $disk: btrfs on LUKS2 with TPM2 unlock"
+bootc install to-disk --block-setup tpm2-luks --wipe "${bootc_args[@]}" "$disk" >&2
+udevadm settle
+
+luks="$(lsblk -lnpo NAME,FSTYPE "$disk" | awk '$2 == "crypto_LUKS" {print $1}' | head -n1)"
+boot="$(lsblk -lnpo NAME,LABEL "$disk" | awk '$2 == "boot" {print $1}' | head -n1)"
+[[ -n "$luks" ]] || die "no LUKS partition found on $disk"
+[[ -n "$boot" ]] || die "no boot partition found on $disk"
+
+workdir="$(mktemp -d /run/basalt-install.XXXXXX)"
+chmod 0700 "$workdir"
+cleanup() {
+  if mountpoint -q "$workdir/boot"; then umount "$workdir/boot"; fi
+  if [[ -f "$workdir/key" ]]; then shred -u "$workdir/key"; fi
+  rm -rf "$workdir"
+}
+trap cleanup EXIT
+
+log "adding a recovery key to $luks"
+recovery="$(systemd-cryptenroll "$luks" --unlock-tpm2-device=auto --recovery-key 2>/dev/null)"
+recovery="$(printf '%s' "$recovery" | tr -d '[:space:]')"
+[[ "$recovery" =~ ^([a-z]{8}-){7}[a-z]{8}$ ]] || die "could not read the generated recovery key"
+
+log "binding the TPM2 key to PCR(s) $pcrs"
+(umask 077; printf '%s' "$recovery" >"$workdir/key")
+systemd-cryptenroll "$luks" --unlock-key-file="$workdir/key" \
+  --wipe-slot=tpm2 --tpm2-device=auto --tpm2-pcrs="$pcrs" >&2
+
+log "allowing a passphrase prompt when the TPM2 refuses (drop headless=true)"
+mkdir "$workdir/boot"
+mount "$boot" "$workdir/boot"
+shopt -s nullglob
+entries=("$workdir"/boot/loader/entries/*.conf)
+[[ ${#entries[@]} -gt 0 ]] || die "no boot loader entries on $boot"
+sed -i -E 's/(luks\.options=[^ ]*),headless=true/\1/' "${entries[@]}"
+grep -h '^options' "${entries[@]}" | grep -q 'headless=true' && die "could not update kernel arguments"
+umount "$workdir/boot"
+
+systemd-cryptenroll "$luks" >&2
+log "done. The recovery key is on standard output: store it now, it is not saved anywhere else."
+printf '%s\n' "$recovery"

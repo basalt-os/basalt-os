@@ -1,0 +1,14 @@
+# Local, site-specific configuration and credentials. Never commit these.
+.env
+ACCESS.local.md
+*.local.md
+
+# Build outputs and generated site overlay.
+build/
+out/
+
+# Key material, in case someone generates it inside the tree by mistake.
+*.key
+*.pem
+cosign.pub
+auth.json
