@@ -11,7 +11,12 @@
 # Output: $LAB_DIR/eval-capture/<scenario>.json, one object per scenario:
 #   {"scenario", "subject", "expected": {question: answer}, "diagnosis",
 #    "actions", "why": <basalt why --json>, "selinux": <basalt fix selinux --json>}
-# eval/tools/capture-to-cases.py turns them into basalt-case/v1 lines.
+# eval/tools/capture-to-cases.py turns them into basalt-case/v1.1 lines.
+#
+# Expected actions must pass the assistant's action validators
+# (internal/action; `basalt-eval check`). A file.restore names no snapshot:
+# eval/tools/capture-to-cases.py binds the number of the snapshot the
+# diagnosers found (`restore` in basalt why --json).
 #
 # Needs a VM with basalt-assistant and nginx (scripts/lab/assistant-test.sh
 # setup) and /root/nginx.conf.orig. Lab only: it edits nginx.conf, adds
@@ -77,12 +82,14 @@ nginx_edit() { vm "$1; systemctl restart nginx 2>/dev/null || true"; }
 sc_nginx_directive() {
   nginx_edit 'sed -i "s/^\(\s*\)server_name .*;/&\n\1bogus_directive on;/" /etc/nginx/nginx.conf'
   capture nginx-directive nginx.service '{"unit.cause":"config_error"}' \
-    "nginx.conf has an unknown directive" '[{"kind":"file.restore","params":{"path":"/etc/nginx/nginx.conf"}}]'
+    "nginx.conf has an unknown directive" \
+    '[{"kind":"file.restore","params":{"path":"/etc/nginx/nginx.conf"}},{"kind":"unit.restart","params":{"unit":"nginx.service"}}]'
 }
 sc_nginx_syntax() {
   nginx_edit 'sed -i "0,/worker_connections 1024;/s//worker_connections 1024/" /etc/nginx/nginx.conf'
   capture nginx-syntax nginx.service '{"unit.cause":"config_error"}' \
-    "nginx.conf misses a semicolon" '[{"kind":"file.restore","params":{"path":"/etc/nginx/nginx.conf"}}]'
+    "nginx.conf misses a semicolon" \
+    '[{"kind":"file.restore","params":{"path":"/etc/nginx/nginx.conf"}},{"kind":"unit.restart","params":{"unit":"nginx.service"}}]'
 }
 sc_nginx_include_missing() {
   nginx_edit 'sed -i "s#^\(\s*\)include /etc/nginx/default.d/\*.conf;#&\n\1include /etc/nginx/basalt-lab-missing.conf;#" /etc/nginx/nginx.conf'
@@ -105,7 +112,7 @@ sc_nginx_port_8085() {
   nginx_edit 'sed -i "s/listen       80;/listen       8085;/" /etc/nginx/nginx.conf'
   capture nginx-port-8085 nginx.service '{"unit.cause":"selinux_denial","avc.class":"port"}' \
     "nginx may not bind tcp 8085 (unreserved_port_t)" \
-    '[{"kind":"selinux.port","params":{"type":"http_port_t","proto":"tcp","port":"8085"}},{"kind":"unit.restart","params":{"unit":"nginx.service"}}]'
+    '[{"kind":"selinux.port","params":{"type":"http_port_t","proto":"tcp","port":"8085","mode":"add"}},{"kind":"unit.restart","params":{"unit":"nginx.service"}}]'
 }
 sc_nginx_port_8181() {
   nginx_edit 'sed -i "s/listen       80;/listen       8181;/" /etc/nginx/nginx.conf'
@@ -117,7 +124,7 @@ sc_nginx_data_log() {
     sed -i "s#access_log  /var/log/nginx/access.log  main;#access_log  /data/logs/access.log  main;#" /etc/nginx/nginx.conf'
   capture nginx-data-log nginx.service '{"unit.cause":"selinux_denial","avc.class":"missing_fcontext"}' \
     "/data/logs has the generic default_t; a file context rule for httpd_log_t is needed" \
-    '[{"kind":"selinux.fcontext","params":{"dir":"/data/logs","type":"httpd_log_t"}},{"kind":"unit.restart","params":{"unit":"nginx.service"}}]'
+    '[{"kind":"selinux.fcontext","params":{"path":"/data/logs","type":"httpd_log_t"}},{"kind":"unit.restart","params":{"unit":"nginx.service"}}]'
 }
 sc_nginx_shadow() {
   nginx_edit 'sed -i "s#^\(\s*\)include /etc/nginx/default.d/\*.conf;#&\n\1include /etc/shadow;#" /etc/nginx/nginx.conf'
@@ -132,8 +139,8 @@ semanage port -a -t http_port_t -p tcp 8090 2>/dev/null || true
 systemctl restart nginx; systemd-run --unit basalt-lab-backend -p Type=simple python3 -m http.server 9000 --bind 127.0.0.1; sleep 2
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8090/ || true'
   capture nginx-proxy-boolean nginx.service '{"avc.class":"boolean"}' \
-    "nginx may not connect to the backend port; httpd_can_network_connect is off" \
-    '[{"kind":"selinux.boolean","params":{"name":"httpd_can_network_connect"}}]'
+    "nginx may not connect to the backend port (http_port_t); httpd_can_network_relay is off" \
+    '[{"kind":"selinux.boolean","params":{"name":"httpd_can_network_relay","value":"on"}}]'
   vm 'semanage port -d -t http_port_t -p tcp 8090 2>/dev/null || true'
 }
 sc_nginx_dep() {

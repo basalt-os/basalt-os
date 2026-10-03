@@ -5,6 +5,7 @@
 //
 //	basalt-eval translate -endpoint E [-set eval/translator.jsonl] [-out FILE]
 //	basalt-eval decide [-endpoint E] [-cases DIR] [-out FILE] [-folds 5]
+//	basalt-eval check [-cases DIR]
 //
 // Output: a JSON summary on stdout; per-item results (JSON lines) in -out.
 package main
@@ -32,7 +33,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: basalt-eval translate|decide [flags]")
+		fmt.Fprintln(os.Stderr, "usage: basalt-eval translate|decide|check [flags]")
 		os.Exit(2)
 	}
 	var err error
@@ -41,6 +42,8 @@ func main() {
 		err = runTranslate(os.Args[2:])
 	case "decide":
 		err = runDecide(os.Args[2:])
+	case "check":
+		err = runCheck(os.Args[2:])
 	case "derive":
 		err = runDerive()
 	case "render":
@@ -306,8 +309,8 @@ func errString(err error) string {
 
 // ------------------------------------------------------------------ decisions
 
-// Case is one labeled case of the shared evaluation suite (basalt-case/v1,
-// see docs/eval-suite.md). Only the fields the decision layer needs are
+// Case is one labeled case of the shared evaluation suite (basalt-case/v1
+// or v1.1, see docs/eval-suite.md). Only the fields the decision layer needs are
 // read here.
 type Case struct {
 	ID         string          `json:"id"`
@@ -372,7 +375,7 @@ func runDecide(args []string) error {
 		return fmt.Errorf("no cases in %s", *dir)
 	}
 	for _, c := range cases {
-		if c.Schema != "basalt-case/v1" {
+		if !knownSchemas[c.Schema] {
 			return fmt.Errorf("%s: schema %q", c.ID, c.Schema)
 		}
 	}

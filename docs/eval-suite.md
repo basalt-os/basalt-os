@@ -27,6 +27,7 @@ eval/
 
 ```sh
 cd packages/basalt-assistant
+go run ./tools/basalt-eval check -cases ../../eval/cases                  # validate every case
 go run ./tools/basalt-eval decide -cases ../../eval/cases                 # rules only
 go run ./tools/basalt-eval decide -cases ../../eval/cases -endpoint unix:/run/basalt-llm/llm.sock
 go run ./tools/basalt-eval translate -set ../../eval/translator.jsonl -endpoint unix:/run/basalt-llm/llm.sock
@@ -43,27 +44,62 @@ a case lists other acceptable answers), changes the person did not ask
 for, latency and tokens per second, for the model's own answer and after
 the deterministic checks the assistant applies.
 
-## Decision case format: `basalt-case/v1`
+## Decision case format: `basalt-case/v1.1`
 
-One JSON object per line.
+One JSON object per line. v1.1 adds `evidence.snapshots` to v1 and is
+backward compatible: a v1 reader ignores the new evidence key, and
+`basalt-eval` reads both versions (v1 cases need no snapshot evidence).
 
 | Field | Meaning |
 |---|---|
-| `schema` | `basalt-case/v1` |
+| `schema` | `basalt-case/v1.1` (`basalt-case/v1` still accepted) |
 | `id` | unique, stable; prefixes `lab-`, `lab-daemon-`, `gen-` |
 | `kind` | `unit_failure`, `selinux_denial`, `package_transaction`, `disk_pressure` |
 | `subject` | the unit, denial key, transaction or mount it is about |
 | `goal` | the structured goal a command or the translator emits for it, e.g. `why(unit=nginx.service)` |
-| `evidence` | what was observed: `journal` lines, unit `state`, `config_check`, `avcs` (raw records), `ports`, `deps`, `dnf_log`, `usage` |
+| `evidence` | what was observed: `journal` lines, unit `state`, `config_check`, `avcs` (raw records), `ports`, `deps`, `dnf_log`, `usage`, `snapshots` (v1.1, below) |
 | `questions` | the decision-layer questions exactly as the diagnosers ask them: `id`, `subject`, `features` (true ones), `facts` (what a model sees besides the features), `want` (the expected answer) |
 | `expected` | `diagnosis` (one sentence), `cause`, `actions` (typed actions of the closed set in [assistant.md](assistant.md), possibly empty), `proposal` (`propose` or `review`) |
 | `provenance` | `source` (`lab`, `lab-daemon`, `generated`), `ref` (scenario or generator version), `recorded`, `method`, `labels`, `notes` |
 | `license` | Apache-2.0 for every case here |
 
+### Snapshot evidence (v1.1)
+
+`evidence.snapshots` lists the snapshots the diagnosers saw, one object
+each:
+
+| Field | Meaning |
+|---|---|
+| `number` | snapper snapshot number (required, positive) |
+| `role` | `transaction_pre` (taken just before a dnf transaction or an apply), `transaction_post` (just after it), `restore_source` (holds another copy of a file the unit needs), `space_holder` (holds space exclusively) |
+| `type` | snapper type: `pre`, `post`, `single` (optional) |
+| `pre_number` | for a `post` snapshot: its `pre` snapshot |
+| `date`, `description` | as snapper lists them (optional) |
+| `path`, `how` | `restore_source`: the file it holds (required) and how its copy differs from the current one |
+| `exclusive_bytes` | `space_holder`: space only it holds (optional) |
+
+Snapshot numbers are bindings, not labels: a scenario labels "restore
+this file from a snapshot" or "roll back to the pre snapshot", and the
+number comes from the snapshot the diagnosers found. Every expected
+action that names a snapshot must find it here with the role it needs:
+`file.restore` a `restore_source` holding the same path,
+`snapshot.rollback` a `transaction_pre`, `snapshot.delete` a
+`space_holder`. File diffs are never recorded (a restore candidate can be
+`/etc/shadow`).
+
+### Validation
+
+`basalt-eval check` (and the Go test `TestAllCasesValidate`, which
+`make assistant-test` runs with `eval/cases` mounted in the container)
+checks every case file: a known schema, unique ids, `proposal` of
+`propose` or `review`, every expected action passes the assistant's own
+validator (`internal/action`, the same code that refuses a proposal),
+well formed snapshot evidence and, for v1.1, the snapshot bindings above.
+
 Example (shortened):
 
 ```json
-{"schema":"basalt-case/v1","id":"lab-nginx-port-8085","kind":"unit_failure","subject":"nginx.service",
+{"schema":"basalt-case/v1.1","id":"lab-nginx-port-8085","kind":"unit_failure","subject":"nginx.service",
  "goal":"why(unit=nginx.service)",
  "evidence":{"journal":["19:00:11 nginx: [emerg] bind() to 0.0.0.0:8085 failed (13: Permission denied)", "..."],
              "avcs":[{"raw":"AVC avc:  denied  { name_bind } ... tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket","count":1}]},
@@ -73,7 +109,7 @@ Example (shortened):
               {"id":"avc.class","subject":"httpd_t|unreserved_port_t|tcp_socket|name_bind|8085",
                "features":{"port_case":true,"port_type_found":true},"want":"port"}],
  "expected":{"diagnosis":"nginx may not bind tcp 8085 (unreserved_port_t)","cause":"selinux_denial",
-             "actions":[{"kind":"selinux.port","params":{"type":"http_port_t","proto":"tcp","port":"8085"}},
+             "actions":[{"kind":"selinux.port","params":{"type":"http_port_t","proto":"tcp","port":"8085","mode":"add"}},
                         {"kind":"unit.restart","params":{"unit":"nginx.service"}}],"proposal":"propose"},
  "provenance":{"source":"lab","ref":"scripts/lab/eval-capture.sh nginx_port_8085","recorded":"2026-10-03",
                "method":"failure caused on purpose on a lab VM ...","labels":"by construction"},
@@ -88,7 +124,8 @@ Example (shortened):
   the cause is known by construction; `basalt why --json` run as root
   records what the diagnosers saw. `tools/capture-to-cases.py` keeps the
   features, facts, evidence and the expected answer of the scenario, never
-  the rules' output.
+  the rules' output. It binds the snapshot number of an expected
+  `file.restore` from the restore candidate the capture found.
 - `lab-daemon`: the proposals the confined daemon stored for the same
   events. It runs fewer probes (no config checkers, no port owners), so
   these cases test the same failures with less evidence.
@@ -99,7 +136,10 @@ Example (shortened):
   has no option of its own (an OOM kill, a file-mode permission error), two
   large space holders. Journal features and facts are filled in by
   `basalt-eval derive`, the same code `basalt why` uses. Deterministic for
-  a seed.
+  a seed. `generate-cases/2` fixed an operator precedence error of `/1`
+  that made the second large holder of a disk case about 1 PiB (cases
+  `gen-disk-017-journal` and `gen-disk-018-package_cache`, whose facts
+  contradicted their labels).
 
 The generated cases reflect how the authors understand these failures;
 the lab cases are the ground truth. Results are reported per source.

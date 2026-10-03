@@ -131,7 +131,7 @@ ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwa
 
 # --- system assistant (packages/basalt-assistant) -----------------------------------
 
-.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-llm llm-test eval-rules lab-eval-capture
+.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-llm llm-test eval-rules eval-check lab-eval-capture
 
 rpm-assistant: ## Build only basalt-assistant (+ -selinux, source) into the RPM directory
 	packages/basalt-assistant/build.sh
@@ -152,6 +152,9 @@ llm-test: ## Unit tests of basalt-llm's model selection (MODEL=auto, aliases, un
 
 eval-rules: ## Decision-layer evaluation suite (eval/cases) against the rules backend (needs Go)
 	@cd packages/basalt-assistant && go run ./tools/basalt-eval decide -cases ../../eval/cases
+
+eval-check: ## Every case in eval/cases: schema, expected actions pass the action validators, snapshot evidence (needs Go)
+	@cd packages/basalt-assistant && go run ./tools/basalt-eval check -cases ../../eval/cases
 
 lab-eval-capture: ## Record labeled decision cases on a lab VM (scripts/lab/eval-capture.sh)
 	$(L)/eval-capture.sh

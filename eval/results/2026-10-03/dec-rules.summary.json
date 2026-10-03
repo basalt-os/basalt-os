@@ -3,8 +3,8 @@
   "instances": 254,
   "label": "rules",
   "rules": {
-    "accuracy": 0.921,
-    "brier": 0.187,
+    "accuracy": 0.925,
+    "brier": 0.183,
     "by_question": {
       "avc.class": {
         "accuracy": 0.985,
@@ -28,20 +28,20 @@
         "nll": 0.267
       },
       "unit.cause": {
-        "accuracy": 0.901,
-        "brier": 0.233,
-        "ece": 0.212,
+        "accuracy": 0.908,
+        "brier": 0.226,
+        "ece": 0.213,
         "n": 141,
-        "nll": 0.601
+        "nll": 0.585
       }
     },
     "by_source": {
       "generated": {
-        "accuracy": 0.921,
-        "brier": 0.158,
-        "ece": 0.186,
+        "accuracy": 0.926,
+        "brier": 0.153,
+        "ece": 0.187,
         "n": 189,
-        "nll": 0.405
+        "nll": 0.393
       },
       "lab": {
         "accuracy": 0.886,
@@ -58,15 +58,15 @@
         "nll": 0.562
       }
     },
-    "ece": 0.191,
+    "ece": 0.192,
     "n": 254,
-    "nll": 0.474,
+    "nll": 0.465,
     "reliability": [
       {
-        "accuracy": 0.56,
+        "accuracy": 0.583,
         "bin": "0.2-0.3",
-        "confidence": 0.234,
-        "n": 25
+        "confidence": 0.235,
+        "n": 24
       },
       {
         "accuracy": 1,
@@ -95,7 +95,7 @@
       {
         "accuracy": 1,
         "bin": "0.7-0.8",
-        "confidence": 0.763,
+        "confidence": 0.764,
         "n": 50
       },
       {
@@ -105,10 +105,10 @@
         "n": 55
       },
       {
-        "accuracy": 0.983,
+        "accuracy": 0.984,
         "bin": "0.9-1.0",
         "confidence": 0.957,
-        "n": 60
+        "n": 61
       }
     ]
   }

@@ -111,14 +111,18 @@ with 5-fold cross-validation.
 
 | Backend | Accuracy | lab / daemon / generated | ECE | Brier | ECE T-cv | Brier T-cv | p50 / p95 ms |
 |---|---|---|---|---|---|---|---|
-| rules/v1 | 0.921 | 0.886 / 0.967 / 0.921 | 0.191 | 0.187 | 0.054 | 0.120 | < 1 |
+| rules/v1 | 0.925 | 0.886 / 0.967 / 0.926 | 0.192 | 0.183 | 0.056 | 0.117 | < 1 |
 | Qwen3 0.6B Q8_0 | 0.358 | 0.257 / 0.333 / 0.381 | 0.501 | 1.056 | 0.162 | 0.705 | 1728 / 5472 |
 | Qwen3 0.6B Q4_K_M | 0.366 | 0.286 / 0.267 / 0.397 | 0.490 | 1.063 | 0.195 | 0.715 | 1102 / 1831 |
 | Qwen3 1.7B Q8_0 | 0.709 | 0.657 / 0.667 / 0.725 | 0.240 | 0.500 | 0.091 | 0.402 | 3915 / 5915 |
 | Qwen3 1.7B Q4_K_M | 0.638 | 0.629 / 0.600 / 0.646 | 0.211 | 0.555 | 0.117 | 0.485 | 3200 / 7882 |
 | Qwen3 4B Q4_K_M | 0.772 | 0.771 / 0.633 / 0.794 | 0.180 | 0.406 | 0.056 | 0.303 | 7903 / 13504 |
 
-Per question (accuracy): rules unit.cause 0.90, avc.class 0.98, dnf.next
+The rules row is measured on the corrected cases (see the note below);
+the model rows on the first revision, where 4 of the 189 generated cases
+differ.
+
+Per question (accuracy): rules unit.cause 0.91, avc.class 0.98, dnf.next
 0.87, disk.cause 0.92; 4B unit.cause 0.89 (with the journal lines it
 nearly matches the rules), avc.class 0.74, dnf.next 0.43, disk.cause 0.48.
 
@@ -133,6 +137,22 @@ The rules are underconfident: their answers at 0.6 to 0.8 are right
 almost always. A temperature below 1 per question (fitted: 0.25 to 0.54)
 brings their ECE from 0.19 to 0.05 without changing any answer. The fit
 is dominated by generated cases, so it is reported, not applied.
+
+Case corrections after the first runs (schema `basalt-case/v1.1`,
+generator `generate-cases/2`, same seed): an operator precedence error
+in the disk template made the second large holder of two generated disk
+cases (`gen-disk-017-journal`, `gen-disk-018-package_cache`) about 1 PiB,
+larger than the holder the label names; `IsNoSpace` now also matches the
+lowercase message Go programs print, which adds `journal_no_space` to
+`gen-unit-020-disk_full` and `gen-unit-036-disk_full` (the rules now get
+one of them right: unit.cause 0.901 to 0.908); five lab cases had expected
+actions the assistant's validators refuse (`lab-nginx-data-log`,
+`lab-nginx-port-8085`, `lab-nginx-proxy-boolean`, `lab-nginx-directive`,
+`lab-nginx-syntax`), and `lab-nginx-proxy-boolean` named
+`httpd_can_network_connect` where the policy rule for the denial is
+`httpd_can_network_relay`. Lab cases now record the snapshots behind
+`file.restore` and `snapshot.rollback` (`evidence.snapshots`), and
+`basalt-eval check` (also a Go test) validates every case.
 
 ### Rendering a diagnosis as text (optional)
 

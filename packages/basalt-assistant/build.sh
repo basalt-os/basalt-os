@@ -4,7 +4,7 @@
 # where `make repo` signs and publishes them.
 #
 #   packages/basalt-assistant/build.sh          build
-#   packages/basalt-assistant/build.sh test     go vet + go test in the container only
+#   packages/basalt-assistant/build.sh test     go vet + go test in the container only (plus eval/cases checks)
 source "$(dirname "$0")/../../scripts/lib.sh"
 pkg="$REPO_ROOT/packages/basalt-assistant"
 ver="$(awk '/^Version:/ {print $2}' "$pkg/basalt-assistant.spec")"
@@ -18,7 +18,10 @@ cp -p "$pkg/basalt-assistant.spec" "$work/SPECS/"
 
 mode="${1:-build}"
 log "basalt-assistant $ver: $mode in $FEDORA_IMAGE"
-in_fedora -v "$work:/rpmbuild" -e MODE="$mode" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
+# The test mode also mounts the shared evaluation cases, so the check that
+# every expected action passes the action validators runs with the tests.
+in_fedora -v "$work:/rpmbuild" -v "$REPO_ROOT/eval/cases:/eval-cases:ro" -e BASALT_EVAL_CASES=/eval-cases \
+  -e MODE="$mode" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
   dnf -q -y install rpm-build systemd-rpm-macros golang gcc selinux-policy-devel make bzip2 >/dev/null 2>&1 ||
     { echo "dnf install failed"; exit 1; }
   if [ "$MODE" = test ]; then

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate labeled decision cases (basalt-case/v1) from templates.
+"""Generate labeled decision cases (basalt-case/v1.1) from templates.
 
     eval/tools/generate-cases.py [--seed N] | basalt-eval derive > eval/cases/generated.jsonl
 
@@ -15,12 +15,18 @@ a model sees are filled in by `basalt-eval derive`, which runs the same
 code as `basalt why` (internal/diag, internal/decide).
 
 Deterministic for a given seed; generator version in every case.
+
+generate-cases/2 (same seed, same random draws as /1): the second large
+holder of a disk case is 1 GiB plus up to 500 MiB, as intended; /1 shifted
+the whole sum (operator precedence), which made it larger than the holder
+named by the label.
 """
 import argparse
 import json
 import random
 
-VERSION = "generate-cases/1"
+VERSION = "generate-cases/2"
+SCHEMA = "basalt-case/v1.1"
 
 SERVICES = ["nginx", "httpd", "haproxy", "postfix", "named", "postgresql", "mariadb", "redis", "grafana-server",
             "myapp", "backup-agent", "billing-worker", "chronyd", "smb", "dovecot", "caddy", "gitea", "prometheus"]
@@ -45,7 +51,7 @@ def unit_case(r, n, cause, svc, lines, features, diagnosis, notes=""):
     unit = svc + ".service"
     ft = dict(features)
     return {
-        "schema": "basalt-case/v1",
+        "schema": SCHEMA,
         "id": "gen-unit-%03d-%s" % (n, cause),
         "kind": "unit_failure",
         "subject": unit,
@@ -199,7 +205,7 @@ def gen_avc(r, n):
     elif "%s" in subj:
         subj = subj % r.choice(DIRS)
     return {
-        "schema": "basalt-case/v1", "id": "gen-avc-%03d-%s" % (n, cls), "kind": "selinux_denial",
+        "schema": SCHEMA, "id": "gen-avc-%03d-%s" % (n, cls), "kind": "selinux_denial",
         "subject": subj, "goal": "fix(selinux)", "evidence": {"denial": subj},
         "questions": [{"id": "avc.class", "subject": subj, "features": dict(ft), "want": cls}],
         "expected": {"diagnosis": "denial of class %s" % cls, "cause": cls, "actions": [], "proposal": "review"},
@@ -223,7 +229,7 @@ def gen_dnf(r, n):
     pkg = r.choice(["httpd-2.4.66-1", "kernel-7.2.9-200", "postgresql-server-18.1-1", "myapp-3.2.0-1", "selinux-policy-44.12-1"])
     subj = "dnf -y upgrade %s" % pkg.rsplit("-", 2)[0]
     return {
-        "schema": "basalt-case/v1", "id": "gen-dnf-%03d-%s" % (n, want), "kind": "package_transaction",
+        "schema": SCHEMA, "id": "gen-dnf-%03d-%s" % (n, want), "kind": "package_transaction",
         "subject": subj, "goal": "transaction(failed)", "evidence": {"transaction": subj},
         "questions": [{"id": "dnf.next", "subject": subj, "features": dict(ft), "want": want}],
         "expected": {"diagnosis": diag, "cause": want, "actions": [], "proposal": "propose" if want == "rollback" else "review"},
@@ -255,10 +261,10 @@ def gen_disk(r, n):
         other = r.choice([k for k in ("snapshots_large", "journal_large", "cache_large") if not ft.get(k)])
         ft[other] = True
         key = {"snapshots_large": "snapshots_bytes", "journal_large": "journal_bytes", "cache_large": "package_cache_bytes"}[other]
-        sizes[key] = gib + r.randint(0, 500) << 20
+        sizes[key] = gib + (r.randint(0, 500) << 20)  # parentheses: << binds looser than +
         notes = "two large holders; the sizes decide"
     return {
-        "schema": "basalt-case/v1", "id": "gen-disk-%03d-%s" % (n, want), "kind": "disk_pressure",
+        "schema": SCHEMA, "id": "gen-disk-%03d-%s" % (n, want), "kind": "disk_pressure",
         "subject": "/", "goal": "disk(mount=/)", "evidence": {"usage": sizes},
         "questions": [{"id": "disk.cause", "subject": "/", "features": ft, "facts": sizes, "want": want}],
         "expected": {"diagnosis": "%s holds the space" % want, "cause": want, "actions": [], "proposal": "review"},

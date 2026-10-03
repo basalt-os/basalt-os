@@ -58,3 +58,22 @@ func TestBinaryMessage(t *testing.T) {
 		t.Fatalf("FailedUnit = %q %v", u, ok)
 	}
 }
+
+func TestIsNoSpaceCaseInsensitive(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want bool
+	}{
+		{`postgres: FATAL:  could not write to file "pg_wal/xlogtemp.12": No space left on device`, true},
+		// Go programs print syscall.ENOSPC in lowercase.
+		{"redis: error: cannot save snapshot: write /var/lib/redis/dump.rdb: no space left on device", true},
+		{"myapp: WRITE FAILED: NO SPACE LEFT ON DEVICE", true},
+		{"nginx: [emerg] bind() to 0.0.0.0:80 failed (98: Address already in use)", false},
+		{"df: space left on device is 12G", false},
+	}
+	for _, c := range cases {
+		if got := (Entry{Message: c.msg}).IsNoSpace(); got != c.want {
+			t.Errorf("IsNoSpace(%q) = %v, want %v", c.msg, got, c.want)
+		}
+	}
+}

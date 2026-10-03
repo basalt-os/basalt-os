@@ -150,9 +150,11 @@ func (e Entry) FailedUnit() (string, bool) {
 	return "", false
 }
 
-// IsNoSpace reports an ENOSPC message from any program.
+// IsNoSpace reports an ENOSPC message from any program. The match is
+// case-insensitive: C programs print strerror ("No space left on device"),
+// Go programs print syscall.ENOSPC in lowercase ("no space left on device").
 func (e Entry) IsNoSpace() bool {
-	return strings.Contains(e.Message, "No space left on device")
+	return strings.Contains(strings.ToLower(e.Message), "no space left on device")
 }
 
 // SoftwareUpdateFailed reports an rpm audit record of a failed package

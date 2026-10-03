@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn lab captures into basalt-case/v1 lines (docs/eval-suite.md).
+"""Turn lab captures into basalt-case/v1.1 lines (docs/eval-suite.md).
 
     eval/tools/capture-to-cases.py CAPTURE_DIR [PROPOSALS_JSON] > eval/cases/lab.jsonl
 
@@ -10,14 +10,79 @@ same run; they are the confined daemon's view of the same events (fewer
 probes) and become cases of source "lab-daemon".
 
 The expected answers come from the scenario (the failure was caused on
-purpose), never from the rules' output.
+purpose), never from the rules' output. Snapshot numbers are bindings, not
+labels: a scenario labels "restore this file from a snapshot" and the
+number comes from the snapshot the diagnosers found (`restore` in the
+capture), which is also recorded in evidence.snapshots.
 """
 import glob
 import json
 import os
+import re
 import sys
 
+SCHEMA = "basalt-case/v1.1"
 RECORDED = "2026-10-03"
+
+# Corrections of scenario labels recorded by older versions of
+# scripts/lab/eval-capture.sh (the 2026-10-03 captures): expected actions
+# that did not pass the assistant's action validators, and a boolean that
+# was not the one the policy needs for the denial. The script now records
+# the corrected labels; these apply only to captures that still carry the
+# old ones.
+LABEL_CORRECTIONS = {
+    "nginx-data-log": {"actions": [{"kind": "selinux.fcontext", "params": {"path": "/data/logs", "type": "httpd_log_t"}},
+                                   {"kind": "unit.restart", "params": {"unit": "nginx.service"}}]},
+    "nginx-port-8085": {"actions": [{"kind": "selinux.port", "params": {"type": "http_port_t", "proto": "tcp", "port": "8085", "mode": "add"}},
+                                    {"kind": "unit.restart", "params": {"unit": "nginx.service"}}]},
+    # The denial is name_connect to http_port_t (backend on tcp 9000): the
+    # policy allows it under httpd_can_network_relay (sesearch, see
+    # packages/basalt-assistant/testdata/sesearch-httpd-name_connect.txt);
+    # httpd_can_network_connect would allow every port.
+    "nginx-proxy-boolean": {"diagnosis": "nginx may not connect to the backend port (http_port_t); httpd_can_network_relay is off",
+                            "actions": [{"kind": "selinux.boolean", "params": {"name": "httpd_can_network_relay", "value": "on"}}]},
+    # A restored configuration only takes effect after a restart.
+    "nginx-directive": {"actions": [{"kind": "file.restore", "params": {"path": "/etc/nginx/nginx.conf"}},
+                                    {"kind": "unit.restart", "params": {"unit": "nginx.service"}}]},
+    "nginx-syntax": {"actions": [{"kind": "file.restore", "params": {"path": "/etc/nginx/nginx.conf"}},
+                                 {"kind": "unit.restart", "params": {"unit": "nginx.service"}}]},
+}
+
+
+def restore_snapshot(restore):
+    """evidence.snapshots entry of a restore candidate (`restore` in basalt why --json)."""
+    if not restore or not restore.get("snapshot"):
+        return None
+    s = {"number": int(restore["snapshot"]), "role": "restore_source", "path": restore["path"]}
+    for k in ("date", "how"):
+        if restore.get(k):
+            s[k] = restore[k]
+    return s
+
+
+# The daemon's report names the restore candidate it found.
+RE_REPORT_RESTORE = re.compile(r"Snapshot (\d+) \(([^)]+)\) has a different copy of (\S+) \(([^)]+)\)")
+
+
+def report_snapshots(report):
+    m = RE_REPORT_RESTORE.search(report or "")
+    if not m:
+        return []
+    return [{"number": int(m.group(1)), "role": "restore_source", "path": m.group(3), "date": m.group(2), "how": m.group(4)}]
+
+
+def bind_snapshots(actions, snapshots, where):
+    """Fill the snapshot number of an expected file.restore from the evidence."""
+    out = []
+    for a in actions:
+        a = {"kind": a["kind"], "params": dict(a["params"])}
+        if a["kind"] == "file.restore" and "snapshot" not in a["params"]:
+            src = [s for s in snapshots if s["role"] == "restore_source" and s["path"] == a["params"]["path"]]
+            if not src:
+                sys.exit("%s: file.restore of %s but no snapshot holds it" % (where, a["params"]["path"]))
+            a["params"]["snapshot"] = str(src[0]["number"])
+        out.append(a)
+    return out
 
 # Label of every AVC finding the diagnosers made, by scenario: (substring of
 # the finding's subject, expected avc.class). The first match wins; a
@@ -65,6 +130,7 @@ def avc_questions(scenario, decisions, default):
 
 def from_capture(path):
     c = json.load(open(path))
+    c.update(LABEL_CORRECTIONS.get(c["scenario"], {}))
     w = c.get("why") or {}
     exp = c["expected"]
     qs = []
@@ -82,8 +148,14 @@ def from_capture(path):
     if evidence.get("state"):
         keep = ("ActiveState", "SubState", "Result", "ExecMainCode", "ExecMainStatus", "NRestarts", "Requires", "LoadState")
         evidence["state"] = {k: evidence["state"][k] for k in keep if k in evidence["state"]}
+    # The file diff of a restore candidate stays out (it may hold secrets,
+    # e.g. /etc/shadow); number, date, path and how are enough.
+    snap = restore_snapshot(w.get("restore"))
+    if snap:
+        evidence["snapshots"] = [snap]
+    actions = bind_snapshots(c["actions"], evidence.get("snapshots", []), c["scenario"])
     return c["scenario"], {
-        "schema": "basalt-case/v1",
+        "schema": SCHEMA,
         "id": "lab-" + c["scenario"],
         "kind": "unit_failure" if "unit.cause" in exp else "selinux_denial",
         "subject": c["subject"],
@@ -91,7 +163,7 @@ def from_capture(path):
         "evidence": evidence,
         "questions": qs,
         "expected": {"diagnosis": c["diagnosis"], "cause": exp.get("unit.cause") or exp.get("avc.class"),
-                     "actions": c["actions"], "proposal": "propose" if c["actions"] else "review"},
+                     "actions": actions, "proposal": "propose" if actions else "review"},
         "provenance": {"source": "lab", "ref": "scripts/lab/eval-capture.sh " + c["scenario"].replace("-", "_"),
                        "recorded": RECORDED, "method": "failure caused on purpose on a lab VM (Fedora 44, SELinux enforcing); "
                        "basalt why --json as root", "labels": "by construction"},
@@ -154,13 +226,17 @@ def from_proposal(name, p, journals):
             qs.append({"id": "disk.cause", "subject": subject, "features": on(q.get("features")), "want": "snapshots"})
     if not qs:
         return None
+    evidence = {"journal": journals.get(scen) or []}
+    snaps = report_snapshots(p.get("report"))
+    if snaps:
+        evidence["snapshots"] = snaps
     return {
-        "schema": "basalt-case/v1",
+        "schema": SCHEMA,
         "id": "lab-daemon-" + name.replace(".json", ""),
         "kind": "unit_failure",
         "subject": subject,
         "goal": goal(subject),
-        "evidence": {"journal": journals.get(scen) or []},
+        "evidence": evidence,
         "questions": qs,
         "expected": {"diagnosis": p.get("title", ""), "cause": cause, "actions": p.get("actions") or [],
                      "proposal": "propose" if p.get("actions") else "review"},
@@ -174,29 +250,40 @@ def from_proposal(name, p, journals):
 
 # Milestone 2a cases with no stored proposal: features as the diagnosers
 # set them for these events (internal/diag/dnf.go, disk.go), outcome from
-# the milestone 2a lab run.
+# the milestone 2a lab run. Snapshots: the pre/post pair snapper took for
+# the transaction (snapper list on the lab VM, the run's log). The %pre
+# failure and the confined disk view record none: the run kept no snapshot
+# list for the first, and the daemon cannot see snapshot space (the point
+# of the second case).
+POSTFAIL_TX = "dnf -y install /root/basalt-lab-postfail-1-1.noarch.rpm"
 M2A = [
     ("m2a-dnf-postfail", "dnf.next", "rollback", "dnf -y install basalt-lab-postfail-1-1.noarch.rpm",
      ["scriptlet_failed", "post_scriptlet_failed", "rpmdb_changed"],
      ["WARNING [rpm] %post(basalt-lab-postfail-1-1.noarch) scriptlet failed, exit status 1"],
      "a %post scriptlet failed: the package is installed but not set up; roll back to the pre snapshot",
-     [{"kind": "snapshot.rollback", "params": {"snapshot": "63"}}]),
+     [{"kind": "snapshot.rollback", "params": {"snapshot": "63"}}],
+     [{"number": 63, "role": "transaction_pre", "type": "pre", "date": "2026-10-03 15:43:51", "description": POSTFAIL_TX},
+      {"number": 64, "role": "transaction_post", "type": "post", "pre_number": 63, "date": "2026-10-03 15:43:52",
+       "description": POSTFAIL_TX}]),
     ("m2a-dnf-prefail", "dnf.next", "investigate", "dnf -y install basalt-lab-broken-1-1.noarch.rpm",
      ["scriptlet_failed", "pre_scriptlet_failed", "rpmdb_unchanged"],
      ["WARNING [rpm] %pre(basalt-lab-broken-1-1.noarch) scriptlet failed, exit status 1"],
-     "a %pre scriptlet failed: nothing was installed; nothing to roll back", []),
+     "a %pre scriptlet failed: nothing was installed; nothing to roll back", [], []),
     ("m2a-disk-daemon", "disk.cause", "snapshots", "/", ["disk_warn"], [],
      "89 % full because a snapshot holds an 11 GiB file; the confined daemon cannot measure snapshot space "
-     "(evidence incomplete on purpose: the right answer is not visible to it)", []),
+     "(evidence incomplete on purpose: the right answer is not visible to it)", [], []),
 ]
 
 
 def m2a_cases():
-    for cid, qid, want, subject, ft, lines, diag, actions in M2A:
+    for cid, qid, want, subject, ft, lines, diag, actions, snaps in M2A:
+        evidence = {"dnf_log": lines} if lines else {}
+        if snaps:
+            evidence["snapshots"] = snaps
         yield {
-            "schema": "basalt-case/v1", "id": "lab-" + cid, "kind": "package_transaction" if qid == "dnf.next" else "disk_pressure",
+            "schema": SCHEMA, "id": "lab-" + cid, "kind": "package_transaction" if qid == "dnf.next" else "disk_pressure",
             "subject": subject, "goal": ("transaction(failed)" if qid == "dnf.next" else "disk(mount=/)"),
-            "evidence": {"dnf_log": lines} if lines else {},
+            "evidence": evidence,
             "questions": [{"id": qid, "subject": subject, "features": {k: True for k in ft}, "want": want}],
             "expected": {"diagnosis": diag, "cause": want, "actions": actions, "proposal": "propose" if actions else "review"},
             "provenance": {"source": "lab", "ref": "scripts/lab/assistant-test.sh (milestone 2a)", "recorded": RECORDED,
