@@ -8,7 +8,11 @@ can answer the decision layer's questions; both are off by default and
 nothing below depends on them.
 
 Package: `basalt-assistant` (and `basalt-assistant-selinux`), source in
-`packages/basalt-assistant/` (Go, no third-party modules).
+`packages/basalt-assistant/` (Go, no third-party modules). The installer
+puts it on every system and enables `basalt-assistantd`: the daemon only
+reads and proposes, and every change still goes through `basalt apply` and
+a confirmation. The local model service (`basalt-llm`) stays optional and
+is not installed by default.
 
 ## What it does
 
@@ -28,6 +32,8 @@ SELinux policy, snapshots, statfs -> (shared by CLI,   ->  (typed questions,  ->
 - `basalt-mcp` (MCP server over stdio) exposes the same diagnosers as tools
   to a future local model or to an external MCP client. Its write tools only
   store proposals.
+- `basalt-notify` (systemd service) delivers findings beyond the journal:
+  desktop notifications and an optional webhook (see Notifications).
 - Only `basalt apply`, run by an administrator, changes anything.
 
 ## Commands
@@ -43,7 +49,7 @@ Read-only, no confirmation:
 | `basalt snapshots diff A [B]` | packages added, removed and changed (rpm databases of the two snapshots) and changed files by directory (`snapper status`) |
 | `basalt disk` | btrfs usage, the space each snapshot holds alone (`btrfs filesystem du`), journal and package cache size, a fullness forecast from stored samples |
 | `basalt pending [--all]`, `basalt show ID` | proposals |
-| `basalt audit [N]`, `basalt audit verify` | the audit log and its hash chain |
+| `basalt audit [N]`, `basalt audit verify` | the audit log and its hash chain, checked across rotated files |
 | `basalt ask "REQUEST"` | (optional, needs the local model) the request translated into one of the commands above, which then runs; a change (apply, rollback) is only printed, see [local-model.md](local-model.md) |
 
 Changes (root):
@@ -123,6 +129,36 @@ append-only (`chattr +a`, set by tmpfiles.d): rewriting it needs
 `BASALT_AUDIT_HASH`, `BASALT_AUDIT_PREV`, `BASALT_AUDIT_DATA`). The log
 lives in `/var/log`, a separate subvolume, so it survives rollbacks.
 
+### Sealed rotation
+
+The chain must survive rotation, so the log is never cut and restarted.
+`basalt audit rotate` (root; `basalt-audit-rotate.timer` runs it daily and
+it acts once the file reaches `[audit] rotate_size`, 32 MiB by default;
+`--force` rotates now), under the same lock every writer takes:
+
+1. appends a `seal` record whose data holds the SHA-256 of every byte of the
+   file before it, the first sequence number and the record count, and the
+   name the file will be kept under;
+2. keeps the file as `audit-<UTC time>.jsonl` (a hard link, then
+   `chattr +i`: immutable, not only append-only);
+3. writes the new `audit.jsonl` with a single `continue` record chained to
+   the seal (its `prev` is the seal's hash, its data names the sealed file
+   and the seal) and renames it into place atomically, then sets `+a` on
+   it. A writer that was waiting for the lock on the old file notices that
+   it was replaced and writes to the new one.
+
+`basalt audit verify` walks every file in order: the chain inside each
+file, a seal as the last record of every rotated file with a matching
+SHA-256 and record count, and a `continue` record linked to that seal at
+the start of the next file. A sealed file that is edited, truncated,
+removed from the middle or swapped breaks it. Removing the oldest files on
+purpose (they are immutable: `chattr -i` first) leaves a chain that starts
+with a `continue` record; verify reports that the earlier records cannot be
+checked. A rotation interrupted after the seal leaves a file ending with
+it: writers then refuse to append, so nothing is chained after a seal,
+until `basalt audit rotate` (or the next timer run) finishes the job with
+the same seal.
+
 ## Event engine
 
 `basalt-assistantd` follows the journal (`journalctl -f -o json`) and polls
@@ -147,6 +183,48 @@ root) the daemon does not report old events again.
 Each proposal is printed to the service's journal from a text template:
 what is wrong, the evidence, the decisions, the proposed change with its
 exact commands, and how to apply or ignore it.
+
+## Notifications
+
+- Journal, always: every finding is an audit record in the journal, and
+  the daemon prints the proposal; findings the decision layer marks for
+  notification (`event.notify`) are printed at warning priority, so
+  `journalctl -p warning` shows them.
+- Desktop: `basalt-notify` shows those findings as freedesktop
+  notifications (`org.freedesktop.Notifications`, through `busctl --user`
+  run as each user) in every local graphical session (wayland or x11, not
+  remote). With `[notify] desktop = auto` (default) it is on only when the
+  default target is `graphical.target`; on a server it has nothing to do
+  and exits at once.
+- Webhook, optional and off by default: set `webhook_url` (https; plain
+  http only to localhost) and put a random key in `webhook_secret_file`
+  (default `/etc/basalt/webhook.key`, root-owned, mode 0600):
+
+  ```sh
+  install -m 0600 /dev/null /etc/basalt/webhook.key
+  head -c 32 /dev/urandom | base64 >/etc/basalt/webhook.key
+  systemctl restart basalt-notify
+  ```
+
+  Each finding is a JSON POST (`{"event": "finding", "finding": {seq, time,
+  host, proposal, title, kind, subject, severity, needs_review, notify},
+  "hint": "basalt show ID"}`) with headers `X-Basalt-Event`,
+  `X-Basalt-Timestamp` (Unix seconds) and `X-Basalt-Signature:
+  sha256=HEX`, the HMAC-SHA256 of `timestamp + "." + body` with the key.
+  Receivers should check the signature and reject old timestamps.
+  `webhook_events = all` sends every finding, not only the marked ones.
+  Failures are retried twice (network errors, 5xx, 429) and logged.
+- No e-mail.
+
+`basalt-notify` reads the findings from the journal, matched on the
+trusted field `_SYSTEMD_UNIT=basalt-assistantd.service` (a local user
+cannot forge it with `logger`), and keeps its journal cursor in
+`/var/lib/basalt-notify` (its first start delivers new findings only, not
+the backlog). It is a separate unit because the daemon has no
+network access and no way into user sessions, and should not get either.
+It runs as root without an SELinux domain of its own yet (it drops to each
+user to reach that user's session bus), with the systemd hardening options
+as its fence.
 
 ## Decision layer
 
@@ -235,8 +313,9 @@ as a second, independent fence.
 `/etc/basalt/assistant.conf` (INI): decision backend, thresholds and
 calibration, the translator (`[translator]`: enabled, endpoint, prompt), disk
 thresholds (warn 85 %, critical 95 %, what counts as large), event timings
-(dedup window, hourly limit, disk interval, settle times). Restart the
-daemon after a change.
+(dedup window, hourly limit, disk interval, settle times), the audit log
+rotation size (`[audit]`) and notifications (`[notify]`). Restart the
+daemon (and `basalt-notify`) after a change.
 
 ## Lab
 

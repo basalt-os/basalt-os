@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily check for the Basalt OS assistant audit log rotation
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/assistant.md
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

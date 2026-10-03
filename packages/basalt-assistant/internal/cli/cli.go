@@ -33,12 +33,14 @@ Read-only (no confirmation needed):
   basalt disk                         btrfs usage, space held by snapshots, fullness forecast
   basalt pending [--all]              proposals waiting for a decision
   basalt show ID                      one proposal in full
-  basalt audit [N] | audit verify     audit log (hash chain)
+  basalt audit [N] | audit verify     audit log (hash chain, verified across rotated files)
 
 Changes (root; exact commands shown, then confirmation):
   basalt apply ID [--yes --confirm CODE]
   basalt ignore ID [--reason TEXT]
   basalt snapshots rollback N | --before ID
+  basalt audit rotate [--force]       seal the audit log and continue in a new file
+                                      (when larger than [audit] rotate_size; run daily by a timer)
   basalt why UNIT --apply, basalt fix selinux --apply, basalt disk --apply
                                       store the proposal and go straight to the confirmation
 
@@ -54,7 +56,7 @@ Diagnoses that find a change store it as a pending proposal when run as root.
 // opts are the parsed flags.
 type opts struct {
 	json, apply, yes, all bool
-	dryRun                bool
+	dryRun, force         bool
 	since                 time.Duration
 	confirm, reason       string
 	before, config        string
@@ -89,6 +91,8 @@ func parse(argv []string) (opts, error) {
 			o.all = true
 		case "--dry-run":
 			o.dryRun = true
+		case "--force":
+			o.force = true
 		case "--since":
 			if v, err = val(); err == nil {
 				o.since, err = time.ParseDuration(v)
@@ -266,6 +270,7 @@ func (a *app) status(ctx context.Context) error {
 		return a.printJSON(s)
 	}
 	w := a.out
+	fmt.Fprintf(w, "System:      %s\n", s.OS)
 	fmt.Fprintf(w, "SELinux:     %s\n", s.SELinux)
 	fmt.Fprintf(w, "Failed:      %s\n", orNone(strings.Join(s.FailedUnits, " ")))
 	fmt.Fprintf(w, "Denials 24h: %d\n", s.Denials24h)
@@ -570,12 +575,35 @@ func (a *app) ignore() error {
 
 func (a *app) auditCmd() error {
 	if len(a.o.args) > 1 && a.o.args[1] == "verify" {
-		n, err := audit.Verify(a.cfg.AuditPath)
-		if err != nil {
-			return fmt.Errorf("audit chain broken after record %d: %w", n, err)
+		sum, err := audit.VerifyChain(a.cfg.AuditPath)
+		if a.o.json {
+			out := map[string]any{"summary": sum, "ok": err == nil}
+			if err != nil {
+				out["error"] = err.Error()
+			}
+			if perr := a.printJSON(out); perr != nil {
+				return perr
+			}
+			if err != nil {
+				return fmt.Errorf("audit chain broken after record %d: %w", sum.LastSeq, err)
+			}
+			return nil
 		}
-		fmt.Fprintf(a.out, "audit chain verifies: %d records, %s\n", n, a.cfg.AuditPath)
+		if err != nil {
+			return fmt.Errorf("audit chain broken after record %d: %w", sum.LastSeq, err)
+		}
+		fmt.Fprintf(a.out, "audit chain verifies: records %d to %d in %d file(s), %d seal(s), %s\n",
+			sum.FirstSeq, sum.LastSeq, len(sum.Files), sum.Seals, a.cfg.AuditPath)
+		if sum.Truncated {
+			fmt.Fprintf(a.out, "note: the oldest file left continues from a removed one; records before %d cannot be checked\n", sum.FirstSeq)
+		}
+		if sum.Unsealed {
+			fmt.Fprintln(a.out, "note: the current file ends with a seal: a rotation did not finish (basalt audit rotate)")
+		}
 		return nil
+	}
+	if len(a.o.args) > 1 && a.o.args[1] == "rotate" {
+		return a.auditRotate()
 	}
 	n := 20
 	if len(a.o.args) > 1 {
@@ -597,5 +625,31 @@ func (a *app) auditCmd() error {
 		}
 		fmt.Fprintf(a.out, "#%-4d %s %-22s %-9s %s\n", r.Seq, r.Time.Local().Format("2006-01-02 15:04:05"), who, r.Type, r.Text)
 	}
+	return nil
+}
+
+// auditRotate seals the audit log and starts the next file (root only:
+// the files are append-only and immutable, see audit.Rotate).
+func (a *app) auditRotate() error {
+	if !a.root {
+		return errors.New("rotating the audit log needs root")
+	}
+	minSize := a.cfg.AuditRotateSize
+	if a.o.force {
+		minSize = 0
+	}
+	res, err := a.audit.Rotate(audit.RotateOptions{MinSize: minSize, Attrs: true})
+	if err != nil {
+		return err
+	}
+	if a.o.json {
+		return a.printJSON(res)
+	}
+	if !res.Rotated {
+		fmt.Fprintf(a.out, "audit log not rotated: %s\n", res.Reason)
+		return nil
+	}
+	fmt.Fprintf(a.out, "audit log sealed at record %d and kept as %s; continues at record %d in %s\n",
+		res.Seal.Seq, res.Sealed, res.Continue.Seq, a.cfg.AuditPath)
 	return nil
 }

@@ -1,0 +1,37 @@
+[Unit]
+Description=Basalt OS assistant notifications (desktop sessions, optional webhook)
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/assistant.md
+After=basalt-assistantd.service network.target
+
+[Service]
+Type=simple
+# Exits at once when there is nothing to deliver: no graphical default
+# target (desktop = auto) and no webhook in /etc/basalt/assistant.conf.
+ExecStart=/usr/libexec/basalt/basalt-notify
+Restart=on-failure
+RestartSec=30s
+StateDirectory=basalt-notify
+StateDirectoryMode=0700
+# Reads the journal, runs busctl as each desktop user against that user's
+# session bus (hence setuid/setgid), and posts to the webhook.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

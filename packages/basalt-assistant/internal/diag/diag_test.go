@@ -366,3 +366,25 @@ func TestFoundPathSkipsFindErrors(t *testing.T) {
 		t.Fatalf("an error message was taken for a path: %q", p)
 	}
 }
+
+func TestParseOSRelease(t *testing.T) {
+	b := []byte(`NAME="Basalt OS"
+VERSION="44 (Basalt 0.0.1)"
+ID=basalt
+ID_LIKE=fedora
+VERSION_ID=44
+BUILD_ID=20261003.0123456789ab
+BASALT_VERSION=0.0.1
+PRETTY_NAME="Basalt OS 44 (Basalt 0.0.1, pre-alpha)"
+`)
+	o := ParseOSRelease(b)
+	if o.ID != "basalt" || o.VersionID != "44" || o.BasaltVersion != "0.0.1" || o.BuildID != "20261003.0123456789ab" {
+		t.Fatalf("%+v", o)
+	}
+	if got := o.String(); got != "Basalt OS 44 (Basalt 0.0.1), build 20261003.0123456789ab" {
+		t.Fatalf("%q", got)
+	}
+	if got := ParseOSRelease([]byte("NAME=Fedora Linux\nVERSION_ID=44\n")).String(); got != "Fedora Linux 44" {
+		t.Fatalf("%q", got)
+	}
+}

@@ -39,6 +39,17 @@ type Config struct {
 
 	Disk diag.DiskThresholds
 
+	// Audit log: `basalt audit rotate` (daily timer) seals and rotates it
+	// once it reaches this size.
+	AuditRotateSize int64
+
+	// Notifications (basalt-notify). The journal always gets every finding.
+	NotifyDesktop     string // auto (default: when the default target is graphical), yes, no
+	WebhookURL        string // empty: no webhook (default)
+	WebhookSecretFile string // HMAC-SHA256 key, root-only file
+	WebhookEvents     string // notify (default: what the decision layer marks for notification) or all
+	WebhookTimeout    time.Duration
+
 	// Event engine.
 	DedupWindow  time.Duration // the same problem is reported once per window
 	MaxPerHour   int           // new proposals per hour (rate limit)
@@ -55,8 +66,11 @@ func Defaults() Config {
 		StateDir: "/var/lib/basalt-assistant", AuditPath: "/var/log/basalt-assistant/audit.jsonl",
 		Backend: "rules", DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
 		TranslatorEndpoint: "unix:/run/basalt-llm/llm.sock", TranslatorPrompt: "auto",
-		Disk:        diag.DefaultDiskThresholds,
-		DedupWindow: time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
+		Disk:            diag.DefaultDiskThresholds,
+		AuditRotateSize: 32 << 20,
+		NotifyDesktop:   "auto", WebhookSecretFile: "/etc/basalt/webhook.key", WebhookEvents: "notify",
+		WebhookTimeout: 10 * time.Second,
+		DedupWindow:    time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
 		DnfMinAge: 2 * time.Minute, DnfSettle: 15 * time.Second, AVCSettle: 5 * time.Second, UnitSettle: 3 * time.Second,
 	}
 }
@@ -145,6 +159,26 @@ func (c *Config) set(sec, k, v string) error {
 		c.Disk.CacheLargeBytes, err = sz()
 	case "disk.journal_vacuum_to":
 		c.Disk.JournalVacuumTo = v
+	case "audit.rotate_size":
+		c.AuditRotateSize, err = sz()
+	case "notify.desktop":
+		switch v {
+		case "auto", "yes", "no":
+			c.NotifyDesktop = v
+		default:
+			err = fmt.Errorf("desktop %q (auto, yes or no)", v)
+		}
+	case "notify.webhook_url":
+		c.WebhookURL = v
+	case "notify.webhook_secret_file":
+		c.WebhookSecretFile = v
+	case "notify.webhook_events":
+		if v != "notify" && v != "all" {
+			err = fmt.Errorf("webhook_events %q (notify or all)", v)
+		}
+		c.WebhookEvents = v
+	case "notify.webhook_timeout":
+		c.WebhookTimeout, err = du()
 	case "events.dedup_window":
 		c.DedupWindow, err = du()
 	case "events.max_proposals_per_hour":

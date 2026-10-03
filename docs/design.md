@@ -42,21 +42,47 @@ packages, and all updates to them, come from Fedora's mirrors.
 
 | Package | Role |
 |---|---|
-| `basalt-release` | `/usr/lib/os-release` (`NAME="Basalt OS"`, `ID=basalt`, `ID_LIKE=fedora`), the other release files, `rpm` dist macros (still `.fc44`), the Basalt repository definition and signing key, dnf defaults, systemd presets. Provides `system-release` and `system-release(releasever) = 44`, so `$releasever` and Fedora's repositories keep working; conflicts with `fedora-release*` and `generic-release*`. One build per Fedora release (its `Version` is the Fedora release, like `fedora-release`). |
+| `basalt-release` | `/usr/lib/os-release` (`NAME="Basalt OS"`, `ID=basalt`, `ID_LIKE=fedora`, see below), the other release files, `rpm` dist macros (still `.fc44`), the Basalt repository definition and signing key, dnf defaults, systemd presets. Provides `system-release` and `system-release(releasever) = 44`, so `$releasever` and Fedora's repositories keep working; conflicts with `fedora-release*` and `generic-release*`. One build per Fedora release (its `Version` is the Fedora release, like `fedora-release`). |
 | `basalt-release-server` | Server defaults: SSH hardening drop-in, firewalld zone `basalt` (SSH only) made the default on first install, LLMNR and multicast DNS off, a warning if SELinux is not enforcing. |
 | `basalt-logos` and subpackages | Logos and icons (`LOGO=basalt-logo-icon`), `basalt-logos-httpd`, `plymouth-theme-basalt`, `basalt-grub2-theme`, `basalt-backgrounds`, `basalt-logos-compat`. Provides `system-logos`, conflicts with `fedora-logos` and `generic-logos`. Artwork under CC-BY-SA-4.0. |
 | `basalt-snapshots` | snapper template, dnf5 hook, snapshot boot menu, setup and rollback tools (below). |
 | `basalt-security` | `basalt-tpm` (TPM2 unlock state, re-enrollment, one-boot suspend before a planned change) and `basalt-secureboot` (Secure Boot state, enrollment of the Basalt kernel module CA as a MOK, module signing certificates loaded at boot). See [secure-boot.md](secure-boot.md). |
-| `basalt-assistant` | The system assistant: `basalt` (diagnosis, typed proposals, confirmed and audited changes), `basalt-assistantd` (event engine), `basalt-mcp` (MCP tools); `basalt-assistant-selinux` confines the daemon and the MCP server. See [assistant.md](assistant.md). |
+| `basalt-assistant` | The system assistant, installed by default: `basalt` (diagnosis, typed proposals, confirmed and audited changes), `basalt-assistantd` (event engine, enabled), `basalt-mcp` (MCP tools), `basalt-notify` (desktop notifications, optional webhook); `basalt-assistant-selinux` confines the daemon and the MCP server. See [assistant.md](assistant.md). |
 | `basalt-llm` (optional) | Local language model service for the assistant: llama.cpp's server for the CPU, no network, its own SELinux domain. `MODEL=auto` runs the fine-tuned translator that fits the machine (1.7B with 4 or more cores and enough free memory, else 0.6B), chosen at each start. See [local-model.md](local-model.md). |
 
 The release package keeps the file names other software reads
 (`/etc/fedora-release`, `/etc/redhat-release`, `/etc/system-release`) with
 Basalt content, as `generic-release` does.
 
+`os-release` follows the common practice of Fedora remixes: `VERSION_ID`
+is the Fedora release, so tools that key on `ID_LIKE` and `VERSION_ID`
+(Ansible, cloud-init, third-party repository setup scripts) behave as on
+that Fedora release, and the Basalt version is carried separately:
+
+```
+NAME="Basalt OS"
+VERSION="44 (Basalt 0.0.1)"
+ID=basalt
+ID_LIKE=fedora
+VERSION_ID=44
+BUILD_ID=20261003.0123456789ab
+BASALT_VERSION=0.0.1
+BASALT_CODENAME=pre-alpha
+PRETTY_NAME="Basalt OS 44 (Basalt 0.0.1, pre-alpha)"
+```
+
+`BUILD_ID` is the build date and the commit of the tree that built the
+package (`BASALT_BUILD_ID`, set by `scripts/lib.sh`). Boot menu entries
+are titled from `NAME` and `VERSION` ("Basalt OS (kernel) 44 (Basalt
+0.0.1)"); `/etc/system-release` reads "Basalt OS release 44 (Basalt
+0.0.1)". After `dnf system-upgrade` to the next Fedora release,
+`VERSION_ID` follows it, while `BASALT_VERSION` changes only with a
+Basalt release.
+
 Presets (`80-basalt.preset`, read before Fedora's `90-default.preset`):
-firewalld, sshd, auditd, snapper cleanup, the snapshot boot menu and the
-module signing certificate loader on;
+firewalld, sshd, auditd, snapper cleanup, the snapshot boot menu, the
+module signing certificate loader, the assistant's daemon, its
+notifications and its audit rotation timer on;
 hourly snapper timeline, ModemManager, Bluetooth, Avahi and CUPS off. The
 remaining presets are Fedora's, unchanged.
 
@@ -93,10 +119,19 @@ install time (the Basalt packages travel on the ISO). A branded Anaconda
 The kickstart (`kickstart/basalt-server.ks`):
 
 - installs `@core` plus the Basalt packages, with `fedora-release` and
-  `fedora-logos` excluded so the Basalt ones are chosen. `basalt.profile=minimal`
-  leaves out hardware firmware, CPU microcode and fwupd (and what they pull
-  in: udisks2, polkit, Bluetooth, mdadm and others), for virtual machines;
-  `kernel-core` only recommends `linux-firmware`. Leaving out all weak
+  `fedora-logos` excluded so the Basalt ones are chosen, and the system
+  assistant (`basalt-assistant`, `basalt-assistant-selinux`) with
+  `basalt-assistantd`, `basalt-notify` and the audit rotation timer
+  enabled. The optional local model service (`basalt-llm`) is not
+  installed. The minimal profile leaves out hardware firmware, CPU
+  microcode and fwupd (and what they pull in: udisks2, polkit, Bluetooth,
+  mdadm and others); `kernel-core` only recommends `linux-firmware`.
+  `basalt.profile=auto` (default) picks it on virtual machines and cloud
+  instances (`systemd-detect-virt --vm`, or the CPU's hypervisor flag) and
+  the standard profile on bare metal; `minimal` or `standard` forces one,
+  for example `standard` for a VM with a passed-through GPU or NIC that
+  needs firmware. The choice and its reason are in
+  `/root/basalt-install-pre.log`. Leaving out all weak
   dependencies was measured too and rejected: it also drops `logrotate`,
   `crypto-policies-scripts` and `systemd-pam`;
 - partitions the first fixed disk (or `basalt.disk=`): ESP, `/boot` (ext4,

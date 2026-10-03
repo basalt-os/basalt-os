@@ -1,0 +1,19 @@
+[Unit]
+Description=Seal and rotate the Basalt OS assistant audit log
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/assistant.md
+
+[Service]
+Type=oneshot
+# Rotates only once the log reaches [audit] rotate_size.
+ExecStart=/usr/bin/basalt audit rotate
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=strict
+ReadWritePaths=/var/log/basalt-assistant
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+# chattr: clear +a on the old file, +i on the sealed one, +a on the new one.
+CapabilityBoundingSet=CAP_LINUX_IMMUTABLE CAP_FOWNER
+RestrictAddressFamilies=AF_UNIX

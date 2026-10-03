@@ -64,6 +64,7 @@ run_vm() {
     -e SSH_PORT="$CI_SSH_PORT" -e REPO_PORT="$CI_REPO_PORT" -e HOST_OWNER="$(id -u):$(id -g)" \
     -e VM_MEMORY_MB="${VM_MEMORY_MB:-4096}" -e VM_VCPUS="${CI_VM_VCPUS:-2}" \
     -e INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-3600}" \
+    -e EXPECT_FEDORA_RELEASE="$FEDORA_RELEASE" -e EXPECT_BASALT_VERSION="$BASALT_VERSION" \
     "$FEDORA_IMAGE" /ci/vm-test.sh || rc=$?
   # VM disk and firmware state are large and hold the throwaway keys' results;
   # only the logs are kept.

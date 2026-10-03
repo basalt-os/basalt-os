@@ -35,7 +35,8 @@ CA work the same way.
 Fedora kernels lock down (`integrity`) when Secure Boot is on, and then
 refuse modules without a valid signature. Basalt OS also puts
 `lockdown=integrity module.sig_enforce=1` on the kernel command line
-(installer option `basalt.lockdown=0` leaves them out), so that a machine
+(installer option `basalt.lockdown=0` leaves them out; not recommended,
+see "Your own modules" below for the supported way), so that a machine
 booted with Secure Boot off still refuses unsigned modules, `/dev/mem`
 writes, unsigned kexec images and hibernation to an unverified image.
 `integrity`, not `confidentiality`: the latter also blocks reading kernel
@@ -110,7 +111,76 @@ Nothing yet: Basalt OS ships no out-of-tree kernel modules today. The
 pipeline exists and is tested in the lab (`scripts/lab/kmod-build.sh`
 builds a module against the target kernel's `kernel-devel` and signs it
 with `scripts/sign-file` from that kernel). Modules a user builds locally
-(DKMS, akmods) are signed with that user's own MOK, as on Fedora.
+(DKMS, akmods) are signed with that user's own MOK, next section.
+
+## Your own modules: DKMS and akmods
+
+Out-of-tree drivers built on the machine (NVIDIA through akmods, ZFS,
+VirtualBox and other DKMS modules) are refused while lockdown and module
+signature enforcement are on, with or without Secure Boot. Keep both on:
+sign the modules with a key of your own and enroll its certificate as a
+MOK, once per machine. Turning lockdown off (`basalt.lockdown=0`, or
+removing the arguments with `grubby`) opens the kernel to any unsigned
+module and is not the supported path.
+
+The key must be shaped like a CA. Fedora kernels put a MOK into the
+`.machine` keyring, the one trusted for modules, only when it is a CA
+certificate (see "Why a CA" above); the self-signed code signing
+certificate that akmods and DKMS generate by default lands in `.platform`
+and its modules are still refused. Create one key and use it for both
+signing and enrollment (the kernel does not check key usage when it
+verifies a module signature; the lab measured that modules signed directly
+with a CA key load):
+
+```sh
+sudo dnf install openssl mokutil keyutils
+sudo install -d -m 0700 /etc/pki/basalt-mok
+cd /etc/pki/basalt-mok
+sudo openssl req -new -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -subj "/CN=$(hostname) module signing CA/" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash" \
+  -keyout mok.key -outform DER -out mok.der
+sudo chmod 0600 mok.key
+```
+
+Point the build tool at it:
+
+- akmods (Fedora's `akmods` package, used by RPM Fusion kmods) signs with
+  `/etc/pki/akmods/private/private_key.priv` and
+  `/etc/pki/akmods/certs/public_key.der`:
+
+  ```sh
+  sudo install -m 0640 -o root -g akmods /etc/pki/basalt-mok/mok.key /etc/pki/akmods/private/private_key.priv
+  sudo install -m 0644 /etc/pki/basalt-mok/mok.der /etc/pki/akmods/certs/public_key.der
+  sudo akmods --force --rebuild
+  ```
+
+- DKMS signs with the files named in `/etc/dkms/framework.conf`:
+
+  ```sh
+  echo 'mok_signing_key=/etc/pki/basalt-mok/mok.key' | sudo tee -a /etc/dkms/framework.conf
+  echo 'mok_certificate=/etc/pki/basalt-mok/mok.der' | sudo tee -a /etc/dkms/framework.conf
+  sudo dkms autoinstall
+  ```
+
+Enroll the certificate and confirm it at the console, as for the Basalt CA:
+
+```sh
+sudo mokutil --import /etc/pki/basalt-mok/mok.der   # asks for a one-time password
+sudo reboot                                          # MokManager: Enroll MOK, Continue, Yes, password, Reboot
+mokutil --list-enrolled | grep -A1 Subject           # after the reboot
+sudo keyctl list %:.machine                          # the certificate is in .machine
+cat /sys/kernel/security/lockdown                    # still [integrity]
+```
+
+Then `modprobe` the module; `basalt-secureboot status` shows the lockdown
+state and the keyrings. The TPM effect is the one described above: PCR 14
+changes, PCR 7 does not, so a disk sealed to PCR 7 keeps unlocking
+unattended. Keep `mok.key` on the machine only as long as modules are
+built there (akmods and DKMS rebuild on every kernel update, so usually for
+good), readable by root only, and inside the encrypted root.
 
 ## Custom db mode: the firmware trusts only Basalt
 

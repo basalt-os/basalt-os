@@ -12,10 +12,15 @@
 # 2. First boot from the disk: the LUKS2 volume must unlock through the TPM
 #    (nobody types anything; a passphrase prompt on the serial console fails
 #    the test), then SSH.
-# 3. Smoke checks over SSH: identity, Secure Boot on, SELinux enforcing with
-#    0 AVC denials, 0 failed units, TPM2 and recovery key slots, snapper
-#    pre/post snapshots around a dnf install, basalt-rollback dry run.
-# 4. Reboot: TPM unlock again, package still installed, 0 denials.
+# 3. Smoke checks over SSH: identity (os-release: VERSION_ID is the Fedora
+#    release, the Basalt version in VERSION, BASALT_VERSION and BUILD_ID),
+#    the minimal profile picked on a VM, Secure Boot on, SELinux enforcing
+#    with 0 AVC denials, 0 failed units, TPM2 and recovery key slots, snapper
+#    pre/post snapshots around a dnf install, basalt-rollback dry run, the
+#    system assistant installed with its daemon enabled and confined, and a
+#    sealed audit log rotation.
+# 4. Reboot: TPM unlock again, package still installed, 0 denials, the
+#    audit chain still verifies across the rotated files.
 # The guest reaches the test repository on 10.0.2.2 (QEMU user networking
 # maps it to this container's loopback, where a small HTTP server runs).
 set -euo pipefail
@@ -29,6 +34,9 @@ set -euo pipefail
 : "${BOOT_TIMEOUT:=600}"
 : "${TEST_PACKAGE:=tmux}"
 : "${HOST_OWNER:=0:0}"
+# os-release values the build must produce (boot-test.sh passes them).
+: "${EXPECT_FEDORA_RELEASE:=44}"
+: "${EXPECT_BASALT_VERSION:=}"
 
 W=/work
 S="$W/state"
@@ -229,8 +237,22 @@ vm 'systemctl is-system-running --wait >/dev/null 2>&1 || true'
 
 # --- 3. smoke checks ------------------------------------------------------------------
 
-id="$(vm '. /etc/os-release; echo "$ID $VERSION_ID"')"
-[[ "$id" == "basalt "* ]] && result PASS "os-release" "$id" || result FAIL "os-release" "$id"
+osr="$(vm '. /etc/os-release; printf "%s|%s|%s|%s|%s|%s\n" "$ID" "$ID_LIKE" "$VERSION_ID" "$VERSION" "$BASALT_VERSION" "$BUILD_ID"')"
+IFS='|' read -r o_id o_like o_vid o_ver o_bver o_build <<<"$osr"
+want_ver="$EXPECT_FEDORA_RELEASE (Basalt ${EXPECT_BASALT_VERSION:-$o_bver})"
+if [[ "$o_id" == basalt && "$o_like" == fedora && "$o_vid" == "$EXPECT_FEDORA_RELEASE" && "$o_ver" == "$want_ver" &&
+      -n "$o_bver" && ( -z "$EXPECT_BASALT_VERSION" || "$o_bver" == "$EXPECT_BASALT_VERSION" ) && -n "$o_build" ]]; then
+  result PASS "os-release" "ID=$o_id VERSION_ID=$o_vid VERSION=\"$o_ver\" BASALT_VERSION=$o_bver BUILD_ID=$o_build"
+else
+  result FAIL "os-release" "$osr (want VERSION_ID=$EXPECT_FEDORA_RELEASE, VERSION=\"$want_ver\", BUILD_ID set)"
+fi
+# The installer picks the minimal profile on a virtual machine by itself.
+prof="$(vm 'sed -n "s/^basalt: .* profile=\([a-z]*\) (\([^)]*\)).*/\1 (\2)/p" /root/basalt-install-pre.log 2>/dev/null | head -1' || true)"
+if [[ "$prof" == "minimal (auto, virtual machine:"* ]] && ! vm 'rpm -q linux-firmware >/dev/null 2>&1'; then
+  result PASS "install profile" "$prof, no linux-firmware"
+else
+  result FAIL "install profile" "${prof:-not in /root/basalt-install-pre.log}; linux-firmware: $(vm 'rpm -q linux-firmware 2>&1' || true)"
+fi
 if vm 'rpm -q basalt-release basalt-snapshots basalt-security >/dev/null && ! rpm -q fedora-release-common >/dev/null 2>&1'; then
   result PASS "basalt packages" "$(vm 'rpm -q basalt-release basalt-snapshots basalt-security' | paste -sd' ')"
 else
@@ -288,22 +310,38 @@ else
   result FAIL "basalt-rollback --kernels" "see rollback-kernels.log"
 fi
 
-# System assistant: installed from the test repository, confined daemon,
-# read-only diagnosis. Its daemon is enabled by preset, so the denial check
-# after the reboot below also covers it.
-if vm 'dnf -y install basalt-assistant' >"$LOGS/dnf-assistant.log" 2>&1; then
-  result PASS "dnf install basalt-assistant" "$(vm 'rpm -q basalt-assistant basalt-assistant-selinux' | paste -sd' ')"
-  if vm 'basalt status' >"$LOGS/basalt-status.txt" 2>&1 && grep -q '^SELinux: *Enforcing' "$LOGS/basalt-status.txt"; then
-    result PASS "basalt status" "$(grep -c . "$LOGS/basalt-status.txt") lines"
-  else
-    result FAIL "basalt status" "see basalt-status.txt"
-  fi
-  dom="$(vm 'systemctl start basalt-assistantd && sleep 3 && ps -eo label,comm | awk "/basalt-assistan/ {print \$1}"' || true)"
-  [[ "$dom" == *:basalt_assistant_t:* ]] && result PASS "assistant daemon confined" "$dom" || result FAIL "assistant daemon confined" "${dom:-not running}"
-  if vm 'basalt audit verify' >/dev/null 2>&1; then result PASS "assistant audit chain" "verifies"; else result FAIL "assistant audit chain" "does not verify"; fi
+# System assistant: installed by the kickstart, its daemon enabled and
+# confined, read-only diagnosis, notifications idle on a server, and a
+# sealed rotation of the audit log (verified again after the reboot).
+if vm 'rpm -q basalt-assistant basalt-assistant-selinux' >"$LOGS/rpm-assistant.txt" 2>&1; then
+  result PASS "assistant installed" "$(paste -sd' ' "$LOGS/rpm-assistant.txt")"
 else
-  tail -20 "$LOGS/dnf-assistant.log" >&2
-  result FAIL "dnf install basalt-assistant" "see dnf-assistant.log"
+  result FAIL "assistant installed" "$(paste -sd' ' "$LOGS/rpm-assistant.txt")"
+fi
+st="$(vm 'printf "%s %s %s" "$(systemctl is-enabled basalt-assistantd)" "$(systemctl is-active basalt-assistantd)" "$(systemctl is-enabled basalt-audit-rotate.timer)"' || true)"
+[[ "$st" == "enabled active enabled" ]] && result PASS "assistant daemon enabled" "basalt-assistantd enabled, active; rotation timer enabled" ||
+  result FAIL "assistant daemon enabled" "basalt-assistantd / timer: $st"
+dom="$(vm 'ps -eo label,comm | awk "/basalt-assistan/ {print \$1}"' || true)"
+[[ "$dom" == *:basalt_assistant_t:* ]] && result PASS "assistant daemon confined" "$dom" || result FAIL "assistant daemon confined" "${dom:-not running}"
+nt="$(vm 'printf "%s %s" "$(systemctl is-enabled basalt-notify)" "$(systemctl show -p Result --value basalt-notify)"; journalctl -b -u basalt-notify -o cat | tail -1' || true)"
+[[ "$nt" == "enabled success"*"nothing to deliver"* ]] && result PASS "notifications on a server" "basalt-notify enabled, nothing to deliver (no desktop, no webhook)" ||
+  result FAIL "notifications on a server" "$nt"
+if vm 'basalt status' >"$LOGS/basalt-status.txt" 2>&1 && grep -q '^SELinux: *Enforcing' "$LOGS/basalt-status.txt"; then
+  result PASS "basalt status" "$(grep -c . "$LOGS/basalt-status.txt") lines"
+else
+  result FAIL "basalt status" "see basalt-status.txt"
+fi
+if vm 'basalt audit verify && basalt audit rotate --force && basalt audit verify && systemctl restart basalt-assistantd && sleep 3 && basalt audit verify' >"$LOGS/audit-rotate.txt" 2>&1; then
+  cur_attr="$(vm 'lsattr -l /var/log/basalt-assistant/audit.jsonl' 2>&1 || true)"
+  old_attr="$(vm 'lsattr -l /var/log/basalt-assistant/audit-*.jsonl' 2>&1 || true)"
+  attrs="current: ${cur_attr##* }, sealed: ${old_attr##* }"
+  if grep -q 'in 2 file(s), 1 seal(s)' "$LOGS/audit-rotate.txt" && [[ "$cur_attr" == *Append_Only* && "$old_attr" == *Immutable* ]]; then
+    result PASS "audit sealed rotation" "$(tail -1 "$LOGS/audit-rotate.txt"); $attrs"
+  else
+    result FAIL "audit sealed rotation" "see audit-rotate.txt; attributes: $attrs"
+  fi
+else
+  result FAIL "audit sealed rotation" "see audit-rotate.txt"
 fi
 
 # --- 4. reboot ------------------------------------------------------------------------
@@ -327,6 +365,11 @@ if [[ $rebooted == 1 ]]; then
     result PASS "package persists" "$(vm "rpm -q $TEST_PACKAGE")"
   else
     result FAIL "package persists" "$TEST_PACKAGE missing after reboot"
+  fi
+  if out="$(vm 'systemctl is-active basalt-assistantd && basalt audit verify' 2>&1)"; then
+    result PASS "boot 2: assistant and audit" "$(tail -1 <<<"$out")"
+  else
+    result FAIL "boot 2: assistant and audit" "$(paste -sd' ' <<<"$out")"
   fi
 else
   result FAIL "reboot to ssh" "no SSH on a new boot within ${BOOT_TIMEOUT}s (prompt seen: $(grep -acE "$PROMPT_RE" "$LOGS/serial-boot.log"))"

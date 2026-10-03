@@ -10,8 +10,13 @@
 #       basalt.encrypt=0      plain btrfs, no LUKS2 (default: 1, encrypted)
 #       basalt.disk=vda       target disk (default: the first fixed disk)
 #       basalt.finish=poweroff|reboot   (default: reboot)
-#       basalt.profile=minimal          no hardware firmware, CPU microcode or
-#                                       fwupd, for virtual machines (default: standard)
+#       basalt.profile=auto|minimal|standard
+#                             auto (default): minimal on a virtual machine,
+#                             standard on bare metal (systemd-detect-virt).
+#                             minimal: no hardware firmware, CPU microcode or
+#                             fwupd. standard: all of them. A VM with
+#                             passthrough hardware that needs firmware (GPU,
+#                             NIC) wants basalt.profile=standard.
 #       basalt.unlock=tpm2|tang|tpm2+tang
 #                             how the encrypted disk unlocks at boot (default: tpm2):
 #                               tpm2       the TPM, sealed to PCR 7 (Secure Boot state)
@@ -57,7 +62,10 @@ network --bootproto=dhcp --device=link --activate --onboot=on --hostname=basalt
 selinux --enforcing
 # The firewall comes from basalt-release-server (zone "basalt", SSH only).
 firewall --use-system-defaults
-services --enabled=sshd,firewalld,auditd,basalt-snapshot-boot,basalt-initial-snapshot,basalt-grub-theme,basalt-module-keys
+# basalt-assistantd only diagnoses and proposes; applying a change always
+# needs `basalt apply` and a confirmation. basalt-notify exits at once on a
+# server without a desktop or a webhook configured.
+services --enabled=sshd,firewalld,auditd,basalt-snapshot-boot,basalt-initial-snapshot,basalt-grub-theme,basalt-module-keys,basalt-assistantd,basalt-notify,basalt-audit-rotate.timer
 skipx
 firstboot --disable
 
@@ -84,7 +92,7 @@ BASALT_FINISH=reboot
 BASALT_SHOW_RECOVERY_KEY=1
 BASALT_RECOVERY_KEY_PAUSE=30
 BASALT_REPO_URL=
-BASALT_PROFILE=standard
+BASALT_PROFILE=auto
 BASALT_UNLOCK=tpm2
 BASALT_TANG_URL=
 BASALT_TANG_THP=
@@ -102,7 +110,19 @@ for arg in $(cat /proc/cmdline); do
     basalt.lockdown=*) BASALT_LOCKDOWN="${arg#*=}" ;;
   esac
 done
-case "$BASALT_PROFILE" in standard|minimal) ;; *) echo "unknown basalt.profile=$BASALT_PROFILE" >&2; exit 1 ;; esac
+case "$BASALT_PROFILE" in auto|standard|minimal) ;; *) echo "unknown basalt.profile=$BASALT_PROFILE" >&2; exit 1 ;; esac
+# auto: virtual machines and cloud instances get the minimal profile (no
+# hardware firmware), bare metal the standard one.
+profile_from="$BASALT_PROFILE"
+if [ "$BASALT_PROFILE" = auto ]; then
+  virt="$(systemd-detect-virt --vm 2>/dev/null || :)"
+  if [ -z "$virt" ] && grep -qw hypervisor /proc/cpuinfo 2>/dev/null; then virt=hypervisor; fi
+  if [ -n "$virt" ] && [ "$virt" != none ]; then
+    BASALT_PROFILE=minimal; profile_from="auto, virtual machine: $virt"
+  else
+    BASALT_PROFILE=standard; profile_from="auto, bare metal"
+  fi
+fi
 case "$BASALT_UNLOCK" in tpm2|tang|tpm2+tang) ;; *) echo "unknown basalt.unlock=$BASALT_UNLOCK" >&2; exit 1 ;; esac
 network_unlock=0
 if [ "$BASALT_ENCRYPT" = 1 ] && [ "$BASALT_UNLOCK" != tpm2 ]; then
@@ -181,6 +201,8 @@ basalt-grub2-theme
 plymouth-theme-basalt
 basalt-snapshots
 basalt-security
+basalt-assistant
+basalt-assistant-selinux
 -fedora-release
 -fedora-release-common
 -fedora-release-identity-basic
@@ -225,7 +247,7 @@ BASALT_UNLOCK=$BASALT_UNLOCK
 BASALT_TANG_URL=$BASALT_TANG_URL
 BASALT_TANG_THP=$BASALT_TANG_THP
 EOF
-echo "basalt: disk=$BASALT_DISK encrypt=$BASALT_ENCRYPT unlock=$BASALT_UNLOCK profile=$BASALT_PROFILE lockdown=$BASALT_LOCKDOWN finish=$BASALT_FINISH"
+echo "basalt: disk=$BASALT_DISK encrypt=$BASALT_ENCRYPT unlock=$BASALT_UNLOCK profile=$BASALT_PROFILE ($profile_from) lockdown=$BASALT_LOCKDOWN finish=$BASALT_FINISH"
 %end
 
 # Hand the install choices and the temporary LUKS passphrase to the chroot.

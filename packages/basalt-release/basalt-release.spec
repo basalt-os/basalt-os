@@ -11,11 +11,14 @@
 
 %global dist_version %{fedora}
 %{!?basalt_version:%global basalt_version 0.0.1}
+# BUILD_ID in os-release: <UTC date>.<git commit> of the tree that built it
+# (scripts/lib.sh passes it); "local" when built by hand.
+%{!?basalt_build_id:%global basalt_build_id local}
 %global basalt_codename pre-alpha
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -83,15 +86,22 @@ cp -p %{sources} .
 
 %install
 # --- identity ---------------------------------------------------------------
+# VERSION_ID is the Fedora release, as on Fedora remixes, so tools that key
+# on it (Ansible, cloud-init, installers of third-party repositories) behave
+# as on Fedora. The Basalt OS version is in VERSION, BASALT_VERSION and the
+# BUILD_ID of the build.
 install -d %{buildroot}%{_prefix}/lib %{buildroot}%{_sysconfdir}
 cat >%{buildroot}%{_prefix}/lib/os-release <<EOF
 NAME="Basalt OS"
-VERSION="%{basalt_version} (%{basalt_codename})"
+VERSION="%{dist_version} (Basalt %{basalt_version})"
 RELEASE_TYPE=development
 ID=basalt
 ID_LIKE=fedora
-VERSION_ID=%{basalt_version}
-PRETTY_NAME="Basalt OS %{basalt_version} (%{basalt_codename})"
+VERSION_ID=%{dist_version}
+BUILD_ID=%{basalt_build_id}
+BASALT_VERSION=%{basalt_version}
+BASALT_CODENAME=%{basalt_codename}
+PRETTY_NAME="Basalt OS %{dist_version} (Basalt %{basalt_version}, %{basalt_codename})"
 VARIANT="Server"
 VARIANT_ID=server
 ANSI_COLOR="0;38;2;163;71;46"
@@ -104,7 +114,7 @@ EOF
 ln -s ../usr/lib/os-release %{buildroot}%{_sysconfdir}/os-release
 
 # Several tools read these names; keep them, with Basalt content.
-echo "Basalt OS release %{basalt_version} (%{basalt_codename}, based on Fedora %{dist_version})" \
+echo "Basalt OS release %{dist_version} (Basalt %{basalt_version})" \
   >%{buildroot}%{_prefix}/lib/fedora-release
 echo "cpe:/o:basalt-os:basalt-os:%{basalt_version}" >%{buildroot}%{_prefix}/lib/system-release-cpe
 ln -s ../usr/lib/fedora-release %{buildroot}%{_sysconfdir}/fedora-release
@@ -214,6 +224,12 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 44-4
+- os-release: VERSION_ID is the Fedora release; VERSION "44 (Basalt 0.0.1)",
+  BUILD_ID, BASALT_VERSION and BASALT_CODENAME carry the Basalt version.
+- Preset: enable basalt-assistantd.service, basalt-notify.service and
+  basalt-audit-rotate.timer (also in basalt-assistant's own preset).
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 44-3
 - Preset: enable basalt-module-keys.service; basalt-tpm-resume.service stays
   off until basalt-tpm suspend enables it.

@@ -5,10 +5,14 @@
 // append-only (chattr +a) through tmpfiles.d; every record is also sent to
 // the journal (SYSLOG_IDENTIFIER=basalt-assistant) with its hash, so a copy
 // exists outside the file.
+//
+// The log is rotated with seals (rotate.go): the old file ends with a seal
+// record that hashes its content, and the new file starts with a continue
+// record chained to that seal, so the chain runs across files and `basalt
+// audit verify` checks all of them.
 package audit
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
@@ -30,11 +34,14 @@ import (
 // survives a rollback of the root).
 const DefaultPath = "/var/log/basalt-assistant/audit.jsonl"
 
+// zeroHash is the prev of the first record of a chain.
+var zeroHash = strings.Repeat("0", 64)
+
 // Record is one audit entry.
 type Record struct {
 	Seq   int64           `json:"seq"`
 	Time  time.Time       `json:"time"`
-	Type  string          `json:"type"` // decision, finding, proposal, confirm, apply, verify, ignore, refuse
+	Type  string          `json:"type"` // decision, finding, proposal, confirm, apply, verify, ignore, refuse, seal, continue
 	Actor Actor           `json:"actor"`
 	Text  string          `json:"text"`
 	Data  json.RawMessage `json:"data,omitempty"`
@@ -85,6 +92,10 @@ func hashOf(r Record) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ErrSealed is returned by Append when the log ends with a seal record:
+// a rotation started and did not finish (`basalt audit rotate` completes it).
+var ErrSealed = errors.New("audit log is sealed; a rotation did not finish (run basalt audit rotate)")
+
 // Append writes one record under an exclusive lock and returns it.
 func (l *Log) Append(typ, text string, data any) (Record, error) {
 	var raw json.RawMessage
@@ -95,18 +106,42 @@ func (l *Log) Append(typ, text string, data any) (Record, error) {
 		}
 		raw = b
 	}
-	f, err := os.OpenFile(l.Path, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o600)
-	if err != nil {
-		return Record{}, err
+	// A rotation replaces the file at l.Path while holding the lock on the
+	// old one. A writer that opened the old file and waited for the lock
+	// finds that it no longer is the file at l.Path, and opens it again.
+	for attempt := 0; ; attempt++ {
+		f, err := os.OpenFile(l.Path, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o600)
+		if err != nil {
+			return Record{}, err
+		}
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			f.Close()
+			return Record{}, err
+		}
+		if !isCurrent(f, l.Path) {
+			f.Close()
+			if attempt >= 10 {
+				return Record{}, fmt.Errorf("audit log %s keeps being replaced", l.Path)
+			}
+			continue
+		}
+		r, err := l.appendLocked(f, typ, text, raw)
+		f.Close() // also releases the lock
+		if err == nil && l.Journal {
+			_ = sendJournal(r)
+		}
+		return r, err
 	}
-	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		return Record{}, err
-	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck
+}
+
+// appendLocked adds one record to f, which the caller holds locked.
+func (l *Log) appendLocked(f *os.File, typ, text string, raw json.RawMessage) (Record, error) {
 	last, err := lastRecord(f)
 	if err != nil {
 		return Record{}, err
+	}
+	if last.Type == TypeSeal && typ != TypeSeal {
+		return Record{}, ErrSealed
 	}
 	now := time.Now
 	if l.now != nil {
@@ -115,17 +150,24 @@ func (l *Log) Append(typ, text string, data any) (Record, error) {
 	r := Record{Seq: last.Seq + 1, Time: now().UTC().Truncate(time.Microsecond), Type: typ,
 		Actor: l.actor(), Text: text, Data: raw, Prev: last.Hash}
 	if r.Prev == "" {
-		r.Prev = strings.Repeat("0", 64)
+		r.Prev = zeroHash
 	}
 	r.Hash = hashOf(r)
 	line, _ := json.Marshal(r)
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return Record{}, err
 	}
-	if l.Journal {
-		_ = sendJournal(r)
-	}
 	return r, nil
+}
+
+// isCurrent reports whether the open file is still the one at path.
+func isCurrent(f *os.File, path string) bool {
+	a, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	b, err := os.Stat(path)
+	return err == nil && os.SameFile(a, b)
 }
 
 // lastRecord reads the final line of the file.
@@ -155,58 +197,6 @@ func lastRecord(f *os.File) (Record, error) {
 	}
 }
 
-// Verify reads the whole chain and reports the first problem.
-func Verify(path string) (n int64, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	prev := strings.Repeat("0", 64)
-	var seq int64
-	for sc.Scan() {
-		var r Record
-		if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
-			return seq, fmt.Errorf("record after seq %d: not JSON: %w", seq, err)
-		}
-		if r.Seq != seq+1 {
-			return seq, fmt.Errorf("seq %d follows seq %d (records missing or reordered)", r.Seq, seq)
-		}
-		if r.Prev != prev {
-			return seq, fmt.Errorf("seq %d: prev hash does not match the previous record", r.Seq)
-		}
-		if h := hashOf(r); h != r.Hash {
-			return seq, fmt.Errorf("seq %d: content does not match its hash (edited)", r.Seq)
-		}
-		prev, seq = r.Hash, r.Seq
-	}
-	return seq, sc.Err()
-}
-
-// Tail returns the last n records (n <= 0: all).
-func Tail(path string, n int) ([]Record, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var out []Record
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	for sc.Scan() {
-		var r Record
-		if json.Unmarshal(sc.Bytes(), &r) == nil {
-			out = append(out, r)
-		}
-	}
-	if n > 0 && len(out) > n {
-		out = out[len(out)-n:]
-	}
-	return out, sc.Err()
-}
-
 // JournalSocket is journald's native protocol socket.
 var JournalSocket = "/run/systemd/journal/socket"
 
@@ -214,7 +204,7 @@ var JournalSocket = "/run/systemd/journal/socket"
 func sendJournal(r Record) error {
 	prio := "6"
 	switch r.Type {
-	case "apply", "refuse":
+	case "apply", "refuse", TypeSeal, TypeContinue:
 		prio = "5"
 	}
 	fields := [][2]string{

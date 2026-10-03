@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -53,7 +53,11 @@ them, verifies the result and writes a hash-chained audit record.
 basalt-assistantd watches the journal, disk usage and package transactions
 and stores a diagnosis with a proposed fix for each event; it never changes
 the system. basalt-mcp exposes the same diagnosers as MCP tools; its write
-tools only store proposals.
+tools only store proposals. basalt-notify shows findings as desktop
+notifications in local graphical sessions and can post them to a webhook
+signed with HMAC-SHA256 (off by default); the journal always has them.
+The audit log is sealed and rotated daily once it is large enough, and its
+hash chain is verified across the rotated files.
 
 With the optional local model service (basalt-llm), `basalt ask` accepts
 requests in English or Portuguese and the decision layer can use the model
@@ -76,7 +80,7 @@ write only its state directory and (append only) its audit log.
 
 %build
 export GOFLAGS="-mod=mod -trimpath" GOTOOLCHAIN=local GOPROXY=off
-for c in basalt basalt-assistantd basalt-mcp; do
+for c in basalt basalt-assistantd basalt-mcp basalt-notify; do
     go build -buildmode=pie -ldflags "-B gobuildid -X main.version=%{version}-%{release}" -o bin/$c ./cmd/$c
 done
 make -C selinux -f %{_datadir}/selinux/devel/Makefile %{modulename}.pp
@@ -90,7 +94,11 @@ go test ./...
 install -Dpm 0755 bin/basalt %{buildroot}%{_bindir}/basalt
 install -Dpm 0755 bin/basalt-mcp %{buildroot}%{_bindir}/basalt-mcp
 install -Dpm 0755 bin/basalt-assistantd %{buildroot}%{_libexecdir}/basalt/basalt-assistantd
+install -Dpm 0755 bin/basalt-notify %{buildroot}%{_libexecdir}/basalt/basalt-notify
 install -Dpm 0644 dist/basalt-assistantd.service %{buildroot}%{_unitdir}/basalt-assistantd.service
+install -Dpm 0644 dist/basalt-notify.service %{buildroot}%{_unitdir}/basalt-notify.service
+install -Dpm 0644 dist/basalt-audit-rotate.service %{buildroot}%{_unitdir}/basalt-audit-rotate.service
+install -Dpm 0644 dist/basalt-audit-rotate.timer %{buildroot}%{_unitdir}/basalt-audit-rotate.timer
 install -Dpm 0644 dist/81-basalt-assistant.preset %{buildroot}%{_presetdir}/81-basalt-assistant.preset
 install -Dpm 0644 dist/basalt-assistant.tmpfiles %{buildroot}%{_tmpfilesdir}/%{name}.conf
 install -Dpm 0644 dist/assistant.conf %{buildroot}%{_sysconfdir}/basalt/assistant.conf
@@ -103,13 +111,14 @@ install -d licenses && install -pm 0644 LICENSE third_party/tui-kit.LICENSE lice
 
 %post
 %tmpfiles_create %{name}.conf
-%systemd_post basalt-assistantd.service
+%systemd_post basalt-assistantd.service basalt-notify.service basalt-audit-rotate.timer
 
 %preun
-%systemd_preun basalt-assistantd.service
+%systemd_preun basalt-assistantd.service basalt-notify.service basalt-audit-rotate.service basalt-audit-rotate.timer
 
 %postun
-%systemd_postun_with_restart basalt-assistantd.service
+%systemd_postun_with_restart basalt-assistantd.service basalt-notify.service
+%systemd_postun basalt-audit-rotate.service basalt-audit-rotate.timer
 
 %pre selinux
 %selinux_relabel_pre -s %{selinuxtype}
@@ -131,7 +140,11 @@ fi
 %{_bindir}/basalt-mcp
 %dir %{_libexecdir}/basalt
 %{_libexecdir}/basalt/basalt-assistantd
+%{_libexecdir}/basalt/basalt-notify
 %{_unitdir}/basalt-assistantd.service
+%{_unitdir}/basalt-notify.service
+%{_unitdir}/basalt-audit-rotate.service
+%{_unitdir}/basalt-audit-rotate.timer
 %{_presetdir}/81-basalt-assistant.preset
 %{_tmpfilesdir}/%{name}.conf
 %dir %{_sysconfdir}/basalt
@@ -146,6 +159,17 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
+- Installed and enabled by default (the daemon only proposes; applying
+  still needs basalt apply and a confirmation).
+- Audit log sealed rotation: basalt audit rotate (daily timer, [audit]
+  rotate_size) ends the file with a seal record carrying the SHA-256 of
+  its content, keeps it immutable and starts the next file with a continue
+  record chained to the seal; basalt audit verify checks every file.
+- basalt-notify: desktop notifications (freedesktop) for findings the
+  decision layer marks, only where a graphical session exists; optional
+  HMAC-signed webhook ([notify] in assistant.conf), off by default.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
 - Optional local language model (package basalt-llm): basalt ask translates
   requests in natural language into basalt commands (schema-constrained,

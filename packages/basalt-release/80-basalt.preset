@@ -18,6 +18,13 @@ enable basalt-initial-snapshot.service
 enable basalt-module-keys.service
 disable basalt-tpm-resume.service
 
+# System assistant (basalt-assistant): the confined event engine (it only
+# proposes), its notifications and the sealed rotation of its audit log.
+# The local model service (basalt-llm) is optional and stays off.
+enable basalt-assistantd.service
+enable basalt-notify.service
+enable basalt-audit-rotate.timer
+
 # Branding: keep the GRUB theme on /boot in sync with the package.
 enable basalt-grub-theme.service
 

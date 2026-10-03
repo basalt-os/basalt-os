@@ -381,8 +381,11 @@ func (g *Engine) publish(ctx context.Context, p *proposal.Proposal, sevFeatures 
 	g.stats["proposals"]++
 	g.mu.Unlock()
 	if g.Audit != nil {
+		// basalt-notify reads these records from the journal: "notify" is the
+		// decision layer's choice for desktop sessions and the webhook.
 		_, _ = g.Audit.Append("finding", p.ID+": "+p.Title, map[string]any{"proposal": p.ID, "kind": p.Kind,
-			"subject": p.Subject, "actions": p.Actions, "needs_review": p.NeedsReview, "severity": p.Severity})
+			"title": p.Title, "subject": p.Subject, "actions": p.Actions, "needs_review": p.NeedsReview,
+			"severity": p.Severity, "notify": nAct == "notify"})
 	}
 	prefix := ""
 	if nAct == "notify" {

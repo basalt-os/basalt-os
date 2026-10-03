@@ -29,23 +29,24 @@ func (e *Env) FixSELinux(ctx context.Context, since time.Time) []SELinuxItem {
 
 // Status is the health summary.
 type Status struct {
-	SELinux       string   `json:"selinux"`
-	FailedUnits   []string `json:"failed_units"`
-	Denials24h    int      `json:"denials_24h"`
-	Disk          FSStat   `json:"disk"`
-	DiskPct       float64  `json:"disk_pct"`
-	Snapshots     int      `json:"snapshots"`
-	LastSnapshot  string   `json:"last_snapshot"`
-	OrphanPre     []int    `json:"unfinished_transactions,omitempty"`
-	RollbackState string   `json:"rollback_state"`
-	Daemon        string   `json:"daemon"`
-	Pending       int      `json:"pending"`
-	Problems      []string `json:"problems"`
+	OS            OSRelease `json:"os"`
+	SELinux       string    `json:"selinux"`
+	FailedUnits   []string  `json:"failed_units"`
+	Denials24h    int       `json:"denials_24h"`
+	Disk          FSStat    `json:"disk"`
+	DiskPct       float64   `json:"disk_pct"`
+	Snapshots     int       `json:"snapshots"`
+	LastSnapshot  string    `json:"last_snapshot"`
+	OrphanPre     []int     `json:"unfinished_transactions,omitempty"`
+	RollbackState string    `json:"rollback_state"`
+	Daemon        string    `json:"daemon"`
+	Pending       int       `json:"pending"`
+	Problems      []string  `json:"problems"`
 }
 
 // GetStatus collects the summary (read-only, no root needed for most).
 func (e *Env) GetStatus(ctx context.Context, pending int) Status {
-	s := Status{Pending: pending}
+	s := Status{Pending: pending, OS: e.osRelease()}
 	s.SELinux = strings.TrimSpace(e.R.Read(ctx, "getenforce").Out)
 	if s.SELinux != "Enforcing" {
 		s.Problems = append(s.Problems, "SELinux is "+orDash(s.SELinux)+", not Enforcing")

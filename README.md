@@ -17,14 +17,16 @@ Defaults from the first boot:
 | Area | Default |
 |---|---|
 | Base | Fedora 44 packages from Fedora's own mirrors; only Basalt's few packages come from the Basalt repository |
-| Identity | `basalt-release` replaces `fedora-release` (`ID=basalt`, `ID_LIKE=fedora`); `basalt-logos` replaces `fedora-logos` |
+| Identity | `basalt-release` replaces `fedora-release` (`ID=basalt`, `ID_LIKE=fedora`, `VERSION_ID` = the Fedora release so tools that key on it behave as on Fedora, `VERSION="44 (Basalt 0.0.1)"`, `BASALT_VERSION`, `BUILD_ID`); `basalt-logos` replaces `fedora-logos` |
 | SELinux | enforcing, targeted policy |
 | Disk | btrfs with zstd compression on LUKS2; TPM2 unlock bound to the Secure Boot state (PCR 7), or network unlock through Tang, or both, and always a recovery key; encryption can be turned off at install |
-| Boot | Secure Boot with Fedora's signed chain; Basalt's kernel module CA can be enrolled as a MOK, or the firmware can trust only Basalt's own keys; kernel lockdown and module signature enforcement on the command line |
+| Boot | Secure Boot with Fedora's signed chain; Basalt's kernel module CA can be enrolled as a MOK, or the firmware can trust only Basalt's own keys; kernel lockdown and module signature enforcement on the command line (modules built with DKMS or akmods are signed with your own MOK, see [docs/secure-boot.md](docs/secure-boot.md)) |
 | Layout | the system in one subvolume; `/home`, `/srv`, `/var/log`, `/var/cache`, `/var/tmp`, `/var/spool` and the container, VM and database directories in their own subvolumes, so a rollback never touches data |
 | Snapshots | snapper pre/post snapshots around every dnf transaction (libdnf5 actions plugin), retention policy, snapshots bootable from the GRUB menu, `basalt-rollback` |
 | SSH | public keys only; root only with a key |
 | Firewall | firewalld on, zone `basalt`: only SSH allowed in |
+| Assistant | `basalt-assistant` installed, its confined daemon on: it diagnoses events and proposes fixes, never applies them; findings in the journal, desktop notifications where a graphical session exists, an optional signed webhook; hash-chained audit log with sealed rotation. The local language model is optional and not installed |
+| Packages | minimal profile (no hardware firmware or microcode) on virtual machines, standard on bare metal, picked by the installer |
 | Other | auditd on; LLMNR and multicast DNS off; serial console first (GRUB and kernel) |
 
 How it works and why: [docs/design.md](docs/design.md),
@@ -42,7 +44,7 @@ packages/basalt-release/     release identity, repository, presets, server defau
 packages/basalt-logos/       branding: logos, icons, Plymouth and GRUB themes (spec + artwork tree)
 packages/basalt-snapshots/   snapper config, dnf5 hook, snapshot boot menu, setup and rollback tools
 packages/basalt-security/    basalt-tpm and basalt-secureboot: TPM2 unlock, MOK and module signing
-packages/basalt-assistant/   the system assistant: basalt CLI, basalt-assistantd, basalt-mcp, SELinux module (Go)
+packages/basalt-assistant/   the system assistant: basalt CLI, basalt-assistantd, basalt-mcp, basalt-notify, SELinux module (Go)
 packages/basalt-llm/         optional local model service: llama.cpp server for the CPU, no network, own SELinux domain
 eval/                        shared evaluation suite: labeled decision cases, translator test set, generators
 packages/lab/                test fixtures for the lab (never published)
@@ -89,7 +91,11 @@ unchanged). The kickstart installs a minimal server:
 - encrypted by default; add `basalt.encrypt=0` to the boot entry for plain btrfs;
 - `basalt.unlock=tang basalt.tang=URL basalt.tang-thp=THUMBPRINT` (or
   `tpm2+tang`) for network unlock through a Tang server;
-- `basalt.profile=minimal` for virtual machines (no hardware firmware);
+- `basalt.profile=auto` (default) installs the minimal profile (no hardware
+  firmware, CPU microcode or fwupd) on a virtual machine or cloud instance
+  and the standard one on bare metal; `basalt.profile=standard` or
+  `minimal` forces one (a VM with passthrough hardware that needs firmware
+  wants `standard`);
 - `basalt.disk=sdX` to pick the disk (default: the first fixed disk; it is wiped);
 - the installer asks for a root password or a user unless the ISO carries a
   site file with accounts (`SITE_DIR`, see `scripts/lab/keys.sh` for an example).

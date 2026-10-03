@@ -19,6 +19,8 @@ fi
 
 : "${FEDORA_RELEASE:=44}"
 : "${BASALT_VERSION:=$(tr -d "[:space:]" <"$REPO_ROOT/VERSION")}"
+# BUILD_ID in os-release: UTC build date and the commit of this tree.
+: "${BASALT_BUILD_ID:=$(date -u +%Y%m%d).$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo local)}"
 : "${PODMAN:=sudo podman}"
 : "${LAB_DIR:=/srv/basalt-lab}"
 : "${BUILD_DIR:=$REPO_ROOT/build}"

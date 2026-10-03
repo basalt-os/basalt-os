@@ -36,7 +36,7 @@ func TestShippedConfigLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.Backend != "rules" || c.Translator || c.TranslatorEndpoint != "unix:/run/basalt-llm/llm.sock" || c.AllowRemote ||
-		c.TranslatorPrompt != "auto" {
+		c.TranslatorPrompt != "auto" || c.WebhookURL != "" || c.NotifyDesktop != "auto" || c.AuditRotateSize != 32<<20 {
 		t.Fatalf("shipped defaults changed: %+v", c)
 	}
 }
@@ -56,5 +56,25 @@ func TestTranslatorPrompt(t *testing.T) {
 	_ = os.WriteFile(p, []byte("[translator]\nprompt = short\n"), 0o600)
 	if _, err := Load(p); err == nil {
 		t.Error("unknown prompt style accepted")
+	}
+}
+
+func TestNotifyAndAudit(t *testing.T) {
+	p := t.TempDir() + "/assistant.conf"
+	_ = os.WriteFile(p, []byte("[audit]\nrotate_size = 8M\n[notify]\ndesktop = no\nwebhook_url = https://hooks.example.org/basalt\n"+
+		"webhook_secret_file = /etc/basalt/hook.key\nwebhook_events = all\nwebhook_timeout = 5s\n"), 0o600)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AuditRotateSize != 8<<20 || c.NotifyDesktop != "no" || c.WebhookURL != "https://hooks.example.org/basalt" ||
+		c.WebhookSecretFile != "/etc/basalt/hook.key" || c.WebhookEvents != "all" || c.WebhookTimeout != 5*time.Second {
+		t.Fatalf("%+v", c)
+	}
+	for _, bad := range []string{"[notify]\ndesktop = maybe\n", "[notify]\nwebhook_events = some\n"} {
+		_ = os.WriteFile(p, []byte(bad), 0o600)
+		if _, err := Load(p); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
 	}
 }
