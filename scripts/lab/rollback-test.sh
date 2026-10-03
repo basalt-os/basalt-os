@@ -48,7 +48,9 @@ check_markers() {
   vm "set -e; for m in $*; do for d in /home/basalt-lab /var/lib/containers/basalt-lab /var/lib/pgsql/basalt-lab /var/log/basalt-lab; do
         test -s \$d/\$m || { echo \"MISSING \$d/\$m\"; exit 1; }; done; done; echo \"markers present: $*\""
 }
+pcrs() { vm 'systemd-analyze pcrs 4 7 8 9 14' | awk 'NR > 1 {printf "%s=%s ", $1, substr($3, 1, 12)}'; }
 boot_report() {
+  log "$1: PCRs $(pcrs)"
   log "$1: $(vm '. /etc/os-release; echo $PRETTY_NAME'), root $(vm 'findmnt -no OPTIONS / | tr , "\n" | grep -E "^(ro|rw|subvol=)" | tr "\n" " "'), TPM failures $(tpm_failures), denials $(denials), failed units $(vm 'systemctl --failed --no-legend | wc -l')"
 }
 
@@ -116,7 +118,7 @@ log "B3. power-cycle and boot snapshot $pre_b from the GRUB menu (entry $idx of 
 $VIRSH shutdown "$VM_NAME" >/dev/null || true
 "$L/vm.sh" wait-off 180 || $VIRSH destroy "$VM_NAME"
 $VIRSH start "$VM_NAME" >/dev/null
-"$L/grub-console.py" "$VM_NAME" --last-then "$idx" --expect "Snapshot $pre_b," || die "could not pick the snapshot in GRUB"
+"$L/grub-console.py" "$VM_NAME" --last-then "$idx" --expect "Snapshot $pre_b," --expect-snapshot "$pre_b" || die "could not pick the snapshot in GRUB"
 "$L/vm.sh" wait-ssh 300
 boot_report "booted snapshot $pre_b from GRUB"
 vm "grep -o 'basalt.snapshot=[0-9]*' /proc/cmdline; basalt-snapshot-boot status"

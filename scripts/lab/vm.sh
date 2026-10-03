@@ -11,9 +11,11 @@
 #   vm.sh wait-ssh | wait-off
 #   vm.sh ssh [cmd]            ssh as root (lab key)
 #   vm.sh console              serial console (virsh console)
-#   vm.sh sb show|backup|disable|foreign-db|restore
+#   vm.sh sb show|backup|disable|foreign-db|restore|custom
 #                              inspect or change the Secure Boot state in the
-#                              VM's variable store (VM must be shut off)
+#                              VM's variable store (VM must be shut off);
+#                              custom: replace PK, KEK and db with the lab's
+#                              own keys (scripts/lab/sb-keys.sh), dbx kept
 #   vm.sh status | destroy
 #
 # VM_NAME and VM_HOST (last octet of its address, default 10) select the VM,
@@ -55,13 +57,19 @@ docker_forward_allow() {
 }
 
 net_up() {
+  local xml h hosts=""
   if $VIRSH net-info "$VM_NETWORK" >/dev/null 2>&1; then
     $VIRSH net-start "$VM_NETWORK" >/dev/null 2>&1 || true
+    # Fixed addresses .10 to .19 (older lab networks had .10 to .13).
+    for h in $(seq 10 19); do
+      $VIRSH net-dumpxml "$VM_NETWORK" | grep -q "ip='${VM_SUBNET}.${h}'" && continue
+      $VIRSH net-update "$VM_NETWORK" add ip-dhcp-host \
+        "<host mac='${VM_MAC_PREFIX}:$(printf '%02x' "$h")' ip='${VM_SUBNET}.${h}'/>" --live --config >/dev/null
+    done
     docker_forward_allow
     log "network $VM_NETWORK exists"; return 0
   fi
-  local xml h hosts=""
-  for h in 10 11 12 13; do
+  for h in $(seq 10 19); do
     hosts+="      <host mac='${VM_MAC_PREFIX}:$(printf '%02x' "$h")' ip='${VM_SUBNET}.${h}'/>"$'\n'
   done
   xml="$(mktemp)"
@@ -205,11 +213,23 @@ sb() {
           -keyout "$LAB_DIR/sb/foreign-db.key" -out "$LAB_DIR/sb/foreign-db.pem" 2>/dev/null
       fi
       fwvars --inplace "/nv/$base" --add-db "$(uuidgen)" /sb/foreign-db.pem ;;
+    custom)
+      # Custom db mode: the lab's PK, KEK and db replace the Microsoft and
+      # Red Hat keys; dbx (revocations) is kept. The VM then boots only EFI
+      # binaries signed with the lab db key (see scripts/lab/sb-custom-test.sh).
+      require_off
+      [[ -f "$sbdir/nvram.orig" ]] || sb backup
+      [[ -s "$LAB_DIR/sb-keys/db.pem" ]] || die "no lab keys (scripts/lab/sb-keys.sh)"
+      local g; g="$(cat "$LAB_DIR/sb-keys/guid")"
+      $PODMAN run --rm --security-opt label=disable -v "$(dirname "$nv"):/nv" \
+        -v "$LAB_DIR/sb-keys:/k:ro" localhost/basalt-lab-tools \
+        virt-fw-vars --inplace "/nv/$base" -d PK -d KEK -d db \
+          --set-pk "$g" /k/PK.pem --add-kek "$g" /k/KEK.pem --add-db "$g" /k/db.pem --secure-boot 2>&1 | tail -3 ;;
     restore)
       require_off
       [[ -f "$sbdir/nvram.orig" ]] || die "no saved variable store"
       sudo cp --preserve=all "$sbdir/nvram.orig" "$nv" && log "restored $nv" ;;
-    *) die "usage: vm.sh sb show|backup|disable|foreign-db|restore" ;;
+    *) die "usage: vm.sh sb show|backup|disable|foreign-db|restore|custom" ;;
   esac
 }
 
@@ -217,12 +237,29 @@ case "${1:-}" in
   net-up) net_up ;;
   install) shift; install_vm "$@" ;;
   eject) eject_installer ;;
+  boot-iso)
+    # Boot an ISO once (VM shut off): attached as a read-only SATA CD-ROM,
+    # first in the boot order; `vm.sh eject` removes it again.
+    shift; require_off
+    sudo cp "${1:?ISO}" "$VM_DIR/installer-$VM_NAME.iso"
+    xml="$(mktemp)"
+    cat >"$xml" <<EOF
+<disk type='file' device='cdrom'>
+  <driver name='qemu' type='raw'/>
+  <source file='$VM_DIR/installer-$VM_NAME.iso'/>
+  <target dev='sdz' bus='sata'/>
+  <readonly/>
+  <boot order='1'/>
+</disk>
+EOF
+    run $VIRSH attach-device "$VM_NAME" "$xml" --config; rm -f "$xml" ;;
   wait-ssh) shift; wait_ssh "$@" ;;
   wait-off) shift; wait_off "$@" ;;
   start) run $VIRSH start "$VM_NAME"; wait_ssh ;;
   stop) stop_vm ;;
   ssh) shift; ssh "${SSH_OPTS[@]}" "root@$VM_IP" "$@" ;;
   scp-from) shift; scp "${SSH_OPTS[@]}" "root@$VM_IP:$1" "$2" ;;
+  scp-to) shift; scp "${SSH_OPTS[@]}" "$1" "root@$VM_IP:$2" ;;
   ip) echo "$VM_IP" ;;
   console) exec $VIRSH console "$VM_NAME" ;;
   sb) shift; sb "$@" ;;
@@ -231,5 +268,5 @@ case "${1:-}" in
     $VIRSH destroy "$VM_NAME" 2>/dev/null || true
     $VIRSH undefine "$VM_NAME" --nvram --tpm 2>/dev/null || true
     sudo rm -f "$VM_DIR/$VM_NAME.qcow2" "$VM_DIR/installer-$VM_NAME.iso" ;;
-  *) sed -n '2,21p' "$0"; exit 2 ;;
+  *) sed -n '2,24p' "$0"; exit 2 ;;
 esac

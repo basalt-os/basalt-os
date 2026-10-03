@@ -13,6 +13,11 @@ disable snapper-timeline.timer
 enable basalt-snapshot-boot.service
 enable basalt-initial-snapshot.service
 
+# Security (basalt-security): Basalt module signing certificates loaded at
+# boot. basalt-tpm-resume.service is enabled only by `basalt-tpm suspend`.
+enable basalt-module-keys.service
+disable basalt-tpm-resume.service
+
 # Branding: keep the GRUB theme on /boot in sync with the package.
 enable basalt-grub-theme.service
 

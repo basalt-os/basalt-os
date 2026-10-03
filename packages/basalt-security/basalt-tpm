@@ -1,0 +1,277 @@
+#!/usr/bin/bash
+# TPM2 unlock of the encrypted root: state, re-enrollment, planned changes.
+#
+#   basalt-tpm status              volume, key slots, PCR policy, Secure Boot, and
+#                                  whether the TPM would unlock the disk right now
+#   basalt-tpm pcrs                current PCR values (SHA-256 bank)
+#   basalt-tpm reenroll [--pcrs=7] [--recovery-key-file=FILE] [--yes]
+#                                  seal the TPM2 key to the current boot state again,
+#                                  after a change of firmware, Secure Boot keys, dbx
+#                                  or shim's SBAT level made the TPM refuse
+#   basalt-tpm suspend [--yes]     before a planned change of that kind: add a TPM2
+#                                  key bound to no PCR, for the next boot only; that
+#                                  boot re-seals to the configured PCRs and removes
+#                                  it (basalt-tpm-resume.service)
+#   basalt-tpm resume              what that service runs
+#
+# Every change prints the exact commands and asks for confirmation unless
+# --yes is given. Unlocking for a change uses the TPM when it still unseals,
+# otherwise the recovery key (prompted for, or --recovery-key-file). The
+# recovery key slot is never touched. Configuration: /etc/basalt/tpm.conf.
+set -euo pipefail
+
+TPM_PCRS=7
+TPM_DEVICE=
+[[ -r /etc/basalt/tpm.conf ]] && . /etc/basalt/tpm.conf
+
+die() { printf 'basalt-tpm: %s\n' "$*" >&2; exit 1; }
+note() { printf 'basalt-tpm: %s\n' "$*" >&2; }
+
+# --- the encrypted volume -------------------------------------------------------------
+
+# LUKS device of the first /etc/crypttab entry (the root on Basalt OS), or TPM_DEVICE.
+luks_device() {
+  local spec dev
+  if [[ -n "$TPM_DEVICE" ]]; then echo "$TPM_DEVICE"; return; fi
+  spec="$(awk '$1 !~ /^#/ && NF >= 2 {print $2; exit}' /etc/crypttab 2>/dev/null || true)"
+  case "$spec" in
+    UUID=*) dev="$(blkid -U "${spec#UUID=}" 2>/dev/null || true)" ;;
+    /dev/*) dev="$spec" ;;
+    *) dev="" ;;
+  esac
+  [[ -n "$dev" ]] || dev="$(blkid -t TYPE=crypto_LUKS -o device 2>/dev/null | head -1 || true)"
+  [[ -n "$dev" ]] || die "no encrypted volume found (no LUKS device in /etc/crypttab)"
+  echo "$dev"
+}
+
+# One line per token: ID TYPE KEYSLOT PCRS PCRLOCK PIN (PCRS "-" when none).
+tokens() {
+  cryptsetup luksDump "$1" | awk '
+    /^Tokens:/ {t = 1; next}
+    /^Digests:/ {t = 0}
+    !t {next}
+    /^  [0-9]+: / { if (id != "") print id, type, slot, (pcrs == "" ? "-" : pcrs), lock, pin
+                    id = $1; sub(":", "", id); type = $2; slot = "-"; pcrs = ""; lock = "false"; pin = "false"; next }
+    /tpm2-hash-pcrs:/ { pcrs = $2 }
+    /tpm2-pcrlock:/ { lock = $2 }
+    /tpm2-pin:/ { pin = $2 }
+    /Keyslot:/ { slot = $2 }
+    END { if (id != "") print id, type, slot, (pcrs == "" ? "-" : pcrs), lock, pin }'
+}
+
+tpm2_tokens() { tokens "$1" | awk '$2 == "systemd-tpm2"'; }
+
+# Does TPM2 token ID unseal now (without opening the volume)?
+token_unseals() {
+  cryptsetup open --test-passphrase --token-only --token-id "$2" "$1" >/dev/null 2>&1
+}
+
+any_tpm2_unseals() {
+  local id
+  for id in $(tpm2_tokens "$1" | awk '{print $1}'); do
+    token_unseals "$1" "$id" && return 0
+  done
+  return 1
+}
+
+# PCR list in systemd's notation (7+11) from "7", "7,11" or "7+11".
+norm_pcrs() { tr ',' '+' <<<"$1" | tr -d '[:space:]'; }
+
+sb_state() { mokutil --sb-state 2>/dev/null | head -1 || echo "unknown (no mokutil)"; }
+
+confirm() {
+  [[ "$yes" -eq 1 ]] && return 0
+  local ans
+  read -r -p "Proceed? [y/N] " ans
+  [[ "$ans" == [yY]* ]] || { echo "Cancelled."; exit 1; }
+}
+
+show() { printf '  $ %s\n' "$*"; }
+
+# --- unlock material for changes -------------------------------------------------------
+
+keyfile=""
+cleanup() { [[ -n "$keyfile" && -f "$keyfile" ]] && shred -u "$keyfile" 2>/dev/null || rm -f "$keyfile"; }
+trap cleanup EXIT
+
+# Sets UNLOCK (systemd-cryptenroll options) for a change to DEV.
+choose_unlock() {
+  local dev="$1" rkfile="$2"
+  if [[ -n "$rkfile" ]]; then
+    [[ -r "$rkfile" ]] || die "cannot read $rkfile"
+    keyfile="$(mktemp /run/basalt-tpm.XXXXXX)"
+    chmod 0600 "$keyfile"
+    tr -d '[:space:]' <"$rkfile" >"$keyfile"
+    UNLOCK=(--unlock-key-file="$keyfile")
+    UNLOCK_TEXT="the recovery key from $rkfile"
+  elif any_tpm2_unseals "$dev"; then
+    UNLOCK=(--unlock-tpm2-device=auto)
+    UNLOCK_TEXT="the TPM (an enrolled TPM2 key still unseals)"
+  else
+    [[ -t 0 ]] || die "the TPM does not unseal; give --recovery-key-file or run on a terminal"
+    local k
+    read -r -s -p "The TPM does not unseal. Recovery key: " k; echo
+    [[ -n "$k" ]] || die "no recovery key given"
+    keyfile="$(mktemp /run/basalt-tpm.XXXXXX)"
+    chmod 0600 "$keyfile"
+    printf '%s' "${k//[[:space:]]/}" >"$keyfile"
+    unset k
+    UNLOCK=(--unlock-key-file="$keyfile")
+    UNLOCK_TEXT="the recovery key (typed)"
+  fi
+}
+
+# --- commands ----------------------------------------------------------------------------
+
+cmd_pcrs() {
+  if command -v systemd-analyze >/dev/null && systemd-analyze pcrs 0 >/dev/null 2>&1; then
+    systemd-analyze pcrs 0 1 2 3 4 5 7 8 9 11 14
+  else
+    tpm2_pcrread sha256:0,1,2,3,4,5,7,8,9,11,14
+  fi
+}
+
+cmd_status() {
+  local dev; dev="$(luks_device)"
+  echo "Encrypted volume: $dev ($(cryptsetup luksDump "$dev" | awk '/^Version:/ {print "LUKS" $2}'))"
+  echo "crypttab: $(awk '$1 !~ /^#/ && NF >= 2' /etc/crypttab | head -1)"
+  echo "Secure Boot: $(sb_state)"
+  echo "Configured TPM policy: PCR $(norm_pcrs "$TPM_PCRS") (/etc/basalt/tpm.conf)"
+  if [[ -e /dev/tpmrm0 || -e /dev/tpm0 ]]; then echo "TPM: present"; else echo "TPM: none found"; fi
+  echo "Key slots:"
+  systemd-cryptenroll "$dev" 2>/dev/null | sed '1d; s/^/  slot/'
+  echo "Tokens:"
+  local id type slot pcrs lock pin state
+  while read -r id type slot pcrs lock pin; do
+    case "$type" in
+      systemd-tpm2)
+        if token_unseals "$dev" "$id"; then state="unseals now"; else state="does NOT unseal now"; fi
+        if [[ "$pcrs" == - && "$lock" == false ]]; then pcrs="none (suspended: any boot unlocks)"; fi
+        printf '  token %s: TPM2, key slot %s, PCRs %s%s, %s\n' "$id" "$slot" "$pcrs" \
+          "$([[ "$lock" == true ]] && echo ", pcrlock policy" || true)$([[ "$pin" == true ]] && echo ", PIN" || true)" "$state" ;;
+      systemd-recovery) printf '  token %s: recovery key, key slot %s\n' "$id" "$slot" ;;
+      clevis) printf '  token %s: clevis, key slot %s\n' "$id" "$slot" ;;
+      *) printf '  token %s: %s, key slot %s\n' "$id" "$type" "$slot" ;;
+    esac
+  done < <(tokens "$dev")
+  if command -v clevis >/dev/null && cryptsetup luksDump "$dev" | grep -q ': clevis'; then
+    echo "Clevis bindings:"; clevis luks list -d "$dev" 2>/dev/null | sed 's/^/  slot /'
+  fi
+  if systemctl is-enabled --quiet basalt-tpm-resume.service 2>/dev/null; then
+    echo "Suspended: the next boot re-seals to PCR $(norm_pcrs "$TPM_PCRS") (basalt-tpm-resume.service)"
+  fi
+  echo "PCR 7 now: $(systemd-analyze pcrs 7 2>/dev/null | awk 'NR == 2 {print $3}')"
+}
+
+cmd_reenroll() {
+  local dev pcrs rkfile="$1" id slot p lock
+  dev="$(luks_device)"
+  pcrs="$(norm_pcrs "${2:-$TPM_PCRS}")"
+  [[ -e /dev/tpmrm0 || -e /dev/tpm0 ]] || die "no TPM on this machine"
+  # A token already sealed to this PCR set that still unseals: nothing to do.
+  while read -r id _ slot p lock _; do
+    if [[ "$p" == "$pcrs" && "$lock" == false ]] && token_unseals "$dev" "$id"; then
+      echo "TPM2 token $id (key slot $slot) is sealed to PCR $pcrs and unseals now: nothing to re-enroll."
+      return 0
+    fi
+  done < <(tpm2_tokens "$dev")
+  # systemd-cryptenroll skips an enrollment whose PCR set is already
+  # enrolled, even when the sealed values are stale. So: 1. remove the
+  # (stale) keys sealed to the same PCR set, 2. enroll, 3. remove the other
+  # old TPM2 keys. The unlock source is the TPM only when some other TPM2
+  # key still unseals; the recovery key slot is never touched.
+  local same=() other=()
+  while read -r id _ slot p lock _; do
+    if [[ "$p" == "$pcrs" && "$lock" == false ]]; then same+=("$slot"); else other+=("$slot"); fi
+  done < <(tpm2_tokens "$dev")
+  choose_unlock "$dev" "$rkfile"
+  echo "Re-enroll the TPM2 key of $dev, sealed to PCR $pcrs as they are now (Secure Boot: $(sb_state))."
+  echo "Unlocking with $UNLOCK_TEXT. The recovery key slot is kept."
+  local steps=()
+  [[ ${#same[@]} -gt 0 ]] && steps+=("systemd-cryptenroll ${UNLOCK[*]} --wipe-slot=$(IFS=,; echo "${same[*]}") $dev")
+  steps+=("systemd-cryptenroll ${UNLOCK[*]} --tpm2-device=auto --tpm2-pcrs=$pcrs $dev")
+  [[ ${#other[@]} -gt 0 ]] && steps+=("systemd-cryptenroll ${UNLOCK[*]} --wipe-slot=$(IFS=,; echo "${other[*]}") $dev")
+  echo "Commands:"
+  local s; for s in "${steps[@]}"; do show "$s"; done
+  confirm
+  [[ ${#same[@]} -gt 0 ]] && systemd-cryptenroll "${UNLOCK[@]}" --wipe-slot="$(IFS=,; echo "${same[*]}")" "$dev"
+  systemd-cryptenroll "${UNLOCK[@]}" --tpm2-device=auto --tpm2-pcrs="$pcrs" "$dev"
+  [[ ${#other[@]} -gt 0 ]] && systemd-cryptenroll "${UNLOCK[@]}" --wipe-slot="$(IFS=,; echo "${other[*]}")" "$dev"
+  any_tpm2_unseals "$dev" && echo "Done: the TPM unseals the new key; the next boot unlocks without interaction." ||
+    die "the new TPM2 key does not unseal; the recovery key still works"
+}
+
+cmd_suspend() {
+  local dev; dev="$(luks_device)"
+  [[ -e /dev/tpmrm0 || -e /dev/tpm0 ]] || die "no TPM on this machine"
+  if tpm2_tokens "$dev" | awk '$4 == "-" && $5 == "false" {f = 1} END {exit !f}'; then
+    echo "Already suspended (a TPM2 key bound to no PCR exists)."; return 0
+  fi
+  choose_unlock "$dev" "${1:-}"
+  echo "Suspend TPM protection of $dev for ONE boot: a TPM2 key bound to no PCR is added,"
+  echo "so the next boot unlocks whatever the firmware and Secure Boot state is. That boot"
+  echo "re-seals to PCR $(norm_pcrs "$TPM_PCRS") and removes it (basalt-tpm-resume.service)."
+  echo "Use it right before a planned change (Secure Boot keys, firmware, dbx, shim)."
+  echo "Commands:"
+  show "systemd-cryptenroll ${UNLOCK[*]} --tpm2-device=auto --tpm2-pcrs= $dev"
+  show "systemctl enable basalt-tpm-resume.service"
+  confirm
+  systemd-cryptenroll "${UNLOCK[@]}" --tpm2-device=auto --tpm2-pcrs= "$dev"
+  systemctl enable basalt-tpm-resume.service
+  echo "Suspended until the next boot."
+}
+
+# Run at boot by basalt-tpm-resume.service, unattended.
+cmd_resume() {
+  local dev pcrs id slot p lock unbound=() stale=()
+  dev="$(luks_device)"
+  pcrs="$(norm_pcrs "$TPM_PCRS")"
+  while read -r id _ slot p lock _; do
+    if [[ "$p" == - && "$lock" == false ]]; then unbound+=("$slot"); else stale+=("$slot"); fi
+  done < <(tpm2_tokens "$dev")
+  if [[ ${#unbound[@]} -eq 0 ]]; then
+    note "not suspended; nothing to do"
+    systemctl disable basalt-tpm-resume.service 2>/dev/null || true
+    return 0
+  fi
+  if ! mokutil --sb-state 2>/dev/null | grep -q enabled; then
+    # Never seal to a boot without Secure Boot: drop the unbound key; the
+    # next boot needs the recovery key until someone re-enrolls.
+    note "Secure Boot is not enabled: removing the unbound TPM2 key without re-sealing"
+    systemd-cryptenroll --unlock-tpm2-device=auto --wipe-slot="$(IFS=,; echo "${unbound[*]}")" "$dev"
+    systemctl disable basalt-tpm-resume.service
+    return 1
+  fi
+  # 1. stale PCR-bound keys out, 2. a key sealed to this boot in, 3. the unbound key out.
+  [[ ${#stale[@]} -gt 0 ]] && systemd-cryptenroll --unlock-tpm2-device=auto --wipe-slot="$(IFS=,; echo "${stale[*]}")" "$dev"
+  systemd-cryptenroll --unlock-tpm2-device=auto --tpm2-device=auto --tpm2-pcrs="$pcrs" "$dev"
+  systemd-cryptenroll --unlock-tpm2-device=auto --wipe-slot="$(IFS=,; echo "${unbound[*]}")" "$dev"
+  systemctl disable basalt-tpm-resume.service
+  note "re-sealed to PCR $pcrs; the unbound key is removed"
+}
+
+# --- arguments ----------------------------------------------------------------------------
+
+yes=0 rk="" pcr_arg=""
+cmd="${1:-status}"; [[ $# -gt 0 ]] && shift
+for a in "$@"; do
+  case "$a" in
+    --yes|-y) yes=1 ;;
+    --recovery-key-file=*) rk="${a#*=}" ;;
+    --pcrs=*) pcr_arg="${a#*=}" ;;
+    *) sed -n '2,24p' "$0"; exit 2 ;;
+  esac
+done
+case "$cmd" in
+  status|pcrs) ;;
+  *) [[ $EUID -eq 0 ]] || die "run as root" ;;
+esac
+case "$cmd" in
+  status) [[ $EUID -eq 0 ]] || die "run as root (reads the LUKS header and the TPM)"; cmd_status ;;
+  pcrs) cmd_pcrs ;;
+  reenroll) cmd_reenroll "$rk" "$pcr_arg" ;;
+  suspend) cmd_suspend "$rk" ;;
+  resume) cmd_resume ;;
+  -h|--help|help) sed -n '2,24p' "$0" ;;
+  *) sed -n '2,24p' "$0"; exit 2 ;;
+esac

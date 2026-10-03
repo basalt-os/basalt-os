@@ -17,6 +17,8 @@ vm() { "$L/vm.sh" ssh "$@"; }
 denials() { vm 'ausearch --input-logs -m AVC,USER_AVC,SELINUX_ERR -ts boot 2>/dev/null | grep -c "^type=" || true'; }
 last_pair() { vm "snapper --csvout list --columns number,type,pre-number,description | tail -1"; }
 
+pcrs() { vm 'systemd-analyze pcrs 4 7 8 9 14' | awk 'NR > 1 {printf "%s=%s ", $1, substr($3, 1, 12)}'; }
+log "PCRs before the updates (kernel $(vm 'uname -r')): $(pcrs)"
 log "snapshots before:"; vm 'snapper list'
 before="$(vm 'snapper --csvout list --columns number | tail -1')"
 
@@ -54,6 +56,7 @@ vm 'systemctl reboot' || true
 sleep 10
 "$L/vm.sh" wait-ssh 300
 vm "rpm -q $pkg && $pkg -V 2>/dev/null | head -1 || true"
+log "PCRs after the kernel update and reboot (kernel $(vm 'uname -r')): $(pcrs)"
 log "after reboot: kernel $(vm 'uname -r'), denials: $(denials), failed units: $(vm 'systemctl --failed --no-legend | wc -l')"
 log "snapshots after:"; vm 'snapper list'
 log "snapshot test passed (first new snapshot after $before)"

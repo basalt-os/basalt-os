@@ -1,0 +1,143 @@
+#!/usr/bin/bash
+# Secure Boot state, the Basalt kernel module key (MOK) and module signing.
+#
+#   basalt-secureboot status             firmware Secure Boot and setup mode, who owns
+#                                        PK, KEK and db, enrolled and pending MOKs, kernel
+#                                        lockdown, module signature enforcement, Basalt
+#                                        module certificates in the kernel keyrings
+#   basalt-secureboot enroll-mok [--yes] [--password-file=FILE]
+#                                        queue the Basalt module CA for shim's MOK list;
+#                                        confirm it on the console at the next boot
+#                                        (MokManager asks for the one-time password)
+#   basalt-secureboot unenroll-mok [--yes] [--password-file=FILE]
+#   basalt-secureboot load-module-keys   add the Basalt module signing certificates to the
+#                                        kernel's secondary trusted keyring (run at boot
+#                                        by basalt-module-keys.service)
+#
+# How it fits together: the Basalt module CA is enrolled once per machine as
+# a MOK, so the kernel puts it in its .machine keyring (Fedora kernels only
+# accept CA certificates there). Kernel modules built by Basalt OS are signed
+# with a signing certificate issued by that CA; the kernel accepts such a
+# certificate into .secondary_trusted_keys because the CA vouches for it.
+# The CA itself stays offline; signing certificates can be rotated by a
+# package update without another trip to the console.
+set -euo pipefail
+
+CA=/usr/share/basalt/secureboot/basalt-module-ca.der
+KEYDIR=/usr/lib/basalt/module-keys
+EFI_GLOBAL=8be4df61-93ca-11d2-aa0d-00e098032b8c
+
+die() { printf 'basalt-secureboot: %s\n' "$*" >&2; exit 1; }
+show() { printf '  $ %s\n' "$*"; }
+
+is_der() { [[ -s "$1" && "$(head -c1 "$1" | od -An -tx1 | tr -d ' ')" == 30 ]]; }
+subject() { openssl x509 -inform DER -in "$1" -noout -subject 2>/dev/null | sed 's/^subject=//' || echo "(unreadable)"; }
+
+efi_byte() {
+  local f="/sys/firmware/efi/efivars/$1-$EFI_GLOBAL"
+  [[ -r "$f" ]] || { echo "?"; return; }
+  od -An -tu1 -j4 -N1 "$f" | tr -d ' '
+}
+
+# Certificate subjects of a mokutil listing (--pk, --kek, --db, --list-enrolled, --list-new).
+mok_subjects() { mokutil "$@" 2>/dev/null | sed -n 's/^ *Subject: *//p' | sed 's/^/    /'; }
+
+confirm() {
+  [[ "$yes" -eq 1 ]] && return 0
+  local ans; read -r -p "Proceed? [y/N] " ans
+  [[ "$ans" == [yY]* ]] || { echo "Cancelled."; exit 1; }
+}
+
+cmd_status() {
+  [[ -d /sys/firmware/efi ]] || { echo "Not booted with UEFI: no Secure Boot."; return 0; }
+  echo "Secure Boot: $(mokutil --sb-state 2>/dev/null | head -1 || echo unknown), setup mode: $( [[ "$(efi_byte SetupMode)" == 1 ]] && echo yes || echo no)"
+  echo "PK:";  mok_subjects --pk
+  echo "KEK:"; mok_subjects --kek
+  echo "db:";  mok_subjects --db
+  echo "MOKs enrolled:"; mok_subjects --list-enrolled
+  local pending; pending="$(mok_subjects --list-new)"
+  [[ -n "$pending" ]] && { echo "MOK requests pending (confirm on the console at the next boot):"; echo "$pending"; }
+  echo "Kernel lockdown: $(cat /sys/kernel/security/lockdown 2>/dev/null || echo unknown)"
+  echo "Module signatures enforced: $(cat /sys/module/module/parameters/sig_enforce 2>/dev/null || echo unknown)"
+  if is_der "$CA"; then
+    echo "Basalt module CA: $(subject "$CA")"
+    # mokutil --test-key exits 1 for an enrolled key too: read its message.
+    if [[ "$(mokutil --test-key "$CA" 2>&1 || true)" == *"already enrolled"* ]]; then
+      echo "  enrolled as a MOK"
+    else
+      echo "  NOT enrolled (basalt-secureboot enroll-mok)"
+    fi
+  else
+    echo "Basalt module CA: none in this build (placeholder)"
+  fi
+  local f n=0
+  for f in "$KEYDIR"/*.der; do
+    is_der "$f" || continue
+    n=$((n + 1))
+    echo "Module signing certificate: $(subject "$f")"
+  done
+  [[ $n -gt 0 ]] || echo "Module signing certificates: none in this build"
+  if command -v keyctl >/dev/null; then
+    echo "Kernel keyrings (.machine, .secondary_trusted_keys):"
+    keyctl show %:.secondary_trusted_keys 2>/dev/null | sed -n 's/.*asymmetric: /    /p'
+  fi
+}
+
+mok_request() {
+  local action="$1" pwfile="$2"
+  is_der "$CA" || die "this build has no Basalt module CA (placeholder only)"
+  local state; state="$(mokutil --test-key "$CA" 2>&1 || true)"
+  if [[ "$action" == import && "$state" == *"already enrolled"* ]]; then echo "The Basalt module CA is already enrolled."; return 0; fi
+  if [[ "$action" == delete && "$state" != *"already enrolled"* ]]; then echo "The Basalt module CA is not enrolled."; return 0; fi
+  echo "Certificate: $(subject "$CA")"
+  echo "Command:"; show "mokutil --$action $CA"
+  echo "mokutil asks for a one-time password. At the next boot, shim's MokManager"
+  echo "starts on the console (screen or serial): press a key within 10 seconds,"
+  echo "choose \"$( [[ "$action" == import ]] && echo 'Enroll MOK' || echo 'Delete MOK')\", Continue, Yes, type the password, Reboot."
+  echo "Without that confirmation nothing changes."
+  confirm
+  if [[ -n "$pwfile" ]]; then
+    [[ -r "$pwfile" ]] || die "cannot read $pwfile"
+    { head -1 "$pwfile"; head -1 "$pwfile"; } | mokutil "--$action" "$CA" >/dev/null
+  else
+    mokutil "--$action" "$CA"
+  fi
+  echo "Request queued; reboot and confirm it on the console."
+}
+
+cmd_load_module_keys() {
+  local f out rc=0
+  command -v keyctl >/dev/null || die "keyctl (keyutils) is not installed"
+  for f in "$KEYDIR"/*.der; do
+    is_der "$f" || continue
+    if out="$(keyctl padd asymmetric "" %:.secondary_trusted_keys <"$f" 2>&1)"; then
+      echo "loaded $(subject "$f")"
+    else
+      # "Required key not available": the Basalt module CA is not enrolled.
+      echo "not loaded: $(subject "$f"): $out" >&2
+      rc=1
+    fi
+  done
+  # Not loading is not a boot failure: without the CA enrolled the kernel
+  # simply refuses Basalt-signed modules, which status explains.
+  [[ $rc -eq 0 ]] || echo "basalt-secureboot: is the Basalt module CA enrolled? (basalt-secureboot status)" >&2
+  return 0
+}
+
+yes=0 pwfile=""
+cmd="${1:-status}"; [[ $# -gt 0 ]] && shift
+for a in "$@"; do
+  case "$a" in
+    --yes|-y) yes=1 ;;
+    --password-file=*) pwfile="${a#*=}" ;;
+    *) sed -n '2,16p' "$0"; exit 2 ;;
+  esac
+done
+case "$cmd" in
+  status) cmd_status ;;
+  enroll-mok) [[ $EUID -eq 0 ]] || die "run as root"; mok_request import "$pwfile" ;;
+  unenroll-mok) [[ $EUID -eq 0 ]] || die "run as root"; mok_request delete "$pwfile" ;;
+  load-module-keys) [[ $EUID -eq 0 ]] || die "run as root"; cmd_load_module_keys ;;
+  -h|--help|help) sed -n '2,24p' "$0" ;;
+  *) sed -n '2,16p' "$0"; exit 2 ;;
+esac

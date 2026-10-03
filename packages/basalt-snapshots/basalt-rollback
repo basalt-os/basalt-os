@@ -1,9 +1,13 @@
 #!/usr/bin/bash
-# Roll the root file system back to a snapshot (snapper rollback, classic).
+# Roll the root file system back to a snapshot (snapper rollback, classic),
+# and keep the kernels on /boot in step with it.
 #
-#   basalt-rollback NUMBER   make snapshot NUMBER the new root
-#   basalt-rollback          booted from a snapshot (boot menu): keep it
-#   basalt-rollback --yes    do not ask for confirmation
+#   basalt-rollback NUMBER          make snapshot NUMBER the new root
+#   basalt-rollback                 booted from a snapshot (boot menu): keep it
+#   basalt-rollback --kernels       kernels on /boot: package, root, snapshots
+#   basalt-rollback --clean-kernels remove orphaned kernels from /boot
+#   basalt-rollback --list-orphans  orphaned kernel versions, one per line
+#   --yes                           do not ask for confirmation
 #
 # snapper keeps a read-only snapshot of the current root, creates a writable
 # copy of the chosen snapshot and makes it the default subvolume; the
@@ -11,10 +15,19 @@
 # /var/lib/containers, /var/lib/pgsql, /var/lib/mysql, /var/lib/libvirt,
 # /srv, /var/cache, /var/tmp, /var/spool) are not part of the root and are
 # not touched.
+#
+# Kernels live on /boot, outside the snapshots. After a rollback across a
+# kernel update the newer kernel stays on /boot although the rolled-back
+# package database does not know it, so dnf will never remove it. Such a
+# kernel is orphaned once no snapshot holds its modules any more (while one
+# does, it is kept: rolling forward to that snapshot needs it).
+# --clean-kernels removes orphaned kernels with kernel-install, never the
+# running kernel or one whose modules are in the root or in a snapshot.
 set -euo pipefail
 
 : "${SNAPPER_CONFIG:=root}"
 [[ -r /etc/basalt/snapshots.conf ]] && . /etc/basalt/snapshots.conf
+SNAPDIR=/.snapshots
 
 # Through snapperd when D-Bus is up (keeps its snapshot list current).
 snap() {
@@ -25,20 +38,157 @@ snap() {
   fi
 }
 
-yes=0 num=""
+usage() { sed -n '2,12p' "$0"; exit 2; }
+
+# --- kernels on /boot -------------------------------------------------------------
+
+boot_kernels() {
+  local f
+  for f in /boot/vmlinuz-*; do
+    [[ -e "$f" && "$f" != *rescue* ]] && echo "${f#/boot/vmlinuz-}"
+  done | sort -rV
+}
+
+# Does the package database of the running root own kernel K?
+kernel_in_rpmdb() {
+  rpm -q --quiet "kernel-core-$1" 2>/dev/null || rpm -qf --quiet "/usr/lib/modules/$1/vmlinuz" 2>/dev/null
+}
+
+# Snapshot numbers whose root holds the modules of kernel K.
+kernel_snapshots() {
+  local d out=()
+  for d in "$SNAPDIR"/*/snapshot/usr/lib/modules/"$1"; do
+    [[ -d "$d" ]] || continue
+    d="${d#"$SNAPDIR"/}"; out+=("${d%%/*}")
+  done
+  printf '%s\n' "${out[@]}" | sort -n | paste -sd, -
+}
+
+booted_snapshot() { tr ' ' '\n' </proc/cmdline | sed -n 's/^basalt\.snapshot=\([0-9]*\)$/\1/p'; }
+
+# Prints "K<TAB>state<TAB>detail" for every kernel on /boot.
+kernel_table() {
+  local k running snaps
+  running="$(uname -r)"
+  for k in $(boot_kernels); do
+    snaps="$(kernel_snapshots "$k")"
+    if [[ "$k" == "$running" ]]; then
+      printf '%s\trunning\t%s\n' "$k" "${snaps:+snapshots $snaps}"
+    elif kernel_in_rpmdb "$k"; then
+      printf '%s\tinstalled\t%s\n' "$k" "${snaps:+snapshots $snaps}"
+    elif [[ -d "/usr/lib/modules/$k" ]]; then
+      printf '%s\tnot-owned\tmodules in the root, no package\n' "$k"
+    elif [[ -n "$snaps" ]]; then
+      printf '%s\tkept\tno package; modules only in snapshots %s\n' "$k" "$snaps"
+    else
+      printf '%s\torphaned\tno package, no modules in the root or any snapshot\n' "$k"
+    fi
+  done
+}
+
+list_orphans() { kernel_table | awk -F'\t' '$2 == "orphaned" {print $1}'; }
+
+show_kernels() {
+  echo "Kernels on /boot (running: $(uname -r)):"
+  kernel_table | awk -F'\t' '{printf "  %-34s %-10s %s\n", $1, $2, $3}'
+  echo "default boot entry: $(grubby --default-kernel 2>/dev/null || echo unknown)"
+}
+
+clean_kernels() {
+  local yes="$1" k orphans
+  [[ -z "$(booted_snapshot)" ]] || { echo "basalt-rollback: booted from a read-only snapshot; keep it (basalt-rollback) and reboot first" >&2; exit 1; }
+  if [[ "$(btrfs subvolume get-default / | awk '{print $2}')" != "$(btrfs inspect-internal rootid /)" ]]; then
+    echo "basalt-rollback: a rollback is pending (the default subvolume is not the running root); reboot first" >&2; exit 1
+  fi
+  mapfile -t orphans < <(list_orphans)
+  if [[ ${#orphans[@]} -eq 0 ]]; then
+    echo "No orphaned kernels on /boot."; return 0
+  fi
+  echo "Orphaned kernels (no package owns them; their modules are in neither the root nor any snapshot):"
+  for k in "${orphans[@]}"; do
+    echo "  $k: $(ls -1 /boot/*"$k"* /boot/loader/entries/*"$k".conf 2>/dev/null | paste -sd' ' -)"
+  done
+  echo "Commands:"
+  for k in "${orphans[@]}"; do echo "  kernel-install remove $k"; done
+  if [[ "$yes" -eq 0 ]]; then
+    read -r -p "Remove them? [y/N] " ans
+    [[ "$ans" == [yY]* ]] || { echo "Cancelled."; exit 1; }
+  fi
+  for k in "${orphans[@]}"; do
+    kernel-install remove "$k"
+    rm -f "/boot/vmlinuz-$k" "/boot/initramfs-$k.img" "/boot/System.map-$k" "/boot/config-$k" \
+      "/boot/.vmlinuz-$k.hmac" "/boot/symvers-$k.xz" /boot/loader/entries/*-"$k".conf
+    echo "removed kernel $k"
+  done
+  # The default entry may have pointed at a removed kernel: fall back to the
+  # newest kernel the package database owns.
+  if ! [[ -e "$(grubby --default-kernel 2>/dev/null || echo /nonexistent)" ]]; then
+    for k in $(boot_kernels); do
+      if kernel_in_rpmdb "$k"; then grubby --set-default "/boot/vmlinuz-$k" >/dev/null && echo "default boot entry: $k"; break; fi
+    done
+  fi
+  /usr/bin/basalt-snapshot-boot update || true
+}
+
+# --- arguments ----------------------------------------------------------------------
+
+yes=0 num="" mode=rollback
 for a in "$@"; do
   case "$a" in
     --yes|-y) yes=1 ;;
+    --kernels) mode=kernels ;;
+    --clean-kernels) mode=clean-kernels ;;
+    --list-orphans) mode=list-orphans ;;
     [0-9]|[0-9]*[0-9]) num="$a" ;;
-    *) sed -n '2,13p' "$0"; exit 2 ;;
+    *) usage ;;
   esac
 done
+
+case "$mode" in
+  kernels) show_kernels; exit 0 ;;
+  list-orphans) list_orphans; exit 0 ;;
+  clean-kernels) [[ $EUID -eq 0 ]] || { echo "basalt-rollback: run as root" >&2; exit 1; }; clean_kernels "$yes"; exit 0 ;;
+esac
+
+# --- rollback ---------------------------------------------------------------------------
+
 [[ $EUID -eq 0 ]] || { echo "basalt-rollback: run as root" >&2; exit 1; }
 
 # A snapshot booted from the GRUB snapshot menu carries basalt.snapshot=N on
 # the kernel command line. (After a rollback the normal root is also a
 # snapshot subvolume, so the mounted path alone does not tell.)
-booted="$(tr ' ' '\n' </proc/cmdline | sed -n 's/^basalt\.snapshot=\([0-9]*\)$/\1/p')"
+booted="$(booted_snapshot)"
+
+# Booted from an older snapshot, this script is that snapshot's copy and may
+# predate fixes in the installed system's copy (the default subvolume), so
+# hand over to the newer one. Learned the hard way: a snapshot from before
+# a release upgrade carried a basalt-rollback that did not yet pick a
+# matching kernel.
+delegate_to_newer() {
+  [[ -n "$booted" && -z "${BASALT_ROLLBACK_DELEGATED:-}" ]] || return 0
+  local id dev mnt mine theirs copy cmp
+  id="$(btrfs subvolume get-default / | awk '{print $2}')"
+  dev="$(findmnt -no SOURCE / | sed 's/\[.*//')"
+  mnt="$(mktemp -d /run/basalt-rollback.XXXXXX)"
+  mount -o ro,subvolid="$id" "$dev" "$mnt" 2>/dev/null || { rmdir "$mnt"; return 0; }
+  mine="$(rpm -q --qf '%{VERSION}-%{RELEASE}' basalt-snapshots 2>/dev/null || true)"
+  theirs="$(rpm --dbpath "$mnt/usr/lib/sysimage/rpm" -q --qf '%{VERSION}-%{RELEASE}' basalt-snapshots 2>/dev/null || true)"
+  copy=""
+  if [[ -n "$mine" && -n "$theirs" && -x "$mnt/usr/bin/basalt-rollback" ]]; then
+    cmp="$(rpm --eval "%{lua: print(rpm.vercmp('$theirs', '$mine'))}")"
+    if [[ "$cmp" == 1 ]]; then
+      copy="$(mktemp /run/basalt-rollback-newer.XXXXXX)"
+      cp "$mnt/usr/bin/basalt-rollback" "$copy"
+    fi
+  fi
+  umount "$mnt"; rmdir "$mnt"
+  if [[ -n "$copy" ]]; then
+    echo "Using basalt-rollback $theirs from the installed system (this snapshot has $mine)."
+    BASALT_ROLLBACK_DELEGATED=1 exec bash "$copy" "$@"
+  fi
+}
+delegate_to_newer "$@"
+
 if [[ -z "$num" ]]; then
   [[ -n "$booted" ]] || { echo "basalt-rollback: not booted from a snapshot; give a snapshot number (snapper list)" >&2; exit 1; }
   echo "Booted from snapshot $booted (read-only). Rolling back to it."
@@ -46,7 +196,7 @@ else
   snap --csvout list --columns number | grep -qx "$num" ||
     { echo "basalt-rollback: no snapshot $num" >&2; exit 1; }
   echo "Rolling back to snapshot $num:"
-  snap --csvout list --columns number,type,date,description | awk -F, -v n="$num" '$1 == n' 
+  snap --csvout list --columns number,type,date,description | awk -F, -v n="$num" '$1 == n'
 fi
 
 cmd=(snap --ambit classic rollback -d "basalt-rollback" ${num:+"$num"})
@@ -63,9 +213,9 @@ fi
 new_path="$(btrfs subvolume get-default / | awk '{print $NF}')"
 new_root="/.snapshots/$(sed -n 's|.*/\.snapshots/\([0-9]*\)/snapshot$|\1|p' <<<"$new_path")/snapshot"
 if [[ -d "$new_root/usr/lib/modules" ]]; then
-  mapfile -t kernels < <(for f in /boot/vmlinuz-*; do [[ -e "$f" && "$f" != *rescue* ]] && echo "${f#/boot/vmlinuz-}"; done | sort -rV)
-  for k in "${kernels[@]}"; do
-    [[ -d "$new_root/usr/lib/modules/$k" ]] || continue
+  newer=()
+  for k in $(boot_kernels); do
+    if [[ ! -d "$new_root/usr/lib/modules/$k" ]]; then newer+=("$k"); continue; fi
     for entry in /boot/loader/entries/*-"$k".conf; do
       [[ -f "$entry" ]] || continue
       grub2-set-default "$(basename "$entry" .conf)"
@@ -74,6 +224,10 @@ if [[ -d "$new_root/usr/lib/modules" ]]; then
     done
     break
   done
+  if [[ ${#newer[@]} -gt 0 ]]; then
+    echo "Kernel(s) ${newer[*]} stay on /boot: the rolled-back root has no modules for them."
+    echo "They are kept while a snapshot holds their modules; see basalt-rollback --kernels."
+  fi
 fi
 /usr/bin/basalt-snapshot-boot update || true
 echo "New default subvolume: $(btrfs subvolume get-default / | awk '{print $NF}')"

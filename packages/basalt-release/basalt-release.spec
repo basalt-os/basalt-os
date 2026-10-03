@@ -15,7 +15,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -214,6 +214,10 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 44-3
+- Preset: enable basalt-module-keys.service; basalt-tpm-resume.service stays
+  off until basalt-tpm suspend enables it.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 44-2
 - Preset: enable basalt-initial-snapshot.service.
 

@@ -1,0 +1,12 @@
+basalt-security: TPM2 disk unlock and Secure Boot helpers for Basalt OS.
+
+  basalt-tpm status | pcrs | reenroll | suspend
+  basalt-secureboot status | enroll-mok | unenroll-mok
+
+basalt-tpm-resume.service re-seals the TPM2 key on the boot after
+`basalt-tpm suspend`. basalt-module-keys.service loads the Basalt module
+signing certificates into the kernel's secondary trusted keyring at boot;
+they are accepted when the Basalt module CA is enrolled as a MOK.
+
+Design and procedures: docs/secure-boot.md in the Basalt OS repository,
+https://github.com/basalt-os/basalt-os

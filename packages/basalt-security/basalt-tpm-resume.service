@@ -1,0 +1,12 @@
+[Unit]
+Description=Basalt OS: re-seal the TPM2 disk key after a suspended boot
+Documentation=file:///usr/share/doc/basalt-security/README
+After=cryptsetup.target local-fs.target
+ConditionSecurity=tpm2
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/basalt-tpm resume
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Basalt OS: load kernel module signing certificates
+Documentation=man:keyctl(1)
+DefaultDependencies=no
+# Before anything loads modules from the root file system.
+Before=systemd-modules-load.service systemd-udev-trigger.service sysinit.target
+ConditionDirectoryNotEmpty=/usr/lib/basalt/module-keys
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/basalt-secureboot load-module-keys
+
+[Install]
+WantedBy=sysinit.target

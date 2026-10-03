@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Build the Basalt OS RPMs in a Fedora container.
 #
-#   scripts/build-rpms.sh            basalt-release, basalt-logos, basalt-snapshots
+#   scripts/build-rpms.sh            basalt-release, basalt-logos, basalt-snapshots, basalt-security
 #   scripts/build-rpms.sh --lab      also the lab canary package (versions 1, 2, 3)
 #
 # Output: $BUILD_DIR/rpms/<fedora>/ (binary and source RPMs); lab fixtures in
 # $BUILD_DIR/rpms/<fedora>/lab/. FEDORA_RELEASE selects the base (default 44).
 # BASALT_GPG_PUBKEY, when set, is the repository key shipped in basalt-release
 # (otherwise the placeholder in packages/basalt-release is kept).
+# BASALT_MODULE_CA_CERT and BASALT_MODULE_SIGNING_CERT (DER or PEM), when set,
+# are the kernel module CA (the MOK) and signing certificate shipped in
+# basalt-security (otherwise its placeholders are kept).
 source "$(dirname "$0")/lib.sh"
 
 lab=0
@@ -18,7 +21,7 @@ trap 'sudo rm -rf "$work"' EXIT
 mkdir -p "$work/SOURCES" "$work/SPECS" "$work/lab"
 
 # Sources: every file next to each spec.
-for pkg in basalt-release basalt-snapshots; do
+for pkg in basalt-release basalt-snapshots basalt-security; do
   cp -p "$REPO_ROOT/packages/$pkg/"* "$work/SOURCES/"
   mv "$work/SOURCES/$pkg.spec" "$work/SPECS/"
 done
@@ -30,6 +33,21 @@ if [[ -n "$BASALT_GPG_PUBKEY" ]]; then
 else
   log "basalt-release ships the placeholder key (set BASALT_GPG_PUBKEY for a usable repository)"
 fi
+
+# Module certificates for basalt-security, converted to DER.
+for pair in "BASALT_MODULE_CA_CERT:basalt-module-ca.der" "BASALT_MODULE_SIGNING_CERT:basalt-module-signing.der"; do
+  var="${pair%%:*}" dst="${pair#*:}"
+  src="${!var:-}"
+  [[ -n "$src" ]] || { log "basalt-security ships the placeholder $dst"; continue; }
+  [[ -f "$src" ]] || die "$var=$src not found"
+  if grep -q 'BEGIN CERTIFICATE' "$src"; then
+    openssl x509 -in "$src" -outform DER -out "$work/SOURCES/$dst"
+  else
+    openssl x509 -inform DER -in "$src" -noout || die "$src is not a certificate"
+    cp "$src" "$work/SOURCES/$dst"
+  fi
+  log "basalt-security ships $dst from $src"
+done
 
 # basalt-logos: the artwork tree travels as a tarball.
 logos="$REPO_ROOT/packages/basalt-logos"

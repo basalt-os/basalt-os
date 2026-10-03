@@ -3,8 +3,8 @@
 # and rollback.
 
 Name:           basalt-snapshots
-Version:        0.1.0
-Release:        8%{?dist}
+Version:        0.2.0
+Release:        3%{?dist}
 Summary:        Snapshots of the root file system around every dnf transaction
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -99,6 +99,19 @@ fi
 %config(noreplace) %{_sysconfdir}/basalt/snapshots.conf
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-3
+- basalt-rollback --clean-kernels: also remove the dangling symvers link.
+
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-2
+- basalt-rollback: when started from a snapshot booted from the menu, hand
+  over to a newer basalt-rollback of the installed system, if there is one.
+
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- basalt-rollback --kernels, --clean-kernels, --list-orphans: kernels left
+  on /boot by a rollback that no package and no snapshot needs any more are
+  reported after every dnf transaction and removed on request.
+- Boot menu: hotkey "s" opens the snapshot submenu.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-8
 - Detect a boot from the snapshot menu by basalt.snapshot= on the kernel
   command line: after a rollback the normal root is a snapshot subvolume too.

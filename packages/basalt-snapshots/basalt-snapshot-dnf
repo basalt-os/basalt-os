@@ -77,6 +77,13 @@ case "$step" in
     # starts a new pair.
     echo "tmp.basalt_snapper_pre"
     update_boot_menu
+    # Kernels left on /boot by a rollback that no package and no snapshot
+    # needs any more: report them (removal is an explicit, confirmed step).
+    orphans="$(/usr/bin/basalt-rollback --list-orphans 2>/dev/null | paste -sd' ' - || true)"
+    if [[ -n "$orphans" ]]; then
+      plugin_log WARNING "orphaned kernels on /boot: $orphans (remove with basalt-rollback --clean-kernels)"
+      say "orphaned kernels on /boot: $orphans; remove them with: basalt-rollback --clean-kernels"
+    fi
     ;;
   *)
     say "usage: basalt-snapshot-dnf pre PID | post PID [PRE]"
