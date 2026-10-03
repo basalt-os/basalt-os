@@ -27,8 +27,10 @@ Defaults from the first boot:
 | Firewall | firewalld on, zone `basalt`: only SSH allowed in |
 | Other | auditd on; LLMNR and multicast DNS off; serial console first (GRUB and kernel) |
 
-How it works and why: [docs/design.md](docs/design.md) and
-[docs/secure-boot.md](docs/secure-boot.md). Current state and measurements:
+How it works and why: [docs/design.md](docs/design.md),
+[docs/secure-boot.md](docs/secure-boot.md) and, for the system assistant
+(`basalt status`, `basalt why`, `basalt fix selinux`, proposals that are
+applied only after confirmation), [docs/assistant.md](docs/assistant.md). Current state and measurements:
 [docs/milestone-1-report.md](docs/milestone-1-report.md) (and
 [milestone 0](docs/milestone-0-report.md)).
 
@@ -39,6 +41,7 @@ packages/basalt-release/     release identity, repository, presets, server defau
 packages/basalt-logos/       branding: logos, icons, Plymouth and GRUB themes (spec + artwork tree)
 packages/basalt-snapshots/   snapper config, dnf5 hook, snapshot boot menu, setup and rollback tools
 packages/basalt-security/    basalt-tpm and basalt-secureboot: TPM2 unlock, MOK and module signing
+packages/basalt-assistant/   the system assistant: basalt CLI, basalt-assistantd, basalt-mcp, SELinux module (Go)
 packages/lab/                test fixtures for the lab (never published)
 kickstart/basalt-server.ks   the installer profile
 scripts/                     build-rpms.sh, repo.sh (signed repository), iso.sh (installer ISO)
@@ -124,6 +127,7 @@ make lab-snapshot-test   # snapshots around dnf, packages persist
 make lab-rollback-test   # broken updates, rollback from the system and from GRUB
 make lab-sb-test         # Secure Boot changes block the TPM unlock; the recovery key works
 make lab-measure
+make lab-assistant-test  # system assistant: events, proposals, confirmed applies, rollback
 ```
 
 ## License

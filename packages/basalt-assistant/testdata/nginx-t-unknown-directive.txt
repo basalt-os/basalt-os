@@ -1,0 +1,3 @@
+nginx: [emerg] unknown directive "bogus_directive" in /etc/nginx/nginx.conf:36
+nginx: configuration file /etc/nginx/nginx.conf test failed
+exit 1

@@ -1,0 +1,40 @@
+[Unit]
+Description=Basalt OS system assistant (event engine)
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/assistant.md
+After=systemd-journald.service local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/basalt/basalt-assistantd
+Restart=on-failure
+RestartSec=10s
+# The daemon only reads the system and writes its state directory and its
+# append-only audit log. SELinux (basalt_assistant_t) enforces that; the
+# settings below are a second, independent fence.
+StateDirectory=basalt-assistant
+StateDirectoryMode=0700
+LogsDirectory=basalt-assistant
+LogsDirectoryMode=0700
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

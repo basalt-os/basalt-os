@@ -128,3 +128,16 @@ ci-build: ## CI build: packages, UNSIGNED repository, ISO, checksums (build/ci-o
 
 ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwaway keys, smoke checks
 	$(S)/ci/boot-test.sh all
+
+# --- system assistant (packages/basalt-assistant) -----------------------------------
+
+.PHONY: rpm-assistant assistant-test lab-assistant-test
+
+rpm-assistant: ## Build only basalt-assistant (+ -selinux, source) into the RPM directory
+	packages/basalt-assistant/build.sh
+
+assistant-test: ## go vet + go test of basalt-assistant in a Fedora container
+	packages/basalt-assistant/build.sh test
+
+lab-assistant-test: ## Assistant on a lab VM: events, proposals, confirmed applies, rollback, confinement (scripts/lab/assistant-test.sh)
+	$(L)/assistant-test.sh

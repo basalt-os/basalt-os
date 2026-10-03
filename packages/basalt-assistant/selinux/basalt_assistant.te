@@ -1,0 +1,137 @@
+policy_module(basalt_assistant, 0.1.0)
+
+# Basalt OS system assistant.
+#
+# basalt_assistant_t confines both programs that run without a person at
+# the keyboard: the event engine (basalt-assistantd, started by systemd)
+# and the MCP server (basalt-mcp, started by an MCP client; an unconfined
+# process of an administrator transitions into this domain when it runs it).
+#
+# The domain may READ what diagnosis needs (journal, unit state through
+# systemd, SELinux policy and file contexts, snapshot metadata, file
+# attributes, statfs, socket lists) and WRITE only:
+#   - its state directory /var/lib/basalt-assistant (proposals, cursor,
+#     disk usage history);
+#   - its audit log in /var/log/basalt-assistant, by appending only (no
+#     write permission, so it cannot truncate or rewrite records; the file
+#     is also chattr +a);
+#   - messages to journald.
+# It has no domain transitions at all: every change runs from "basalt
+# apply", in the session of the administrator, after confirmation.
+
+type basalt_assistant_t;
+type basalt_assistant_exec_t;
+init_daemon_domain(basalt_assistant_t, basalt_assistant_exec_t)
+# The unit sets NoNewPrivileges=yes.
+init_nnp_daemon_domain(basalt_assistant_t)
+
+type basalt_mcp_exec_t;
+domain_entry_file(basalt_assistant_t, basalt_mcp_exec_t)
+
+type basalt_assistant_var_lib_t;
+files_type(basalt_assistant_var_lib_t)
+
+type basalt_assistant_log_t;
+logging_log_file(basalt_assistant_log_t)
+
+type basalt_assistant_conf_t;
+files_config_file(basalt_assistant_conf_t)
+
+type basalt_assistant_unit_file_t;
+systemd_unit_file(basalt_assistant_unit_file_t)
+
+########################################
+#
+# Own files
+#
+
+allow basalt_assistant_t self:capability dac_read_search;
+allow basalt_assistant_t self:process { getsched signal_perms };
+allow basalt_assistant_t self:fifo_file rw_fifo_file_perms;
+allow basalt_assistant_t self:unix_stream_socket create_stream_socket_perms;
+allow basalt_assistant_t self:unix_dgram_socket create_socket_perms;
+allow basalt_assistant_t self:netlink_tcpdiag_socket create_netlink_socket_perms;
+
+manage_dirs_pattern(basalt_assistant_t, basalt_assistant_var_lib_t, basalt_assistant_var_lib_t)
+manage_files_pattern(basalt_assistant_t, basalt_assistant_var_lib_t, basalt_assistant_var_lib_t)
+files_var_lib_filetrans(basalt_assistant_t, basalt_assistant_var_lib_t, dir)
+
+# Audit log: create once, then read (chain tail), append and lock. No
+# write, setattr, unlink or rename.
+logging_search_logs(basalt_assistant_t)
+allow basalt_assistant_t basalt_assistant_log_t:dir { list_dir_perms add_name };
+allow basalt_assistant_t basalt_assistant_log_t:file { create getattr open read append lock };
+
+read_files_pattern(basalt_assistant_t, basalt_assistant_conf_t, basalt_assistant_conf_t)
+files_read_etc_files(basalt_assistant_t)
+
+########################################
+#
+# Reading the system
+#
+
+kernel_read_system_state(basalt_assistant_t)
+kernel_read_network_state(basalt_assistant_t)
+kernel_read_kernel_sysctls(basalt_assistant_t)
+dev_read_sysfs(basalt_assistant_t)
+dev_read_urand(basalt_assistant_t)
+
+corecmd_exec_bin(basalt_assistant_t)
+corecmd_exec_shell(basalt_assistant_t)
+
+files_read_usr_files(basalt_assistant_t)
+files_search_var_lib(basalt_assistant_t)
+files_getattr_all_files(basalt_assistant_t)
+files_getattr_all_dirs(basalt_assistant_t)
+files_getattr_all_symlinks(basalt_assistant_t)
+files_search_all(basalt_assistant_t)
+fs_getattr_all_fs(basalt_assistant_t)
+fs_search_all(basalt_assistant_t)
+
+auth_read_passwd(basalt_assistant_t)
+miscfiles_read_localization(basalt_assistant_t)
+
+# Journal: journalctl runs in this domain and reads the journal files.
+journalctl_exec(basalt_assistant_t)
+logging_read_generic_logs(basalt_assistant_t)
+logging_mmap_journal(basalt_assistant_t)
+logging_watch_journal_dir(basalt_assistant_t)
+logging_read_syslog_pid(basalt_assistant_t)
+# journalctl -f watches /var/log/journal, which is var_log_t.
+gen_require(`
+	type var_log_t;
+')
+allow basalt_assistant_t var_log_t:dir watch;
+logging_send_syslog_msg(basalt_assistant_t)
+
+# Unit state through systemd (systemctl show, list-units, is-active).
+systemd_exec_systemctl(basalt_assistant_t)
+init_status(basalt_assistant_t)
+init_read_state(basalt_assistant_t)
+init_stream_connect(basalt_assistant_t)
+systemd_status_all_unit_files(basalt_assistant_t)
+
+# SELinux introspection: mode, booleans, policy (sesearch, seinfo), file
+# contexts (matchpathcon).
+selinux_get_enforce_mode(basalt_assistant_t)
+selinux_get_fs_mount(basalt_assistant_t)
+selinux_read_policy(basalt_assistant_t)
+selinux_validate_context(basalt_assistant_t)
+selinux_compute_access_vector(basalt_assistant_t)
+seutil_read_config(basalt_assistant_t)
+seutil_read_bin_policy(basalt_assistant_t)
+seutil_read_file_contexts(basalt_assistant_t)
+
+optional_policy(`
+	# Snapshot metadata (info.xml) under /.snapshots.
+	gen_require(`
+		type snapperd_data_t;
+	')
+	list_dirs_pattern(basalt_assistant_t, snapperd_data_t, snapperd_data_t)
+	read_files_pattern(basalt_assistant_t, snapperd_data_t, snapperd_data_t)
+')
+
+optional_policy(`
+	# The MCP server is started by the MCP client of an administrator.
+	unconfined_run_to(basalt_assistant_t, basalt_mcp_exec_t)
+')

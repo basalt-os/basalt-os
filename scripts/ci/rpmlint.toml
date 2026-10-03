@@ -9,4 +9,7 @@ Filters = [
     'explicit-lib-dependency libdnf5-plugin-actions',
     # The SSH hardening drop-in is root-only on purpose, like sshd_config.
     'non-readable /etc/ssh/sshd_config.d/10-basalt-hardening.conf',
+    # The assistant's audit log and state are root-only on purpose.
+    'non-standard-dir-perm /var/log/basalt-assistant',
+    'non-standard-dir-perm /var/lib/basalt-assistant',
 ]

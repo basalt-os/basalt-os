@@ -47,6 +47,7 @@ packages, and all updates to them, come from Fedora's mirrors.
 | `basalt-logos` and subpackages | Logos and icons (`LOGO=basalt-logo-icon`), `basalt-logos-httpd`, `plymouth-theme-basalt`, `basalt-grub2-theme`, `basalt-backgrounds`, `basalt-logos-compat`. Provides `system-logos`, conflicts with `fedora-logos` and `generic-logos`. Artwork under CC-BY-SA-4.0. |
 | `basalt-snapshots` | snapper template, dnf5 hook, snapshot boot menu, setup and rollback tools (below). |
 | `basalt-security` | `basalt-tpm` (TPM2 unlock state, re-enrollment, one-boot suspend before a planned change) and `basalt-secureboot` (Secure Boot state, enrollment of the Basalt kernel module CA as a MOK, module signing certificates loaded at boot). See [secure-boot.md](secure-boot.md). |
+| `basalt-assistant` | The system assistant: `basalt` (diagnosis, typed proposals, confirmed and audited changes), `basalt-assistantd` (event engine), `basalt-mcp` (MCP tools); `basalt-assistant-selinux` confines the daemon and the MCP server. See [assistant.md](assistant.md). |
 
 The release package keeps the file names other software reads
 (`/etc/fedora-release`, `/etc/redhat-release`, `/etc/system-release`) with

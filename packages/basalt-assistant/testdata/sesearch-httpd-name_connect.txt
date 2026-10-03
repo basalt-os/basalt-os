@@ -1,0 +1,37 @@
+allow daemon auth_port_t:tcp_socket name_connect; [ daemons_use_tcp_wrapper ]:True
+allow httpd_t cobbler_port_t:tcp_socket name_connect; [ httpd_can_network_connect_cobbler ]:True
+allow httpd_t ephemeral_port_type:tcp_socket name_connect; [ httpd_can_connect_ftp ]:True
+allow httpd_t ephemeral_port_type:tcp_socket name_connect; [ httpd_can_network_relay ]:True
+allow httpd_t ephemeral_port_type:tcp_socket name_connect; [ httpd_use_openstack ]:True
+allow httpd_t ftp_port_t:tcp_socket name_connect; [ httpd_can_connect_ftp ]:True
+allow httpd_t ftp_port_t:tcp_socket name_connect; [ httpd_can_network_relay ]:True
+allow httpd_t gds_db_port_t:tcp_socket name_connect; [ httpd_can_network_connect_db ]:True
+allow httpd_t gopher_port_t:tcp_socket name_connect; [ httpd_can_network_relay ]:True
+allow httpd_t http_cache_port_t:tcp_socket name_connect; [ httpd_can_network_relay ]:True
+allow httpd_t http_port_t:tcp_socket name_connect; [ httpd_can_network_relay ]:True
+allow httpd_t http_port_t:tcp_socket name_connect; [ httpd_graceful_shutdown ]:True
+allow httpd_t ldap_port_t:tcp_socket name_connect; [ httpd_can_connect_ldap ]:True
+allow httpd_t memcache_port_t:tcp_socket name_connect; [ httpd_can_network_memcache ]:True
+allow httpd_t memcache_port_t:tcp_socket name_connect; [ httpd_can_network_relay ]:True
+allow httpd_t mongod_port_t:tcp_socket name_connect; [ httpd_can_network_connect_db ]:True
+allow httpd_t mssql_port_t:tcp_socket name_connect; [ httpd_can_network_connect_db ]:True
+allow httpd_t mythtv_port_t:tcp_socket name_connect; [ httpd_can_connect_mythtv ]:True
+allow httpd_t oracle_port_t:tcp_socket name_connect; [ httpd_can_network_connect_db ]:True
+allow httpd_t osapi_compute_port_t:tcp_socket name_connect; [ httpd_use_openstack ]:True
+allow httpd_t pop_port_t:tcp_socket name_connect; [ httpd_can_sendmail ]:True
+allow httpd_t port_type:tcp_socket name_connect; [ httpd_can_network_connect ]:True
+allow httpd_t postgresql_port_t:tcp_socket name_connect; [ httpd_can_network_connect_db ]:True
+allow httpd_t redis_port_t:tcp_socket name_connect; [ httpd_can_network_redis ]:True
+allow httpd_t smtp_port_t:tcp_socket name_connect; [ httpd_can_sendmail ]:True
+allow httpd_t squid_port_t:tcp_socket name_connect; [ httpd_can_network_relay ]:True
+allow httpd_t tcs_port_t:tcp_socket name_connect; [ httpd_use_opencryptoki ]:True
+allow httpd_t zabbix_port_t:tcp_socket name_connect; [ httpd_can_connect_zabbix ]:True
+allow nsswitch_domain dns_port_t:tcp_socket { name_connect recv_msg send_msg };
+allow nsswitch_domain dnssec_port_t:tcp_socket name_connect;
+allow nsswitch_domain ephemeral_port_t:tcp_socket name_connect; [ nis_enabled ]:True
+allow nsswitch_domain kerberos_port_t:tcp_socket name_connect; [ kerberos_enabled ]:True
+allow nsswitch_domain ldap_port_t:tcp_socket name_connect; [ authlogin_nsswitch_use_ldap ]:True
+allow nsswitch_domain ocsp_port_t:tcp_socket name_connect; [ kerberos_enabled ]:True
+allow nsswitch_domain port_t:tcp_socket name_connect; [ nis_enabled ]:True
+allow nsswitch_domain reserved_port_type:tcp_socket name_connect; [ nis_enabled ]:True
+allow nsswitch_domain unreserved_port_t:tcp_socket name_connect; [ nis_enabled ]:True

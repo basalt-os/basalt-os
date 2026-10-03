@@ -1,0 +1,7 @@
+# The audit log is append-only (attribute +a): not even root can rewrite or
+# truncate it without first removing the attribute (CAP_LINUX_IMMUTABLE).
+d /var/lib/basalt-assistant 0700 root root -
+d /var/lib/basalt-assistant/proposals 0700 root root -
+d /var/log/basalt-assistant 0700 root root -
+f /var/log/basalt-assistant/audit.jsonl 0600 root root -
+h /var/log/basalt-assistant/audit.jsonl - - - - +a

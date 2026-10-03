@@ -1,0 +1,28 @@
+== var_t
+allow httpd_t var_t:dir { add_name ioctl lock read remove_name write };
+== httpd_log_t
+allow httpd_t httpd_log_t:dir { add_name create ioctl lock read setattr write };
+allow daemon logfile:file { append getattr ioctl lock };
+== httpd_sys_rw_content_t
+allow httpd_t httpd_sys_rw_content_t:dir { add_name create link remove_name rename reparent rmdir setattr unlink watch watch_reads write }; [ httpd_builtin_scripting ]:True
+allow httpd_t httpd_sys_rw_content_t:dir { add_name remove_name write }; [ httpd_builtin_scripting ]:True
+allow httpd_t httpd_sys_rw_content_t:dir { add_name remove_name write }; [ httpd_builtin_scripting ]:True
+allow httpd_t httpd_sys_rw_content_t:dir { add_name remove_name write }; [ httpd_builtin_scripting ]:True
+allow httpd_t httpdcontent:dir { add_name create ioctl link lock read remove_name rename reparent rmdir setattr unlink watch watch_reads write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpd_sys_rw_content_t:file { append create link rename setattr unlink watch watch_reads write }; [ httpd_builtin_scripting ]:True
+allow httpd_t httpdcontent:file { append create getattr ioctl link lock open read rename setattr unlink watch watch_reads write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+== httpd_sys_content_t
+allow httpd_t httpdcontent:dir { add_name create ioctl link lock read remove_name rename reparent rmdir setattr unlink watch watch_reads write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:dir { add_name ioctl lock read remove_name write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True
+allow httpd_t httpdcontent:file { append create getattr ioctl link lock open read rename setattr unlink watch watch_reads write }; [ ( httpd_builtin_scripting && httpd_unified && httpd_enable_cgi ) ]:True

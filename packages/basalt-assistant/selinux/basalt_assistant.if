@@ -1,0 +1,35 @@
+## <summary>Basalt OS system assistant: event engine and MCP server.</summary>
+
+########################################
+## <summary>
+##	Read the assistant's proposals and state.
+## </summary>
+## <param name="domain">
+##	<summary>Domain allowed access.</summary>
+## </param>
+#
+interface(`basalt_assistant_read_state',`
+	gen_require(`
+		type basalt_assistant_var_lib_t;
+	')
+	files_search_var_lib($1)
+	list_dirs_pattern($1, basalt_assistant_var_lib_t, basalt_assistant_var_lib_t)
+	read_files_pattern($1, basalt_assistant_var_lib_t, basalt_assistant_var_lib_t)
+')
+
+########################################
+## <summary>
+##	Read the assistant's audit log.
+## </summary>
+## <param name="domain">
+##	<summary>Domain allowed access.</summary>
+## </param>
+#
+interface(`basalt_assistant_read_log',`
+	gen_require(`
+		type basalt_assistant_log_t;
+	')
+	logging_search_logs($1)
+	list_dirs_pattern($1, basalt_assistant_log_t, basalt_assistant_log_t)
+	read_files_pattern($1, basalt_assistant_log_t, basalt_assistant_log_t)
+')

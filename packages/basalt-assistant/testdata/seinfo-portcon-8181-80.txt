@@ -1,0 +1,13 @@
+
+Portcon: 4
+   portcon sctp 1024-65535 system_u:object_r:unreserved_port_t:s0
+   portcon tcp 1024-32767 system_u:object_r:unreserved_port_t:s0
+   portcon tcp 8181 system_u:object_r:intermapper_port_t:s0
+   portcon udp 1024-32767 system_u:object_r:unreserved_port_t:s0
+
+Portcon: 5
+   portcon sctp 1-511 system_u:object_r:reserved_port_t:s0
+   portcon tcp 1-511 system_u:object_r:reserved_port_t:s0
+   portcon tcp 80 system_u:object_r:http_port_t:s0
+   portcon udp 1-511 system_u:object_r:reserved_port_t:s0
+   portcon udp 80 system_u:object_r:http_port_t:s0

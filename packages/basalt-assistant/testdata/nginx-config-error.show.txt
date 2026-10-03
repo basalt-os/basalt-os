@@ -1,0 +1,22 @@
+Id=nginx.service
+Requires=system.slice sysinit.target
+Requisite=
+Wants=network-online.target var-tmp.mount tmp.mount -.mount
+BindsTo=
+After=nss-lookup.target systemd-journald.socket sysinit.target basic.target remote-fs.target -.mount systemd-tmpfiles-setup.service network-online.target tmp.mount system.slice var-tmp.mount
+Description=The nginx HTTP and reverse proxy server
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+FragmentPath=/usr/lib/systemd/system/nginx.service
+StateChangeTimestamp=@1791037336
+InactiveExitTimestamp=@1791037336
+ActiveEnterTimestamp=@1791037335
+MainPID=0
+Result=exit-code
+NRestarts=0
+ExecMainCode=0
+ExecMainStatus=0
+ExecStartPre={ path=/usr/bin/rm ; argv[]=/usr/bin/rm -f /run/nginx.pid ; ignore_errors=no ; start_time=[@1791037336] ; stop_time=[@1791037336] ; pid=2995 ; code=exited ; status=0 }
+ExecStartPre={ path=/usr/sbin/nginx ; argv[]=/usr/sbin/nginx -t ; ignore_errors=no ; start_time=[@1791037336] ; stop_time=[@1791037336] ; pid=2997 ; code=exited ; status=1 }
+ExecStart={ path=/usr/sbin/nginx ; argv[]=/usr/sbin/nginx ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }

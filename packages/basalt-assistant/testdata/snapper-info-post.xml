@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<snapshot>
+  <type>post</type>
+  <num>3</num>
+  <date>2026-10-03 14:20:05</date>
+  <pre_num>2</pre_num>
+  <description>dnf -y -q --setopt=max_parallel_downloads=10 install nginx</description>
+  <cleanup>number</cleanup>
+  <userdata>
+    <key>basalt</key>
+    <value>dnf</value>
+  </userdata>
+</snapshot>

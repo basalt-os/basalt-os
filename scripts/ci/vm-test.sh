@@ -288,6 +288,24 @@ else
   result FAIL "basalt-rollback --kernels" "see rollback-kernels.log"
 fi
 
+# System assistant: installed from the test repository, confined daemon,
+# read-only diagnosis. Its daemon is enabled by preset, so the denial check
+# after the reboot below also covers it.
+if vm 'dnf -y install basalt-assistant' >"$LOGS/dnf-assistant.log" 2>&1; then
+  result PASS "dnf install basalt-assistant" "$(vm 'rpm -q basalt-assistant basalt-assistant-selinux' | paste -sd' ')"
+  if vm 'basalt status' >"$LOGS/basalt-status.txt" 2>&1 && grep -q '^SELinux: *Enforcing' "$LOGS/basalt-status.txt"; then
+    result PASS "basalt status" "$(grep -c . "$LOGS/basalt-status.txt") lines"
+  else
+    result FAIL "basalt status" "see basalt-status.txt"
+  fi
+  dom="$(vm 'systemctl start basalt-assistantd && sleep 3 && ps -eo label,comm | awk "/basalt-assistan/ {print \$1}"' || true)"
+  [[ "$dom" == *:basalt_assistant_t:* ]] && result PASS "assistant daemon confined" "$dom" || result FAIL "assistant daemon confined" "${dom:-not running}"
+  if vm 'basalt audit verify' >/dev/null 2>&1; then result PASS "assistant audit chain" "verifies"; else result FAIL "assistant audit chain" "does not verify"; fi
+else
+  tail -20 "$LOGS/dnf-assistant.log" >&2
+  result FAIL "dnf install basalt-assistant" "see dnf-assistant.log"
+fi
+
 # --- 4. reboot ------------------------------------------------------------------------
 
 boot_id="$(vm 'cat /proc/sys/kernel/random/boot_id')"

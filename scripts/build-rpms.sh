@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the Basalt OS RPMs in a Fedora container.
 #
-#   scripts/build-rpms.sh            basalt-release, basalt-logos, basalt-snapshots, basalt-security
+#   scripts/build-rpms.sh            basalt-release, basalt-logos, basalt-snapshots, basalt-security,
+#                                    basalt-assistant (Go, own script: packages/basalt-assistant/build.sh)
 #   scripts/build-rpms.sh --lab      also the lab canary package (versions 1, 2, 3)
 #
 # Output: $BUILD_DIR/rpms/<fedora>/ (binary and source RPMs); lab fixtures in
@@ -82,3 +83,6 @@ if [[ $lab == 1 ]]; then
 fi
 sudo chown -R "$(id -u):$(id -g)" "$RPM_DIR"
 find "$RPM_DIR" -name "*.rpm" -printf "%P  %s bytes\n" | sort
+
+# basalt-assistant (Go and an SELinux module) builds in its own container run.
+"$REPO_ROOT/packages/basalt-assistant/build.sh"

@@ -1,0 +1,13 @@
+allow httpd_t commplex_main_port_t:tcp_socket name_bind; [ httpd_use_openstack ]:True
+allow httpd_t ephemeral_port_type:tcp_socket name_bind; [ httpd_enable_ftp_server ]:True
+allow httpd_t ftp_port_t:tcp_socket name_bind; [ httpd_enable_ftp_server ]:True
+allow httpd_t http_cache_port_t:tcp_socket name_bind;
+allow httpd_t http_port_t:tcp_socket name_bind;
+allow httpd_t jboss_management_port_t:tcp_socket name_bind;
+allow httpd_t jboss_messaging_port_t:tcp_socket name_bind;
+allow httpd_t ntop_port_t:tcp_socket name_bind;
+allow httpd_t preupgrade_port_t:tcp_socket name_bind; [ httpd_run_preupgrade ]:True
+allow httpd_t puppet_port_t:tcp_socket name_bind;
+allow nsswitch_domain ephemeral_port_t:tcp_socket name_bind; [ nis_enabled ]:True
+allow nsswitch_domain port_t:tcp_socket name_bind; [ nis_enabled ]:True
+allow nsswitch_domain unreserved_port_t:tcp_socket name_bind; [ nis_enabled ]:True

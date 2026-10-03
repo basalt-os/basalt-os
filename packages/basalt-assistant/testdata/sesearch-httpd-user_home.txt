@@ -1,0 +1,1 @@
+allow httpd_t user_home_type:file { getattr ioctl lock open read }; [ httpd_read_user_content ]:True
