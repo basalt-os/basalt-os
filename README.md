@@ -1,5 +1,7 @@
 # Basalt OS
 
+[![CI](https://github.com/basalt-os/basalt-os/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/basalt-os/basalt-os/actions/workflows/ci.yml)
+
 > Pre-alpha. Not for production use. Basalt OS is based on Fedora and is not
 > affiliated with or endorsed by the Fedora Project or Red Hat. Expect
 > breaking changes, rebuilt history and missing pieces.
@@ -62,6 +64,16 @@ make iso                 # build the Basalt OS installer ISO
 under `LAB_DIR` (mode 0600, never printed); `BASALT_GPG_PUBKEY` makes
 `basalt-release` ship its public half. Without it, `basalt-release` carries a
 placeholder and cannot verify the repository. There is no release key yet.
+
+CI (GitHub Actions, `.github/workflows/ci.yml`) runs the same steps on every
+push and pull request: `make ci-lint` (ShellCheck, rpmlint, ksvalidator,
+actionlint), `make ci-build` (packages, repository, ISO, checksums) and
+`make ci-boot-test` (an unattended install in QEMU/KVM with Secure Boot and an
+emulated TPM, then smoke checks; skipped when the runner has no KVM). CI holds
+no keys: the packages, repository and ISO it publishes as artifacts are
+unsigned test builds, and the boot test signs its own repository with a
+throwaway key that exists for one run. Release signing happens outside CI,
+see [docs/key-ceremony.md](docs/key-ceremony.md).
 
 ## Install
 

@@ -19,7 +19,7 @@ source "$(dirname "$0")/../lib.sh"
 dir="$LAB_DIR/sb-keys"
 umask 077
 install -d -m 0700 "$dir"
-cd "$dir"
+cd "$dir" || die "cannot enter $dir"
 
 ossl() { openssl "$@" 2>/dev/null; }
 

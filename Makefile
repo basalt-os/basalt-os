@@ -115,3 +115,16 @@ lab-kernels-test: ## Orphaned kernels after a rollback: detection and cleanup
 
 lab-destroy: ## Remove the VM, its disk, NVRAM and TPM state
 	$(L)/vm.sh destroy
+
+# --- CI (scripts/ci; the same commands run in GitHub Actions) ----------------------
+
+.PHONY: ci-lint ci-build ci-boot-test
+
+ci-lint: ## Static checks in a Fedora container: make lint, ShellCheck, rpmlint, ksvalidator, actionlint
+	$(S)/ci/lint.sh --container
+
+ci-build: ## CI build: packages, UNSIGNED repository, ISO, checksums (build/ci-out)
+	$(S)/ci/build.sh all
+
+ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwaway keys, smoke checks
+	$(S)/ci/boot-test.sh all

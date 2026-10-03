@@ -1,0 +1,71 @@
+# Release workflow: a skeleton, disabled by design.
+#
+# Basalt OS has no release keys yet (docs/key-ceremony.md). Until the key
+# ceremony has happened and a release signer exists, the gate job below
+# fails on purpose and nothing else runs. This file documents where signing
+# will happen, so that the pipeline is reviewed before it is needed.
+#
+# Intended flow once the keys exist:
+#   1. build      same scripts as CI (scripts/ci/build.sh), from a tag, on a
+#                 GitHub-hosted runner; output: unsigned RPMs and SRPMs,
+#                 checksums, a provenance attestation.
+#   2. sign       NOT on GitHub. The release signer (a dedicated machine or
+#                 a hardware token, see docs/key-ceremony.md "Routine use")
+#                 fetches the unsigned build, checks the checksums and the
+#                 attestation, signs the packages (rpmsign) and the
+#                 repository metadata (repomd.xml.asc) with the repository
+#                 signing subkey, and signs kernel modules with the module
+#                 signing key. No private key is ever stored as a GitHub
+#                 secret.
+#   3. iso        the installer ISO is built from the signed repository
+#                 (scripts/iso.sh build), checksums signed on the release
+#                 signer.
+#   4. publish    repository tree and ISO uploaded to the release mirror;
+#                 a GitHub release with checksums. This job will need
+#                 `contents: write`, granted on that job only.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Release keys present?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Release signing is not set up yet
+        run: |
+          echo "::error title=Release disabled::Basalt OS has no release keys yet. Releases are disabled until the key ceremony (docs/key-ceremony.md) and the release signer exist. Remove this gate in the same change that implements the signing steps."
+          exit 1
+
+  build:
+    name: Build (unsigned, for the release signer)
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PODMAN: sudo podman
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: Build packages and the unsigned repository
+        run: scripts/ci/build.sh rpms && scripts/ci/build.sh repo
+      - name: Hand-off point to the release signer (not implemented)
+        run: |
+          echo "::error::Signing happens on the release signer, outside GitHub (docs/key-ceremony.md). Not implemented yet."
+          exit 1

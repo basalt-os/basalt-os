@@ -1,0 +1,153 @@
+# Lint, build and boot test on GitHub-hosted runners. Every job calls a
+# script in scripts/ci/ that also runs locally (make ci-lint, ci-build,
+# ci-boot-test). No secrets are used: CI holds no signing keys, so the
+# packages, repository and ISO it uploads are UNSIGNED test builds.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "archive/**", "LICENSE"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**", "archive/**", "LICENSE"]
+  schedule:
+    # Weekly, so a Fedora update that breaks the install shows up without a commit.
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      boot_test:
+        description: Run the boot test (install in QEMU, smoke checks)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FEDORA_RELEASE: "44"
+  PODMAN: sudo podman
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck, rpmlint, ksvalidator, actionlint (Fedora container)
+        run: make ci-lint
+
+  build:
+    name: Build RPMs, repository, ISO
+    needs: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fedora netinst ISO checksum (cache key)
+        id: fedora-iso
+        run: |
+          read -r name sha < <(scripts/ci/fedora-iso-id.sh)
+          echo "name=$name" >>"$GITHUB_OUTPUT"
+          echo "sha256=$sha" >>"$GITHUB_OUTPUT"
+      - name: Fedora ISO cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/iso-cache
+          key: fedora-iso-${{ steps.fedora-iso.outputs.sha256 }}
+      - name: Build (packages, unsigned repository, ISO, checksums)
+        run: make ci-build
+      - name: Summary
+        run: |
+          {
+            echo "### Build"
+            echo
+            echo "Unsigned test build: no package, metadata or ISO signatures (CI holds no keys)."
+            echo
+            echo '```'
+            cat build/ci-out/BUILD-INFO.txt
+            echo
+            cat build/ci-out/SHA256SUMS
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+      - name: Upload repository (unsigned)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: basalt-os-repo-unsigned-${{ github.sha }}
+          path: |
+            build/ci-out/repo/
+            build/ci-out/BUILD-INFO.txt
+            build/ci-out/SHA256SUMS
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload ISO (unsigned)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: basalt-os-iso-unsigned-${{ github.sha }}
+          path: |
+            build/ci-out/*.iso
+            build/ci-out/BUILD-INFO.txt
+            build/ci-out/SHA256SUMS
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
+  boot-test:
+    name: Boot test (QEMU, Secure Boot, TPM)
+    needs: build
+    if: github.event_name != 'workflow_dispatch' || inputs.boot_test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: KVM available?
+        id: kvm
+        run: |
+          if msg="$(scripts/ci/kvm-check.sh)"; then
+            echo "available=true" >>"$GITHUB_OUTPUT"
+            echo "$msg"
+          else
+            echo "available=false" >>"$GITHUB_OUTPUT"
+            echo "::notice title=Boot test skipped::$msg"
+            printf '### Boot test\n\nSkipped: %s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Fedora netinst ISO checksum (cache key)
+        id: fedora-iso
+        if: steps.kvm.outputs.available == 'true'
+        run: |
+          read -r name sha < <(scripts/ci/fedora-iso-id.sh)
+          echo "name=$name" >>"$GITHUB_OUTPUT"
+          echo "sha256=$sha" >>"$GITHUB_OUTPUT"
+      - name: Fedora ISO cache (restore only; the build job saves it)
+        if: steps.kvm.outputs.available == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/iso-cache
+          key: fedora-iso-${{ steps.fedora-iso.outputs.sha256 }}
+      - name: Prepare (throwaway keys, packages, signed test repository, test ISO)
+        if: steps.kvm.outputs.available == 'true'
+        run: scripts/ci/boot-test.sh prepare
+      - name: Install and smoke checks
+        if: steps.kvm.outputs.available == 'true'
+        env:
+          CI_VM_VCPUS: "4"
+          VM_MEMORY_MB: "6144"
+        run: scripts/ci/boot-test.sh run
+      - name: Upload boot test logs
+        if: always() && steps.kvm.outputs.available == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: boot-test-logs-${{ github.sha }}
+          path: build/ci-boot/vm/logs/
+          retention-days: 14
+          if-no-files-found: warn

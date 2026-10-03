@@ -1,0 +1,12 @@
+# rpmlint configuration for scripts/ci/lint.sh (spec files) and
+# scripts/ci/build.sh (built packages). Each filter is a known, accepted
+# finding; keep the reason next to it.
+Filters = [
+    # The en_US dictionary does not know dnf, subvolume, systemd, TPM and
+    # similar technical words used in summaries and descriptions.
+    'spelling-error',
+    # libdnf5-plugin-actions is a dnf5 plugin, not a shared library.
+    'explicit-lib-dependency libdnf5-plugin-actions',
+    # The SSH hardening drop-in is root-only on purpose, like sshd_config.
+    'non-readable /etc/ssh/sshd_config.d/10-basalt-hardening.conf',
+]
