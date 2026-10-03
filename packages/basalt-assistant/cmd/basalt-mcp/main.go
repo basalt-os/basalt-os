@@ -30,7 +30,7 @@ func main() {
 		os.Exit(2)
 	}
 	al := audit.New(cfg.AuditPath, "basalt-mcp")
-	layer := decide.FromConfig(cfg.Backend, cfg.ModelEndpoint, cfg.Model, al, cfg.Thresholds, cfg.DefaultThreshold)
+	layer := decide.FromConfigFull(cfg.DecideConfig(), al, cfg.Thresholds, cfg.DefaultThreshold)
 	env := diag.Real(true, layer)
 	env.HistoryPath = cfg.StateDir + "/disk-history.jsonl"
 	s := &mcp.Server{Env: env, Store: proposal.Store{Dir: cfg.StateDir + "/proposals"}, Audit: al,

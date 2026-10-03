@@ -356,3 +356,13 @@ func TestRestoreSkipsCopiesNewerThanTheLastGoodStart(t *testing.T) {
 		t.Fatalf("candidate %+v", rc)
 	}
 }
+
+func TestFoundPathSkipsFindErrors(t *testing.T) {
+	out := "/usr/bin/find: '/var/www': No such file or directory\n/srv/data/x.log\n"
+	if p := foundPath(out); p != "/srv/data/x.log" {
+		t.Fatalf("got %q", p)
+	}
+	if p := foundPath("/usr/bin/find: '/var/www': No such file or directory\n"); p != "" {
+		t.Fatalf("an error message was taken for a path: %q", p)
+	}
+}

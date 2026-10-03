@@ -71,7 +71,7 @@ func TestThresholdsAndLogging(t *testing.T) {
 }
 
 func TestModelBackendFallsBackToRules(t *testing.T) {
-	l := FromConfig("openai-compatible", "http://127.0.0.1:8080/v1", "m", nil, nil, 0.75)
+	l := FromConfig("openai-compatible", "unix:/nonexistent/basalt-llm.sock", "m", nil, nil, 0.75)
 	d := l.Ask(context.Background(), UnitCause("x", map[string]bool{"journal_address_in_use": true}))
 	if d.Answer.Top != "port_conflict" || d.Answer.Backend != "rules/v1 (fallback)" {
 		t.Fatalf("fallback: %+v", d.Answer)

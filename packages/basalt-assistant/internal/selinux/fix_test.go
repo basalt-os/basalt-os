@@ -170,3 +170,18 @@ func TestAnalyzePathHiddenDenial(t *testing.T) {
 		t.Error("no_avc feature missing")
 	}
 }
+
+// Lab case: nginx configured to include /etc/shadow. The label check must
+// never propose relabeling it.
+func TestAnalyzePathNeverRelabelsShadow(t *testing.T) {
+	labels := map[string]string{"/etc": "system_u:object_r:etc_t:s0", "/etc/shadow": "system_u:object_r:shadow_t:s0"}
+	r := fake(map[string]runner.Result{
+		"sesearch -A -s httpd_t -t etc_t -c dir -p search": {Out: "allow httpd_t etc_t:dir { getattr open search };"},
+		"test -d /etc/shadow":                              {Code: 1},
+	})
+	f, ok := Analyzer{R: r}.AnalyzePath(context.Background(), "httpd_t", "/etc/shadow", false,
+		func(p string) string { return labels[p] })
+	if !ok || f.Class != ClassSuspicious || len(f.Actions) != 0 {
+		t.Fatalf("ok %v class %s actions %+v", ok, f.Class, f.Actions)
+	}
+}

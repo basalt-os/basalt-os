@@ -56,6 +56,15 @@ func (z Analyzer) AnalyzePath(ctx context.Context, dom, p string, write bool, la
 		f := Fix{Group: Group{AVC: a}, Features: map[string]bool{"has_path": true, "no_avc": true}, Facts: map[string]string{},
 			Path: c, PathFrom: "journal message, label check"}
 		f.Evidence = append(f.Evidence, fmt.Sprintf("%s may not %s the %s %s (labeled %s); no AVC was logged, so a dontaudit rule hides the denial", dom, perm, class, c, actual))
+		if sensitiveTypes[actual] {
+			// Never propose relabeling a security-sensitive object (found
+			// in the lab: nginx told to include /etc/shadow).
+			f.Features["sensitive_target"] = true
+			f.Explanation = fmt.Sprintf("%s may not %s %s (labeled %s, security-sensitive): do not relabel it; fix what makes the service use it",
+				dom, perm, c, actual)
+			f.Class = classify(f.Features)
+			return f, true
+		}
 		def := z.defaultType(ctx, c)
 		f.DefaultType = def
 		if def != "" {

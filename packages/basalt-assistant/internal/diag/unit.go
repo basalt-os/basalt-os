@@ -194,7 +194,9 @@ func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
 	e.unitDisks(ctx, rep)
 	e.unitConfig(ctx, rep)
 
-	d := e.ask(ctx, decide.UnitCause(unit, rep.Features))
+	q := decide.UnitCause(unit, rep.Features)
+	q.Facts = decide.JournalFacts(rep.Journal)
+	d := e.ask(ctx, q)
 	rep.Decision = d
 	rep.Cause = d.Answer.Top
 	e.unitPlan(rep)
@@ -219,6 +221,47 @@ func unixTS(s string) time.Time {
 	return time.Time{}
 }
 
+// lineFeatures sets the features one journal message shows and returns
+// the configuration file and line it names, if any.
+func lineFeatures(m string, noSpace bool, ft map[string]bool) (string, int) {
+	cfg := reConfigErr.MatchString(m)
+	if cfg {
+		ft["journal_config_error"] = true
+	}
+	if reAddrInUse.MatchString(m) {
+		ft["journal_address_in_use"] = true
+	}
+	if rePermDenied.MatchString(m) {
+		ft["journal_permission_denied"] = true
+	}
+	if reNoSuchFile.MatchString(m) && !cfg {
+		ft["journal_no_such_file"] = true
+	}
+	if noSpace {
+		ft["journal_no_space"] = true
+	}
+	if strings.Contains(m, "Dependency failed") {
+		ft["dependency_failed"] = true
+	}
+	if mm := reConfigAt.FindStringSubmatch(m); mm != nil && cfg {
+		ft["journal_config_location"] = true
+		n, _ := strconv.Atoi(mm[2])
+		return mm[1], n
+	}
+	return "", 0
+}
+
+// JournalFeatures is what `basalt why` reads from journal messages of a
+// unit, for the evaluation suite: generated cases get their journal
+// features from the same code as real ones.
+func JournalFeatures(lines []string) map[string]bool {
+	ft := map[string]bool{}
+	for _, m := range lines {
+		lineFeatures(m, journal.Entry{Message: m}.IsNoSpace(), ft)
+	}
+	return ft
+}
+
 func (e *Env) unitJournal(ctx context.Context, rep *UnitReport, window time.Time) {
 	res := e.R.Read(ctx, "journalctl", "--no-pager", "-o", "json", "-u", rep.Unit,
 		"--since", "@"+strconv.FormatInt(window.Unix(), 10), "-n", "400")
@@ -235,28 +278,8 @@ func (e *Env) unitJournal(ctx context.Context, rep *UnitReport, window time.Time
 		if !interesting {
 			continue
 		}
-		if reConfigErr.MatchString(m) {
-			rep.Features["journal_config_error"] = true
-		}
-		if reAddrInUse.MatchString(m) {
-			rep.Features["journal_address_in_use"] = true
-		}
-		if rePermDenied.MatchString(m) {
-			rep.Features["journal_permission_denied"] = true
-		}
-		if reNoSuchFile.MatchString(m) && !reConfigErr.MatchString(m) {
-			rep.Features["journal_no_such_file"] = true
-		}
-		if en.IsNoSpace() {
-			rep.Features["journal_no_space"] = true
-		}
-		if strings.Contains(m, "Dependency failed") {
-			rep.Features["dependency_failed"] = true
-		}
-		if mm := reConfigAt.FindStringSubmatch(m); mm != nil && rep.ConfigFile == "" && reConfigErr.MatchString(m) {
-			rep.Features["journal_config_location"] = true
-			rep.ConfigFile = mm[1]
-			rep.ConfigLine, _ = strconv.Atoi(mm[2])
+		if f, l := lineFeatures(m, en.IsNoSpace(), rep.Features); f != "" && rep.ConfigFile == "" {
+			rep.ConfigFile, rep.ConfigLine = f, l
 		}
 		if seen[m] {
 			continue
@@ -448,17 +471,31 @@ func (e *Env) resolveAVCPath(ctx context.Context, a selinux.AVC) (string, string
 	}
 	r := e.R.Read(ctx, "find", "/srv", "/var/www", "/var/lib", "/var/log", "/opt", "/home", "/etc", "/var/spool", "/var/cache", "/run",
 		"-xdev", "-inum", strconv.FormatUint(a.Ino, 10), "-name", a.Name, "-print", "-quit")
-	if p := strings.TrimSpace(firstLine(r.Out)); strings.HasPrefix(p, "/") {
+	if p := foundPath(r.Out); p != "" {
 		return p, "inode search"
 	}
 	// btrfs subvolumes are separate devices for -xdev: search each mount.
 	for _, d := range []string{"/srv", "/var/log", "/home", "/var/lib/containers", "/var/lib/pgsql", "/var/lib/mysql", "/var/spool", "/var/cache", "/var/tmp"} {
 		r := e.R.Read(ctx, "find", d, "-xdev", "-inum", strconv.FormatUint(a.Ino, 10), "-name", a.Name, "-print", "-quit")
-		if p := strings.TrimSpace(firstLine(r.Out)); strings.HasPrefix(p, "/") {
+		if p := foundPath(r.Out); p != "" {
 			return p, "inode search"
 		}
 	}
 	return "", ""
+}
+
+// foundPath is the first path find printed. find's error messages for
+// missing start directories ("/usr/bin/find: '/var/www': No such file or
+// directory") also start with "/" when stderr is merged; they are skipped
+// (found in the lab: such a message was taken for the denied object).
+func foundPath(out string) string {
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "/") && !strings.Contains(l, "find: ") {
+			return l
+		}
+	}
+	return ""
 }
 
 func firstLine(s string) string {

@@ -251,7 +251,15 @@ func (e *Env) Disk(ctx context.Context, th DiskThresholds, maxSnaps int) (*DiskR
 	}
 	r.Evidence = append(r.Evidence, "forecast: "+r.Forecast.Note)
 
-	r.Decision = e.ask(ctx, decide.DiskCause("/", r.Features))
+	q := decide.DiskCause("/", r.Features)
+	// Sizes for a model backend (the rules read only the features); a size
+	// the confined daemon could not measure is left out.
+	q.Facts = map[string]any{"journal_bytes": r.Journal}
+	if !e.Confined {
+		q.Facts["snapshots_bytes"] = r.SnapshotTotal
+		q.Facts["package_cache_bytes"] = r.PkgCache
+	}
+	r.Decision = e.ask(ctx, q)
 	e.diskPlan(r, th)
 	return r, nil
 }

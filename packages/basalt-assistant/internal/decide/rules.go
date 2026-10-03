@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // Rules is the deterministic backend. Each question has a prior over its
@@ -236,3 +237,26 @@ func SeverityFeatures(a Answer) map[string]bool {
 
 // FormatProb renders a probability.
 func FormatProb(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
+
+// JournalFacts is the evidence a model backend sees with a question: the
+// last journal lines of the case, each cut to 300 bytes (core dumps carry
+// long stack traces). The rules backend ignores facts.
+func JournalFacts(lines []string) map[string]any {
+	if len(lines) == 0 {
+		return nil
+	}
+	if len(lines) > 8 {
+		lines = lines[len(lines)-8:]
+	}
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if i := strings.IndexByte(l, '\n'); i >= 0 {
+			l = l[:i]
+		}
+		if len(l) > 300 {
+			l = l[:300]
+		}
+		out = append(out, l)
+	}
+	return map[string]any{"journal": out}
+}

@@ -29,3 +29,13 @@ func TestLoad(t *testing.T) {
 		t.Error("missing file must give defaults")
 	}
 }
+
+func TestShippedConfigLoads(t *testing.T) {
+	c, err := Load("../../dist/assistant.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Backend != "rules" || c.Translator || c.TranslatorEndpoint != "unix:/run/basalt-llm/llm.sock" || c.AllowRemote {
+		t.Fatalf("shipped defaults changed: %+v", c)
+	}
+}

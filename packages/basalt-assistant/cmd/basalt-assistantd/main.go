@@ -40,7 +40,7 @@ func main() {
 		os.Exit(1)
 	}
 	al := audit.New(cfg.AuditPath, "basalt-assistantd")
-	layer := decide.FromConfig(cfg.Backend, cfg.ModelEndpoint, cfg.Model, al, cfg.Thresholds, cfg.DefaultThreshold)
+	layer := decide.FromConfigFull(cfg.DecideConfig(), al, cfg.Thresholds, cfg.DefaultThreshold)
 	env := diag.Real(true, layer)
 	env.HistoryPath = filepath.Join(cfg.StateDir, "disk-history.jsonl")
 	eng := engine.New(cfg, env, proposal.Store{Dir: filepath.Join(cfg.StateDir, "proposals")}, al, layer, os.Stdout)

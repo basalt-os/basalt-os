@@ -42,6 +42,11 @@ Changes (root; exact commands shown, then confirmation):
   basalt why UNIT --apply, basalt fix selinux --apply, basalt disk --apply
                                       store the proposal and go straight to the confirmation
 
+Natural language (optional, needs the local model service basalt-llm and
+[translator] enabled = yes in /etc/basalt/assistant.conf):
+  basalt ask "por que o nginx caiu?"  translate into one of the commands above and run it if it
+                                      only reads; a change is printed, never run (--dry-run: only print)
+
 Options: --json (machine-readable output), --config FILE.
 Diagnoses that find a change store it as a pending proposal when run as root.
 `
@@ -49,6 +54,7 @@ Diagnoses that find a change store it as a pending proposal when run as root.
 // opts are the parsed flags.
 type opts struct {
 	json, apply, yes, all bool
+	dryRun                bool
 	since                 time.Duration
 	confirm, reason       string
 	before, config        string
@@ -81,6 +87,8 @@ func parse(argv []string) (opts, error) {
 			o.yes = true
 		case "--all":
 			o.all = true
+		case "--dry-run":
+			o.dryRun = true
 		case "--since":
 			if v, err = val(); err == nil {
 				o.since, err = time.ParseDuration(v)
@@ -147,35 +155,12 @@ func Main(argv []string, version string) int {
 	if a.root {
 		logger = a.audit
 	}
-	a.layer = decide.FromConfig(cfg.Backend, cfg.ModelEndpoint, cfg.Model, logger, cfg.Thresholds, cfg.DefaultThreshold)
+	a.layer = decide.FromConfigFull(cfg.DecideConfig(), logger, cfg.Thresholds, cfg.DefaultThreshold)
 	a.env = diag.Real(false, a.layer)
 	a.env.HistoryPath = cfg.StateDir + "/disk-history.jsonl"
 
 	ctx := context.Background()
-	switch o.args[0] {
-	case "status":
-		err = a.status(ctx)
-	case "why":
-		err = a.why(ctx)
-	case "fix":
-		err = a.fix(ctx)
-	case "snapshots", "snapshot":
-		err = a.snapshots(ctx)
-	case "disk":
-		err = a.disk(ctx)
-	case "pending":
-		err = a.pending()
-	case "show":
-		err = a.show()
-	case "apply":
-		err = a.applyCmd(ctx)
-	case "ignore":
-		err = a.ignore()
-	case "audit":
-		err = a.auditCmd()
-	default:
-		err = fmt.Errorf("unknown command %q (basalt help)", o.args[0])
-	}
+	err = a.dispatch(ctx)
 	if err != nil {
 		if errors.Is(err, apply.ErrCancelled) {
 			fmt.Fprintln(os.Stderr, err)
@@ -185,6 +170,35 @@ func Main(argv []string, version string) int {
 		return 1
 	}
 	return 0
+}
+
+// dispatch runs the command in a.o.args.
+func (a *app) dispatch(ctx context.Context) error {
+	switch a.o.args[0] {
+	case "status":
+		return a.status(ctx)
+	case "why":
+		return a.why(ctx)
+	case "fix":
+		return a.fix(ctx)
+	case "snapshots", "snapshot":
+		return a.snapshots(ctx)
+	case "disk":
+		return a.disk(ctx)
+	case "pending":
+		return a.pending()
+	case "show":
+		return a.show()
+	case "apply":
+		return a.applyCmd(ctx)
+	case "ignore":
+		return a.ignore()
+	case "audit":
+		return a.auditCmd()
+	case "ask":
+		return a.ask(ctx)
+	}
+	return fmt.Errorf("unknown command %q (basalt help)", a.o.args[0])
 }
 
 func (a *app) printJSON(v any) error {

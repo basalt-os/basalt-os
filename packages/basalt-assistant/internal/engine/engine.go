@@ -369,7 +369,7 @@ func (g *Engine) publish(ctx context.Context, p *proposal.Proposal, sevFeatures 
 	}
 	sev = g.Decide.Record(sev, fmt.Sprintf("severity %.1f for %s", p.Severity, p.ID))
 	notify = g.Decide.Record(notify, nAct+" "+p.ID)
-	route = g.Decide.Record(route, "stay local (no model backend)")
+	route = g.Decide.Record(route, "stay local (no bigger model configured)")
 	p.Decisions = append(p.Decisions, sev, notify)
 	_ = route
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
 )
 
@@ -22,11 +23,19 @@ type Config struct {
 	AuditPath string
 
 	// Decision layer.
-	Backend          string // rules (default) or openai-compatible (not implemented: falls back to rules)
-	ModelEndpoint    string
-	Model            string
-	DefaultThreshold float64
-	Thresholds       map[string]float64
+	Backend       string // rules (default) or openai-compatible (a local model; falls back to rules)
+	ModelEndpoint string
+	Model         string
+	AllowRemote   bool               // a non-local model endpoint is refused unless set
+	Calibration   map[string]float64 // per question: temperature applied to the model's log-probabilities
+
+	// Natural-language translator (`basalt ask`), off by default.
+	Translator         bool
+	TranslatorEndpoint string
+	TranslatorModel    string
+	TranslatorCompact  bool // the model is fine-tuned for the translator: short prompt
+	DefaultThreshold   float64
+	Thresholds         map[string]float64
 
 	Disk diag.DiskThresholds
 
@@ -44,9 +53,10 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		StateDir: "/var/lib/basalt-assistant", AuditPath: "/var/log/basalt-assistant/audit.jsonl",
-		Backend: "rules", DefaultThreshold: 0.75, Thresholds: map[string]float64{},
-		Disk:        diag.DefaultDiskThresholds,
-		DedupWindow: time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
+		Backend: "rules", DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
+		TranslatorEndpoint: "unix:/run/basalt-llm/llm.sock",
+		Disk:               diag.DefaultDiskThresholds,
+		DedupWindow:        time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
 		DnfMinAge: 2 * time.Minute, DnfSettle: 15 * time.Second, AVCSettle: 5 * time.Second, UnitSettle: 3 * time.Second,
 	}
 }
@@ -106,6 +116,23 @@ func (c *Config) set(sec, k, v string) error {
 		c.ModelEndpoint = v
 	case "decision.model":
 		c.Model = v
+	case "decision.allow_remote", "translator.allow_remote":
+		c.AllowRemote, err = yesNo(v)
+	case "translator.enabled":
+		c.Translator, err = yesNo(v)
+	case "translator.endpoint":
+		c.TranslatorEndpoint = v
+	case "translator.model":
+		c.TranslatorModel = v
+	case "translator.prompt":
+		switch v {
+		case "examples":
+			c.TranslatorCompact = false
+		case "compact":
+			c.TranslatorCompact = true
+		default:
+			err = fmt.Errorf("prompt %q (examples or compact)", v)
+		}
 	case "decision.default_threshold":
 		c.DefaultThreshold, err = fl()
 	case "disk.warn_pct":
@@ -135,6 +162,15 @@ func (c *Config) set(sec, k, v string) error {
 	case "events.unit_settle":
 		c.UnitSettle, err = du()
 	default:
+		if sec == "calibration" {
+			var t float64
+			t, err = fl()
+			if err == nil && (t < 0.05 || t > 20) {
+				err = fmt.Errorf("temperature %v outside [0.05, 20]", t)
+			}
+			c.Calibration[k] = t
+			return err
+		}
 		if sec == "thresholds" {
 			var t float64
 			t, err = fl()
@@ -147,6 +183,22 @@ func (c *Config) set(sec, k, v string) error {
 		return fmt.Errorf("unknown setting %s.%s", sec, k)
 	}
 	return err
+}
+
+// DecideConfig is the decision layer's backend selection.
+func (c Config) DecideConfig() decide.Config {
+	return decide.Config{Backend: c.Backend, Endpoint: c.ModelEndpoint, Model: c.Model,
+		AllowRemote: c.AllowRemote, Calibration: c.Calibration}
+}
+
+func yesNo(v string) (bool, error) {
+	switch strings.ToLower(v) {
+	case "yes", "true", "on", "1":
+		return true, nil
+	case "no", "false", "off", "0":
+		return false, nil
+	}
+	return false, fmt.Errorf("expected yes or no, got %q", v)
 }
 
 func parseSize(v string) (int64, error) {

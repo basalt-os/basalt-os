@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -54,6 +54,10 @@ basalt-assistantd watches the journal, disk usage and package transactions
 and stores a diagnosis with a proposed fix for each event; it never changes
 the system. basalt-mcp exposes the same diagnosers as MCP tools; its write
 tools only store proposals.
+
+With the optional local model service (basalt-llm), `basalt ask` accepts
+requests in English or Portuguese and the decision layer can use the model
+as a backend; neither is enabled by default.
 
 %package selinux
 Summary:        SELinux policy module for the Basalt OS system assistant
@@ -142,6 +146,15 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- Optional local language model (package basalt-llm): basalt ask translates
+  requests in natural language into basalt commands (schema-constrained,
+  validated, grounded in the request; changes are never run from it), and
+  an opt-in model backend for the decision layer (option probabilities from
+  token log-probabilities, per-question temperature). Rules stay the default.
+- Unit-cause questions carry the journal lines, disk-cause questions the
+  sizes, for a model backend.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: basalt CLI (status, why, fix selinux, snapshots, disk,
   pending, apply, ignore, audit), basalt-assistantd event engine, decision
