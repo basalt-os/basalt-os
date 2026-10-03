@@ -4,6 +4,11 @@
 > affiliated with or endorsed by the Fedora Project or Red Hat. Expect breaking
 > changes, rebuilt history and missing pieces.
 
+> Direction note: this repository holds milestone 0, built on bootc. Basalt OS
+> is moving to a traditional Fedora-based install (dnf, btrfs snapshots before
+> updates, rollback from GRUB). What carries over is listed in
+> [docs/milestone-0-report.md](docs/milestone-0-report.md).
+
 Basalt OS is a Linux distribution for servers built as a bootable container
 image on top of the Fedora bootc base image. The system is delivered and
 updated as a whole image, signed, with one-command rollback. Security defaults

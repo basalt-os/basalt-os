@@ -2,6 +2,68 @@
 
 Date: 2026-10-03. Status: done, with the gaps listed at the end.
 
+Direction change after this milestone: Basalt OS will be a traditional
+Fedora-based distribution (dnf, packages persist on the installed system),
+with btrfs snapshots before every update (snapper and a dnf plugin) and
+rollback by booting a snapshot from GRUB. Disk encryption stays: LUKS2 with
+TPM2. This milestone was built on bootc, so this report is now mainly a
+findings report: the next section lists what carries over to the traditional
+model and what was specific to bootc. The detailed results follow.
+
+## Findings: what carries over, what does not
+
+Reusable in the traditional model, validated here:
+
+| Topic | Result | Reuse |
+|---|---|---|
+| SELinux enforcing, targeted | 0 AVC, USER_AVC or SELINUX_ERR records after first boot, recovery-key boots, update and rollback | same policy; keep the zero-denials gate in CI |
+| Denial found | `bootupd_t` reading `/proc/swaps` and `/proc` via `lsblk` (7 records per first boot) | bootupd is a bootc component; the CIL module pattern (`selinux/*.cil` + `semodule -i`) carries over for any future denial |
+| SSH hardening | `rootfs/etc/ssh/sshd_config.d/10-basalt-hardening.conf`, effective values asserted with `sshd -T` | as is, shipped by a basalt-release (or similar) package |
+| Firewall | firewalld, zone `public` with only `ssh` (`rootfs/etc/firewalld/zones/public.xml`) | as is |
+| Branding | `generic-release` swaps out `fedora-release*`; Basalt `os-release`; logo; initramfs regenerated so the initrd shows Basalt | as is; on a package-based system this becomes a `basalt-release` RPM that conflicts with `fedora-release*` instead of overwriting files |
+| LUKS2 + TPM2 bound to PCR 7 | `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7`; unattended unlock; Secure Boot disabled or a foreign `db` certificate blocks the unlock; restoring the state restores it | identical with Anaconda/kickstart (`autopart --encrypted`) followed by enrollment; note systemd 259 binds no PCRs unless `--tpm2-pcrs` is given |
+| Recovery key | `systemd-cryptenroll --recovery-key`, typed at `Please enter recovery key for disk root` on the serial console | as is |
+| Prompt on TPM refusal | requires `luks.options`/crypttab without `headless=true` | as is |
+| Lab: OVMF Secure Boot + swtpm | libvirt VM, `virt-fw-vars` to flip Secure Boot or add a `db` certificate, scripted console unlock (`scripts/lab/vm.sh sb ...`, `sb-test.sh`, `console-unlock.py`) | as is for any install method |
+| Lab host workarounds | vTPM state created before first start (Fedora 44 swtpm SELinux denial); builds on the host network (DNS) | as is |
+| tui-tools from the signed RPM repository, key fingerprint pinned | installs and runs | as is (`dnf install`, updates now come from the repository) |
+| Measurements | idle memory 445 to 460 MiB in a 4 GiB VM; boot 11.4 to 12.1 s (17.4 s first boot); top RSS firewalld 53 MiB | a baseline to compare the traditional install against |
+| btrfs `compress=zstd:1` | mount option active, but data written at install time stayed uncompressed | the installer must mount with compression from the start (Anaconda btrfs mount options or a kickstart `%pre`) |
+
+bootc-specific, not reusable as is:
+
+- The OCI image pipeline: `Containerfile`, `bootc container lint`, push and
+  sign by digest, the `:stable` channel tag, the lab OCI registry, the
+  keyless ghcr.io workflow. Signing moves to RPM GPG signatures and
+  `repo_gpgcheck` for Basalt's own repository; the cosign findings only matter
+  if images are kept for containers.
+- `bootc upgrade` / `bootc rollback`, the signature-enforced image reference
+  (`ostree-image-signed`, `policy.json` default `reject`), the
+  update-download size analysis (one 159 MiB layer per update).
+- `basalt-install` as written: it wraps `bootc install to-disk --block-setup
+  tpm2-luks` and edits ostree boot entries. Its TPM2/recovery logic (sections 3
+  and the table above) is what to keep.
+- ostree/composefs layout, `bootc install` config (`/usr/lib/bootc/...`),
+  kernel arguments through `kargs.d`, bootupd and its SELinux denial.
+- Not validated here and new for the traditional model: snapper with the dnf
+  plugin, GRUB snapshot boot entries (grub-btrfs or equivalent) and how a
+  snapshot boot interacts with the PCR 7 binding (it should not change PCR 7,
+  since the signed shim, GRUB and kernel stay the same).
+
+## Lab resources and how to remove them
+
+All on the lab host, named by the `.env` values below; left running.
+
+| Resource | Remove with |
+|---|---|
+| VM `VM_NAME` (libvirt, NVRAM, swtpm state) | `scripts/lab/vm.sh destroy` (or `virsh destroy` + `virsh undefine --nvram --tpm`) |
+| Disk images in `VM_DIR` (installer.raw, target.qcow2) | `sudo rm -rf "$VM_DIR"` |
+| libvirt network `VM_NETWORK` (bridge `VM_BRIDGE`) | `virsh net-destroy $VM_NETWORK && virsh net-undefine $VM_NETWORK` |
+| Registry container `REGISTRY_CONTAINER` | `scripts/lab/registry.sh down` (data kept) |
+| Registry data, lab CA, credentials, dev cosign key, recovery key, logs, cosign binary | `rm -rf "$LAB_DIR"` |
+| Container images: `localhost/basalt-os:*`, `REGISTRY/IMAGE_REPO:*`, `localhost/basalt-lab-tools`, `quay.io/fedora/fedora-bootc:44` | `sudo podman rmi ...` |
+| Serial log | `sudo rm /var/log/libvirt/qemu/$VM_NAME-serial.log` |
+
 Milestone 0 asked for a first Basalt OS server image and proof that its
 security and update model works end to end on real tooling:
 
