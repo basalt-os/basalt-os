@@ -1,0 +1,10 @@
+#!/usr/bin/sh
+# Basalt OS (basalt-grub2-theme): add the Basalt GRUB theme to grub.cfg.
+# The snippet loads the theme only when its files are on /boot and a
+# graphics mode is available, and keeps any serial terminal.
+set -e
+snippet=/usr/share/basalt/grub2/basalt-theme.cfg
+[ -r "$snippet" ] || exit 0
+echo "### basalt-grub2-theme ###"
+cat "$snippet"
+echo "### end basalt-grub2-theme ###"

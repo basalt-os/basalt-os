@@ -1,0 +1,23 @@
+# Basalt OS defaults. Read before 90-default.preset, so these win.
+
+# Host firewall, SSH and audit are always on for a server.
+enable firewalld.service
+enable sshd.service
+enable auditd.service
+enable audit-rules.service
+
+# Snapshots (basalt-snapshots): daily cleanup by the retention policy and the
+# boot menu entries for snapshots. No hourly timeline snapshots of the root.
+enable snapper-cleanup.timer
+disable snapper-timeline.timer
+enable basalt-snapshot-boot.service
+enable basalt-initial-snapshot.service
+
+# Branding: keep the GRUB theme on /boot in sync with the package.
+enable basalt-grub-theme.service
+
+# Not wanted on a minimal server.
+disable ModemManager.service
+disable bluetooth.*
+disable avahi-daemon.*
+disable cups.*

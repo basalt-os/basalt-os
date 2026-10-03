@@ -1,0 +1,15 @@
+[Unit]
+Description=Copy the Basalt OS GRUB theme to /boot
+Documentation=https://github.com/basalt-os/basalt-os
+# GRUB reads its theme from the unencrypted /boot partition, before the LUKS2
+# root is unlocked, so the files shipped in /usr are copied there.
+ConditionPathIsDirectory=/boot/grub2
+RequiresMountsFor=/boot
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/basalt/basalt-grub-theme-sync
+
+[Install]
+WantedBy=multi-user.target

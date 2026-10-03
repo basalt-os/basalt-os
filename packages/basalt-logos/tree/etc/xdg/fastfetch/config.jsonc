@@ -1,0 +1,20 @@
+// Basalt OS system-wide fastfetch defaults (/etc/xdg/fastfetch/config.jsonc).
+// Without this file fastfetch falls back to the logo of ID_LIKE (the base
+// distribution). Users override it with ~/.config/fastfetch/config.jsonc.
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "file",
+    "source": "/usr/share/basalt/fastfetch/basalt.txt",
+    "color": {
+      "1": "white",
+      "2": "38;2;163;71;46"
+    }
+  },
+  "display": {
+    "color": {
+      "keys": "38;2;163;71;46",
+      "title": "white"
+    }
+  }
+}

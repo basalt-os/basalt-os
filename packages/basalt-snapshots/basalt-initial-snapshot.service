@@ -1,0 +1,17 @@
+[Unit]
+Description=Take the first Basalt OS snapshot of the root file system
+Documentation=man:snapper(8) https://github.com/basalt-os/basalt-os
+# The first snapshot is taken on the first boot, once first-boot setup
+# (SSH host keys, system users, presets) is done, so that rolling back to it
+# gives a complete, correctly labeled system. Does nothing once a snapshot
+# exists.
+ConditionPathIsDirectory=/.snapshots
+RequiresMountsFor=/.snapshots /boot
+After=multi-user.target sshd-keygen.target systemd-sysusers.service systemd-tmpfiles-setup.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/basalt-snapshots-setup --initial-snapshot
+
+[Install]
+WantedBy=multi-user.target

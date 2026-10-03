@@ -1,0 +1,9 @@
+# Basalt OS: a snapper "pre" snapshot of the root file system before every
+# dnf transaction and a matching "post" snapshot after it (libdnf5 actions
+# plugin, see libdnf5-actions(8)).
+#
+# enabled=host-only: not for --installroot transactions (for example the
+# installer writing a new system). raise_error=0: a snapshot problem is
+# logged and never blocks an update.
+pre_transaction:::enabled=host-only raise_error=0:/usr/libexec/basalt/basalt-snapshot-dnf pre ${pid}
+post_transaction:::enabled=host-only raise_error=0:/usr/libexec/basalt/basalt-snapshot-dnf post ${pid} ${tmp.basalt_snapper_pre}

@@ -1,0 +1,25 @@
+#!/usr/bin/sh
+# Basalt OS (basalt-snapshots): source the snapshot boot menu written by
+# basalt-snapshot-boot. The menu file changes after every dnf transaction;
+# this hook only needs grub2-mkconfig once, when the system is set up.
+set -e
+
+# 10_linux (run earlier in the same grub2-mkconfig) rewrites the options of
+# every boot entry from /etc/default/grub. With SUSE_BTRFS_SNAPSHOT_BOOTING
+# (set by basalt-snapshots-setup so no rootflags=subvol= is added) it also
+# appends a "${extra_cmdline}" placeholder that Fedora's GRUB does not
+# expand; drop it so the kernel never sees it.
+for f in /boot/loader/entries/*.conf; do
+  [ -f "$f" ] || continue
+  if grep -q '\${extra_cmdline}' "$f"; then
+    sed -i 's/ *\${extra_cmdline}//' "$f"
+  fi
+done
+
+cat <<'GRUBEOF'
+### basalt-snapshots ###
+if [ -f "${config_directory}/basalt-snapshots.cfg" ]; then
+  source "${config_directory}/basalt-snapshots.cfg"
+fi
+### end basalt-snapshots ###
+GRUBEOF

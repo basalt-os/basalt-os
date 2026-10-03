@@ -1,0 +1,85 @@
+#!/usr/bin/bash
+# Snapshots around dnf transactions, called by the libdnf5 actions plugin
+# (/etc/dnf/libdnf5-plugins/actions.d/basalt-snapper.actions).
+#
+#   basalt-snapshot-dnf pre PID          create a "pre" snapshot of the root
+#   basalt-snapshot-dnf post PID [PRE]   create the matching "post" snapshot
+#
+# Standard output is read by the actions plugin, one directive per line:
+# "tmp.NAME=VALUE" stores a value for the post step, "log.LEVEL=TEXT" goes to
+# the dnf log. Human messages go to standard error. This script never fails
+# the transaction: on any problem it reports it and exits 0.
+set -uo pipefail
+
+: "${SNAPPER_CONFIG:=root}"
+[[ -r /etc/basalt/snapshots.conf ]] && . /etc/basalt/snapshots.conf
+
+# Prefer the snapperd D-Bus service, so its cached snapshot list (what
+# `snapper list` shows) stays current; without D-Bus (offline transactions,
+# installers) fall back to direct access.
+snap() {
+  if [[ -S /run/dbus/system_bus_socket ]] && snapper -c "$SNAPPER_CONFIG" get-config >/dev/null 2>&1; then
+    snapper -c "$SNAPPER_CONFIG" "$@"
+  else
+    snapper --no-dbus -c "$SNAPPER_CONFIG" "$@"
+  fi
+}
+
+say() { printf 'basalt-snapshots: %s\n' "$*" >&2; }
+plugin_log() { printf 'log.%s=basalt-snapshots: %s\n' "$1" "$2"; }
+
+step="${1:-}"
+pid="${2:-}"
+pre="${3:-}"
+
+command -v snapper >/dev/null 2>&1 || exit 0
+# No snapper configuration for the root (not set up, or not btrfs): nothing to do.
+snap get-config >/dev/null 2>&1 || exit 0
+
+# Describe the snapshot with the dnf command line that triggered it.
+desc="dnf"
+if [[ -n "$pid" && -r "/proc/$pid/cmdline" ]]; then
+  desc="$(tr '\0' ' ' <"/proc/$pid/cmdline" | sed 's/[[:space:]]*$//')"
+  desc="${desc:0:200}"
+fi
+
+update_boot_menu() {
+  /usr/bin/basalt-snapshot-boot update >/dev/null 2>&1 ||
+    plugin_log WARNING "could not update the snapshot boot menu"
+}
+
+case "$step" in
+  pre)
+    if num="$(snap create -t pre -c number -p \
+        -d "$desc" --userdata "basalt=dnf" 2>/dev/null)" && [[ "$num" =~ ^[0-9]+$ ]]; then
+      echo "tmp.basalt_snapper_pre=$num"
+      plugin_log INFO "pre snapshot $num"
+      say "pre-transaction snapshot $num of / created"
+      # The pre snapshot is the one to boot if this transaction breaks the
+      # system, so it goes into the boot menu before the transaction runs.
+      update_boot_menu
+    else
+      plugin_log WARNING "pre snapshot failed"
+      say "warning: could not create the pre-transaction snapshot"
+    fi
+    ;;
+  post)
+    [[ "$pre" =~ ^[0-9]+$ ]] || exit 0
+    if num="$(snap create -t post --pre-number "$pre" -c number -p \
+        -d "$desc" --userdata "basalt=dnf" 2>/dev/null)" && [[ "$num" =~ ^[0-9]+$ ]]; then
+      plugin_log INFO "post snapshot $num (pre $pre)"
+      say "post-transaction snapshot $num of / created (pair with $pre)"
+    else
+      plugin_log WARNING "post snapshot failed (pre $pre)"
+      say "warning: could not create the post-transaction snapshot"
+    fi
+    # Forget the pre number so a later transaction in the same process
+    # starts a new pair.
+    echo "tmp.basalt_snapper_pre"
+    update_boot_menu
+    ;;
+  *)
+    say "usage: basalt-snapshot-dnf pre PID | post PID [PRE]"
+    ;;
+esac
+exit 0

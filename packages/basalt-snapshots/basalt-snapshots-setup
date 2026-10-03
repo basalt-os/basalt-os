@@ -1,0 +1,163 @@
+#!/usr/bin/bash
+# Prepare a btrfs root for snapper snapshots and rollback. Idempotent.
+#
+#   basalt-snapshots-setup [--no-grub-mkconfig] [--no-initial-snapshot]
+#   basalt-snapshots-setup --initial-snapshot   only step 5 (first boot service)
+#
+# Run once, as root, on an installed system (the Basalt OS kickstart runs it
+# at the end of the installation). What it changes:
+#
+# 1. snapper configuration "root" for / (template basalt-root), which
+#    creates the /.snapshots subvolume inside the root subvolume.
+# 2. /etc/fstab: /.snapshots gets its own entry (subvol=<root>/.snapshots),
+#    so it is still mounted after a rollback switches the root to a
+#    snapshot; the entry for / loses its subvol= option.
+# 3. The root subvolume becomes the file system's default subvolume, and
+#    rootflags=subvol=... is removed from the kernel command line (boot
+#    entries, /etc/kernel/cmdline, /etc/default/grub). The kernel then mounts
+#    the default subvolume, which is what `snapper rollback` switches.
+# 4. GRUB: the /etc/grub.d/42_basalt_snapshots hook is put into grub.cfg
+#    (one grub2-mkconfig run) and the snapshot menu is generated.
+# 5. A first "single" snapshot of the freshly set up system. Never inside an
+#    installer (--no-initial-snapshot): files written there are relabeled at
+#    the end of the install and first-boot setup (host keys, system users)
+#    has not run yet, so such a snapshot is not a bootable state.
+#    basalt-initial-snapshot.service takes it on the first boot instead.
+set -euo pipefail
+
+: "${SNAPPER_CONFIG:=root}"
+mkconfig=1
+initial=1
+only_initial=0
+for a in "$@"; do
+  case "$a" in
+    --no-grub-mkconfig) mkconfig=0 ;;
+    --no-initial-snapshot) initial=0 ;;
+    --initial-snapshot) only_initial=1 ;;
+    *) echo "usage: basalt-snapshots-setup [--no-grub-mkconfig] [--no-initial-snapshot] | --initial-snapshot" >&2; exit 2 ;;
+  esac
+done
+
+log() { printf 'basalt-snapshots-setup: %s\n' "$*" >&2; }
+die() { log "error: $*"; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "run as root"
+[[ "$(findmnt -no FSTYPE /)" == btrfs ]] || die "/ is not btrfs"
+mountpoint -q /boot || log "warning: /boot is not a separate file system; snapshot boot entries need one"
+
+initial_snapshot() {
+  if [[ -z "$(snapper --no-dbus -c "$SNAPPER_CONFIG" --csvout list --columns number 2>/dev/null | sed 1d | grep -vx 0 || true)" ]]; then
+    local n
+    n="$(snapper -c "$SNAPPER_CONFIG" create -t single -p -c number \
+        -d "initial state" --userdata "important=yes" 2>/dev/null ||
+      snapper --no-dbus -c "$SNAPPER_CONFIG" create -t single -p -c number \
+        -d "initial state" --userdata "important=yes")"
+    log "created snapshot $n (initial state)"
+    /usr/bin/basalt-snapshot-boot update
+  fi
+}
+if [[ $only_initial == 1 ]]; then
+  snapper --no-dbus -c "$SNAPPER_CONFIG" get-config >/dev/null 2>&1 || die "no snapper configuration '$SNAPPER_CONFIG'"
+  initial_snapshot
+  exit 0
+fi
+
+root_path="$(btrfs subvolume show / | head -1)"
+root_id="$(btrfs inspect-internal rootid /)"
+[[ "$root_path" != / ]] || die "/ is the top-level subvolume; Basalt OS expects a root subvolume (e.g. 'root')"
+log "root subvolume: $root_path (id $root_id)"
+
+# 1. snapper configuration ---------------------------------------------------------
+if snapper --no-dbus -c "$SNAPPER_CONFIG" get-config >/dev/null 2>&1; then
+  log "snapper configuration '$SNAPPER_CONFIG' exists"
+else
+  if [[ -e /.snapshots ]] && ! btrfs subvolume show /.snapshots >/dev/null 2>&1; then
+    rmdir /.snapshots 2>/dev/null || die "/.snapshots exists and is not an empty directory"
+  fi
+  snapper --no-dbus -c "$SNAPPER_CONFIG" create-config -t basalt-root /
+  log "created snapper configuration '$SNAPPER_CONFIG'"
+fi
+snaps_path="$(btrfs subvolume show /.snapshots | head -1)"
+
+# 2. /etc/fstab -----------------------------------------------------------------------
+fstab=/etc/fstab
+read -r root_spec root_opts < <(awk '$1 !~ /^#/ && $2 == "/" && $3 == "btrfs" {print $1, $4; exit}' "$fstab")
+[[ -n "${root_spec:-}" ]] || die "no btrfs entry for / in $fstab"
+# Mount options for / and /.snapshots: the current ones minus subvolume selection.
+plain_opts="$(tr ',' '\n' <<<"$root_opts" | grep -vE '^(subvol|subvolid)=' | paste -sd, -)"
+[[ -n "$plain_opts" ]] || plain_opts=defaults
+tmp="$(mktemp)"
+awk -v opts="$plain_opts" -v spec="$root_spec" -v snaps="$snaps_path" '
+  $1 !~ /^#/ && $2 == "/" && $3 == "btrfs" { $4 = opts; print; next }
+  $1 !~ /^#/ && $2 == "/.snapshots" { have_snaps = 1 }
+  { print }
+  END {
+    if (!have_snaps) {
+      o = opts; sub(/(^|,)defaults(,|$)/, "", o)
+      printf "%s /.snapshots btrfs subvol=%s%s 0 0\n", spec, snaps, (o == "" ? "" : "," o)
+    }
+  }' "$fstab" >"$tmp"
+if ! cmp -s "$tmp" "$fstab"; then
+  cat "$tmp" >"$fstab"   # keep the inode, owner and SELinux label of /etc/fstab
+  log "updated $fstab"
+  systemctl daemon-reload 2>/dev/null || true
+fi
+rm -f "$tmp"
+
+# 3. default subvolume and kernel command line ------------------------------------------
+if [[ "$(btrfs subvolume get-default / | awk '{print $2}')" != "$root_id" ]]; then
+  btrfs subvolume set-default "$root_id" /
+  log "default subvolume set to $root_path (id $root_id)"
+fi
+
+# grub2-mkconfig (/etc/grub.d/10_linux) adds rootflags=subvol=<root> to every
+# boot entry when / is a btrfs subvolume, unless this GRUB setting is true.
+# The name comes from openSUSE, which boots the default subvolume the same way.
+if [[ -f /etc/default/grub ]] && ! grep -q '^SUSE_BTRFS_SNAPSHOT_BOOTING="true"' /etc/default/grub; then
+  sed -i '/^SUSE_BTRFS_SNAPSHOT_BOOTING=/d' /etc/default/grub
+  cat >>/etc/default/grub <<'EOF'
+# basalt-snapshots: boot the btrfs default subvolume (no rootflags=subvol=),
+# so that snapper rollback takes effect. Read by /etc/grub.d/10_linux.
+SUSE_BTRFS_SNAPSHOT_BOOTING="true"
+EOF
+  log "set SUSE_BTRFS_SNAPSHOT_BOOTING in /etc/default/grub"
+fi
+
+strip_subvol() { sed -E 's/(^|[[:space:]])rootflags=subvol(id)?=[^[:space:]"]*//g; s/\$\{extra_cmdline\}//g; s/[[:space:]]+/ /g; s/^ //; s/ $//'; }
+
+if [[ -f /etc/default/grub ]] && grep -qE 'rootflags=subvol' /etc/default/grub; then
+  sed -i -E 's/[[:space:]]?rootflags=subvol(id)?=[^[:space:]"]*//g' /etc/default/grub
+fi
+
+# 4. GRUB -----------------------------------------------------------------------------------
+# grub2-mkconfig puts the hooks (snapshot menu, theme) into grub.cfg and
+# rewrites every boot entry's options from /etc/default/grub (now without
+# rootflags=subvol=).
+if [[ "$mkconfig" == 1 && -x /etc/grub.d/42_basalt_snapshots && -d /boot/grub2 ]]; then
+  grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1 || die "grub2-mkconfig failed"
+  log "grub.cfg regenerated with the snapshot menu hook"
+fi
+# Entries written another way (or with --no-grub-mkconfig) may still name the subvolume.
+if command -v grubby >/dev/null; then
+  for arg in $(grubby --info=ALL 2>/dev/null | grep -oE 'rootflags=subvol(id)?=[^ "]+' | sort -u); do
+    grubby --update-kernel=ALL --remove-args="$arg"
+    log "removed $arg from the boot entries"
+  done
+fi
+# kernel-install takes new kernels' options from /etc/kernel/cmdline; without
+# it, it copies /proc/cmdline, which names a snapshot when booted from one.
+if [[ ! -s /etc/kernel/cmdline ]] && command -v grubby >/dev/null; then
+  grubby --info=DEFAULT | sed -n 's/^args="\(.*\)"$/\1/p' | strip_subvol >/etc/kernel/cmdline
+  log "wrote /etc/kernel/cmdline"
+elif grep -qE 'rootflags=subvol|extra_cmdline' /etc/kernel/cmdline; then
+  strip_subvol </etc/kernel/cmdline >/etc/kernel/cmdline.new
+  cat /etc/kernel/cmdline.new >/etc/kernel/cmdline && rm -f /etc/kernel/cmdline.new
+  log "cleaned /etc/kernel/cmdline"
+fi
+/usr/bin/basalt-snapshot-boot update
+
+# 5. first snapshot -------------------------------------------------------------------------
+[[ $initial == 1 ]] && initial_snapshot
+
+command -v restorecon >/dev/null && restorecon /.snapshots /etc/fstab && restorecon -R /etc/kernel /etc/snapper /boot/grub2 2>/dev/null || true
+log "done"

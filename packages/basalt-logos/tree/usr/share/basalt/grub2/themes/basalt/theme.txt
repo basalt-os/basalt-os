@@ -1,0 +1,63 @@
+# Basalt OS GRUB theme.
+# Dark basalt-column background, the mark at the top, a centered menu with a
+# terra edge on the selected entry. Fonts are PF2 files generated from Inter
+# (src/grub/make-fonts.sh); 05_basalt-theme.cfg loads them before this theme.
+
+title-text: ""
+desktop-image: "background.png"
+desktop-image-scale-method: "crop"
+desktop-color: "#14171B"
+terminal-font: "Inter Regular 16"
+message-font: "Inter Regular 16"
+message-color: "#E3E6EA"
+message-bg-color: "#14171B"
+
++ image {
+    left = 50%-56
+    top = 14%
+    width = 112
+    height = 112
+    file = "logo.png"
+}
+
++ boot_menu {
+    left = 50%-340
+    top = 34%
+    width = 680
+    height = 44%
+    item_font = "Inter Regular 20"
+    selected_item_font = "Inter Medium Regular 20"
+    item_color = "#9AA1AA"
+    selected_item_color = "#E3E6EA"
+    item_height = 44
+    item_padding = 18
+    item_spacing = 6
+    icon_width = 0
+    icon_height = 0
+    item_icon_space = 0
+    selected_item_pixmap_style = "select_*.png"
+    scrollbar = false
+}
+
++ label {
+    id = "__timeout__"
+    left = 50%-340
+    top = 82%
+    width = 680
+    height = 24
+    align = "center"
+    color = "#9AA1AA"
+    font = "Inter Regular 16"
+    text = "Booting the selected entry in %d s"
+}
+
++ label {
+    left = 0
+    top = 100%-44
+    width = 100%
+    height = 20
+    align = "center"
+    color = "#5F6670"
+    font = "Inter Regular 14"
+    text = "Enter: boot    e: edit entry    c: command line"
+}

@@ -3,12 +3,15 @@
 ACCESS.local.md
 *.local.md
 
-# Build outputs and generated site overlay.
+# Build outputs.
 build/
 out/
 
-# Key material, in case someone generates it inside the tree by mistake.
+# Key material and lab site files, in case they are generated inside the tree by mistake.
 *.key
 *.pem
-cosign.pub
-auth.json
+*.pass
+passphrase
+site.conf
+site.ks
+RPM-GPG-KEY-*-lab

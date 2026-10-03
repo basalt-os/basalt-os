@@ -1,0 +1,17 @@
+[Unit]
+Description=Update the Basalt OS snapshot boot menu
+Documentation=man:snapper(8) https://github.com/basalt-os/basalt-os
+# Keeps the GRUB entries for root file system snapshots in line with the
+# snapshots that exist (snapshots can be removed while the system is off,
+# or by a rollback).
+ConditionPathIsDirectory=/.snapshots
+ConditionPathIsDirectory=/boot/grub2
+RequiresMountsFor=/boot /.snapshots
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/basalt-snapshot-boot update
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+\e{reset}
+               .o#o.
+           .o####P'
+       .o####P'           .##.
+    .o###P'               ####
+   ####'                  ####      \e{bold}\S{PRETTY_NAME}\e{reset}
+   ####       \e{red}.o@o.\e{reset}       ####
+   ####     \e{red}o@@@@@@@o\e{reset}     ####      Host    \n
+   ####      \e{red}@@@@@@@\e{reset}      ####      Kernel  \r (\m)
+   ####       \e{red}@@@@@\e{reset}       ####      IPv4    \4
+   '####                 .####      Console \l
+     '####o.         .o####'
+        '"####o.  .o####"'
+            '"######"'
+

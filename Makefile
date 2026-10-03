@@ -1,80 +1,80 @@
-# Basalt OS image: build, sign, publish, and a local lab to install and update it.
-# Configuration comes from .env (copy env.example); variables given on the make
-# command line override it, e.g. `make build BASALT_VERSION=0.0.2`.
-# Run on the build host (podman, skopeo; the lab also needs libvirt/KVM, swtpm, OVMF).
+# Basalt OS: packages, signed repository, installer ISO, and a local lab that
+# installs and tests it. Configuration comes from .env (copy env.example);
+# variables on the make command line override it, e.g.
+# `make rpms FEDORA_RELEASE=45`. Run on a Linux host with podman (the lab also
+# needs libvirt/KVM, swtpm, OVMF and docker or podman for the HTTP server).
 
 SHELL := /bin/bash
 S := scripts
 L := scripts/lab
 
-.PHONY: help build publish verify release ci \
-        lab-tools lab-keys lab-registry lab-registry-status lab-registry-down \
-        lab-net lab-installer lab-vm lab-install lab-detach lab-boot lab-auth \
-        lab-ssh lab-console lab-measure lab-destroy lint clean
+.PHONY: help rpms rpms-lab repo repo-verify iso-fetch iso all lint clean \
+        lab-tools lab-keys lab-net lab-repo lab-repo-down lab-install lab-start lab-stop \
+        lab-ssh lab-console lab-measure lab-sb-test lab-snapshot-test lab-rollback-test \
+        lab-destroy
 
 help: ## Show targets
-	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-22s %s\n", $$1, $$2}'
+	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
 
-# --- image ------------------------------------------------------------------
+# --- packages, repository, ISO ------------------------------------------------------
 
-build: ## Build the image into local storage (BASALT_VERSION)
-	$(S)/build.sh
+rpms: ## Build basalt-release, basalt-logos, basalt-snapshots (Fedora container)
+	$(S)/build-rpms.sh
 
-publish: ## Push, sign by digest (cosign key), move the channel tag
-	$(S)/publish.sh
+rpms-lab: ## Same, plus the lab canary package
+	$(S)/build-rpms.sh --lab
 
-verify: ## Verify signature and policy for the channel tag (or TAG=...)
-	$(S)/verify.sh $(TAG)
+repo: ## Sign the built RPMs and publish them to the signed repository (REPO_DIR)
+	$(S)/repo.sh publish
 
-release: build publish verify ## build + publish + verify (local CI)
+repo-verify: ## Check package and repository metadata signatures
+	$(S)/repo.sh verify
 
-ci: lint release ## What a CI run does on a private registry
+iso-fetch: ## Download and verify the Fedora netinst ISO
+	$(S)/iso.sh fetch
+
+iso: ## Build the Basalt OS installer ISO (kickstart + repository embedded)
+	$(S)/iso.sh build
+
+all: rpms repo iso ## rpms + repo + iso
 
 lint: ## Shell and Python syntax checks (shellcheck when installed)
-	@for f in $(S)/*.sh $(L)/*.sh image/*.sh rootfs/usr/bin/basalt-install; do bash -n "$$f" || exit 1; done
-	@python3 -m py_compile $(L)/console-unlock.py && rm -rf $(L)/__pycache__
-	@if command -v shellcheck >/dev/null; then shellcheck -x -S warning $(S)/*.sh $(L)/*.sh image/*.sh rootfs/usr/bin/basalt-install; else echo "shellcheck not installed, syntax only"; fi
+	@for f in $(S)/*.sh $(L)/*.sh packages/basalt-snapshots/basalt-snapshot-dnf packages/basalt-snapshots/basalt-snapshot-boot \
+	          packages/basalt-snapshots/basalt-snapshots-setup packages/basalt-snapshots/basalt-rollback \
+	          packages/basalt-snapshots/42_basalt_snapshots packages/basalt-logos/06_basalt_theme; do bash -n "$$f" || exit 1; done
+	@python3 -m py_compile $(L)/console-unlock.py $(L)/grub-console.py && rm -rf $(L)/__pycache__
+	@if command -v shellcheck >/dev/null; then shellcheck -x -S warning $(S)/*.sh $(L)/*.sh packages/basalt-snapshots/basalt-snapshot-dnf packages/basalt-snapshots/basalt-snapshot-boot packages/basalt-snapshots/basalt-snapshots-setup packages/basalt-snapshots/basalt-rollback; else echo "shellcheck not installed, syntax only"; fi
+	@if command -v ksvalidator >/dev/null; then ksvalidator -v F44 kickstart/basalt-server.ks; fi
 	@echo lint ok
 
-# --- lab: registry, keys --------------------------------------------------------
+clean: ## Remove build outputs in this tree
+	rm -rf build
 
-lab-tools: ## Fetch cosign and build the lab tool image (virt-fw-vars)
+# --- lab ---------------------------------------------------------------------------
+
+lab-tools: ## Build the lab tool image (virt-fw-vars)
 	$(L)/tools.sh
 
-lab-keys: ## Generate the dev cosign key pair and lab SSH key (LAB_DIR/keys, 0600)
+lab-keys: ## Dev repository signing key, lab SSH key, lab site files (LAB_DIR)
 	$(L)/keys.sh
-
-lab-registry: ## Start the lab registry (TLS from a lab CA, htpasswd)
-	$(L)/registry.sh up
-
-lab-registry-status: ## Show the lab registry and its catalog
-	$(L)/registry.sh status
-
-lab-registry-down: ## Stop the lab registry (data kept)
-	$(L)/registry.sh down
-
-# --- lab: VM ----------------------------------------------------------------------
 
 lab-net: ## Define and start the isolated lab network
 	$(L)/vm.sh net-up
 
-lab-installer: ## Write the installer disk from the local image
-	$(L)/vm.sh installer-disk
+lab-repo: lab-net ## Serve REPO_DIR to the lab network over HTTP
+	$(L)/repo-serve.sh up
 
-lab-vm: ## Create the VM (Secure Boot OVMF + swtpm) and boot the installer
-	$(L)/vm.sh create
+lab-repo-down: ## Stop the repository HTTP server
+	$(L)/repo-serve.sh down
 
-lab-install: ## basalt-install onto the target disk inside the VM (LUKS2 + TPM2 + recovery key)
-	$(L)/install-target.sh
+lab-install: ## Unattended install of the lab ISO into a new VM, first boot, recovery key saved
+	$(L)/install.sh
 
-lab-detach: ## Remove the installer disk (VM shut down)
-	$(L)/vm.sh detach-installer
-
-lab-boot: ## Start the VM and wait for SSH
+lab-start: ## Start the VM and wait for SSH
 	$(L)/vm.sh start
 
-lab-auth: ## Give the installed system lab registry pull credentials
-	$(L)/vm.sh registry-auth
+lab-stop: ## Shut the VM down
+	$(L)/vm.sh stop
 
 lab-ssh: ## SSH into the VM as root
 	$(L)/vm.sh ssh
@@ -82,11 +82,17 @@ lab-ssh: ## SSH into the VM as root
 lab-console: ## Attach to the VM serial console
 	$(L)/vm.sh console
 
-lab-measure: ## Image size, boot time, idle memory, SELinux denials
+lab-measure: ## Boot time, idle memory, installed size, SELinux denials
 	$(L)/measure.sh
 
-lab-destroy: ## Remove the VM, its NVRAM and TPM state (disks kept)
-	$(L)/vm.sh destroy
+lab-sb-test: ## Secure Boot changes block TPM unlock; the recovery key works
+	$(L)/sb-test.sh
 
-clean: ## Remove build outputs in this tree
-	rm -rf build
+lab-snapshot-test: ## dnf install/upgrade make pre/post snapshots; packages persist across reboot
+	$(L)/snapshot-test.sh
+
+lab-rollback-test: ## Broken updates rolled back from the system and from the GRUB menu
+	$(L)/rollback-test.sh
+
+lab-destroy: ## Remove the VM, its disk, NVRAM and TPM state
+	$(L)/vm.sh destroy

@@ -1,0 +1,228 @@
+# Basalt OS boot splash for the plymouth "script" plugin.
+#
+# Layout: dark background (#14171B), the Basalt mark centered slightly above
+# the middle, a thin progress line below it. The passphrase prompt (LUKS, or
+# the fallback when TPM2 unlock fails) replaces the progress line with a lock
+# icon, the prompt text, an entry box and bullets.
+#
+# HiDPI: assets ship in several sizes (ring-<px>.png, entry-<scale>.png, ...);
+# the script picks them from the screen height so nothing is upscaled.
+
+Window.SetBackgroundTopColor(0.078, 0.090, 0.106);
+Window.SetBackgroundBottomColor(0.078, 0.090, 0.106);
+
+screen_x = Window.GetX();
+screen_y = Window.GetY();
+screen_w = Window.GetWidth();
+screen_h = Window.GetHeight();
+
+# UI scale for the dialog assets and text.
+if (screen_h >= 2600) { ui = 3; }
+else if (screen_h >= 1400) { ui = 2; }
+else { ui = 1; }
+
+# Mark size: about 14% of the screen height, snapped to a shipped asset size.
+target = screen_h * 0.14;
+if (target >= 352) { logo_px = 384; }
+else if (target >= 288) { logo_px = 320; }
+else if (target >= 224) { logo_px = 256; }
+else if (target >= 176) { logo_px = 192; }
+else if (target >= 144) { logo_px = 160; }
+else if (target >= 112) { logo_px = 128; }
+else { logo_px = 96; }
+
+# In the initramfs plymouth renders text with label-freetype, which uses the
+# system default sans font copied there by plymouth-populate-initrd and only
+# honours the size; after switch-root label-pango resolves "Sans" the same way.
+font_body = "Sans " + (12 * ui);
+
+# Text colors (r, g, b as 0..1).
+light_r = 0.890; light_g = 0.902; light_b = 0.918;   # #E3E6EA
+muted_r = 0.604; muted_g = 0.631; muted_b = 0.667;   # #9AA1AA
+
+center_x = screen_x + screen_w / 2;
+
+# ------------------------------------------------------------------ the mark
+ring_image = Image("ring-" + logo_px + ".png");
+core_image = Image("core-" + logo_px + ".png");
+logo_x = center_x - ring_image.GetWidth() / 2;
+logo_y = screen_y + screen_h * 0.42 - ring_image.GetHeight() / 2;
+ring_sprite = Sprite(ring_image);
+ring_sprite.SetPosition(logo_x, logo_y, 10);
+core_sprite = Sprite(core_image);
+core_sprite.SetPosition(logo_x, logo_y, 11);
+
+below_logo = logo_y + ring_image.GetHeight();
+
+# ------------------------------------------------------------------ progress line
+bar_w = Math.Int(logo_px * 1.5);
+bar_h = 2 * ui;
+bar_x = center_x - bar_w / 2;
+bar_y = below_logo + 36 * ui;
+
+track_sprite = Sprite(Image("track.png").Scale(bar_w, bar_h));
+track_sprite.SetPosition(bar_x, bar_y, 10);
+fill_source = Image("fill.png");
+fill_sprite = Sprite();
+fill_sprite.SetPosition(bar_x, bar_y, 11);
+last_fill_w = -1;
+
+fun set_progress_visible(visible) {
+    global.track_sprite.SetOpacity(visible);
+    global.fill_sprite.SetOpacity(visible);
+}
+
+fun progress_callback(duration, progress) {
+    w = Math.Int(global.bar_w * progress);
+    if (w < 1) w = 1;
+    if (w > global.bar_w) w = global.bar_w;
+    if (w != global.last_fill_w) {
+        global.fill_sprite.SetImage(global.fill_source.Scale(w, global.bar_h));
+        global.last_fill_w = w;
+    }
+}
+Plymouth.SetBootProgressFunction(progress_callback);
+
+# Shutdown and reboot show only the mark.
+mode = Plymouth.GetMode();
+if (mode == "shutdown" || mode == "reboot") {
+    set_progress_visible(0);
+}
+
+# ------------------------------------------------------------------ title for update modes
+title_sprite = Sprite();
+title_sprite.SetPosition(0, 0, 20);
+if (mode == "updates" || mode == "system-upgrade" || mode == "firmware-upgrade") {
+    if (mode == "firmware-upgrade") { title_text = "Updating firmware"; }
+    else { title_text = "Installing updates"; }
+    title_image = Image.Text(title_text + ", do not turn off the computer", light_r, light_g, light_b, 1, font_body);
+    title_sprite.SetImage(title_image);
+    title_sprite.SetPosition(center_x - title_image.GetWidth() / 2, bar_y + 24 * ui, 20);
+}
+
+# ------------------------------------------------------------------ messages
+message_sprite = Sprite();
+message_sprite.SetPosition(0, 0, 20);
+
+fun show_message(text) {
+    image = Image.Text(text, global.muted_r, global.muted_g, global.muted_b, 1, global.font_body);
+    global.message_sprite.SetImage(image);
+    global.message_sprite.SetPosition(global.center_x - image.GetWidth() / 2,
+                                      global.screen_y + global.screen_h - 72 * global.ui, 20);
+    global.message_sprite.SetOpacity(1);
+}
+
+fun hide_message(text) {
+    global.message_sprite.SetOpacity(0);
+}
+
+Plymouth.SetMessageFunction(show_message);
+Plymouth.SetDisplayMessageFunction(show_message);
+Plymouth.SetHideMessageFunction(hide_message);
+
+# ------------------------------------------------------------------ passphrase / question dialog
+entry_image = Image("entry-" + ui + ".png");
+bullet_image = Image("bullet-" + ui + ".png");
+lock_image = Image("lock-" + ui + ".png");
+
+entry_x = center_x - entry_image.GetWidth() / 2;
+entry_y = below_logo + 64 * ui;
+prompt_y = below_logo + 28 * ui;
+
+entry_sprite = Sprite(entry_image);
+entry_sprite.SetPosition(entry_x, entry_y, 30);
+lock_sprite = Sprite(lock_image);
+lock_sprite.SetPosition(entry_x + 14 * ui, entry_y + (entry_image.GetHeight() - lock_image.GetHeight()) / 2, 31);
+prompt_sprite = Sprite();
+prompt_sprite.SetPosition(0, prompt_y, 30);
+answer_sprite = Sprite();
+answer_sprite.SetPosition(entry_x + 44 * ui, entry_y, 31);
+
+bullet_step = bullet_image.GetWidth() + 6 * ui;
+bullet_x0 = entry_x + 44 * ui;
+bullet_y = entry_y + (entry_image.GetHeight() - bullet_image.GetHeight()) / 2;
+bullet_max = Math.Int((entry_image.GetWidth() - 44 * ui - 16 * ui) / bullet_step);
+bullet_count = 0;
+dialog_active = 0;
+
+fun set_dialog_visible(visible) {
+    global.entry_sprite.SetOpacity(visible);
+    global.lock_sprite.SetOpacity(visible);
+    global.prompt_sprite.SetOpacity(visible);
+    global.answer_sprite.SetOpacity(visible);
+    if (!visible) {
+        for (i = 0; i < global.bullet_count; i++)
+            global.bullets[i].SetOpacity(0);
+    }
+}
+set_dialog_visible(0);
+
+fun show_prompt(prompt) {
+    if (prompt == "") prompt = "Passphrase";
+    image = Image.Text(prompt, global.light_r, global.light_g, global.light_b, 1, global.font_body);
+    global.prompt_sprite.SetImage(image);
+    global.prompt_sprite.SetPosition(global.center_x - image.GetWidth() / 2, global.prompt_y, 30);
+}
+
+fun display_password_callback(prompt, bullets) {
+    global.dialog_active = 1;
+    set_progress_visible(0);
+    global.title_sprite.SetOpacity(0);
+    set_dialog_visible(1);
+    global.answer_sprite.SetOpacity(0);
+    show_prompt(prompt);
+    # Create bullet sprites on demand; clip at what fits in the entry box.
+    shown = bullets;
+    if (shown > global.bullet_max) shown = global.bullet_max;
+    for (i = 0; i < shown; i++) {
+        if (i >= global.bullet_count) {
+            global.bullets[i] = Sprite(global.bullet_image);
+            global.bullets[i].SetPosition(global.bullet_x0 + i * global.bullet_step, global.bullet_y, 32);
+            global.bullet_count = i + 1;
+        }
+        global.bullets[i].SetOpacity(1);
+    }
+    for (i = shown; i < global.bullet_count; i++)
+        global.bullets[i].SetOpacity(0);
+}
+
+fun display_question_callback(prompt, entry) {
+    global.dialog_active = 1;
+    set_progress_visible(0);
+    global.title_sprite.SetOpacity(0);
+    set_dialog_visible(1);
+    for (i = 0; i < global.bullet_count; i++)
+        global.bullets[i].SetOpacity(0);
+    show_prompt(prompt);
+    image = Image.Text(entry, global.light_r, global.light_g, global.light_b, 1, global.font_body);
+    global.answer_sprite.SetImage(image);
+    global.answer_sprite.SetPosition(global.bullet_x0,
+                                     global.entry_y + (global.entry_image.GetHeight() - image.GetHeight()) / 2, 31);
+    global.answer_sprite.SetOpacity(1);
+}
+
+fun display_normal_callback() {
+    global.dialog_active = 0;
+    set_dialog_visible(0);
+    if (global.mode != "shutdown" && global.mode != "reboot")
+        set_progress_visible(1);
+    global.title_sprite.SetOpacity(1);
+}
+
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+Plymouth.SetDisplayQuestionFunction(display_question_callback);
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+# ------------------------------------------------------------------ subtle core pulse
+tick = 0;
+fun refresh_callback() {
+    global.tick++;
+    # Slow breathing of the terra core (about 2.5 s per cycle at 50 fps);
+    # held steady while a dialog asks for input.
+    if (global.dialog_active) {
+        global.core_sprite.SetOpacity(1);
+    } else {
+        global.core_sprite.SetOpacity(0.80 + 0.20 * Math.Cos(global.tick * 0.05));
+    }
+}
+Plymouth.SetRefreshFunction(refresh_callback);

@@ -6,8 +6,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env}"
 
-# Load site configuration. Values already in the environment win, so CI and
-# one-off overrides (BASALT_VERSION=0.0.2 make build) work without editing .env.
+# Load site configuration. Values already in the environment win, so one-off
+# overrides (FEDORA_RELEASE=45 make rpms) work without editing .env.
 if [[ -f "$ENV_FILE" ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
@@ -17,19 +17,21 @@ if [[ -f "$ENV_FILE" ]]; then
   done <"$ENV_FILE"
 fi
 
-: "${BASE_IMAGE:=quay.io/fedora/fedora-bootc:44}"
+: "${FEDORA_RELEASE:=44}"
 : "${BASALT_VERSION:=$(tr -d "[:space:]" <"$REPO_ROOT/VERSION")}"
-: "${REGISTRY:=localhost}"
-: "${IMAGE_REPO:=basalt/basalt-os}"
-: "${CHANNEL_TAG:=stable}"
 : "${PODMAN:=sudo podman}"
 : "${LAB_DIR:=/srv/basalt-lab}"
+: "${BUILD_DIR:=$REPO_ROOT/build}"
+# Signed RPM repository tree (served over HTTP in the lab).
+: "${REPO_DIR:=$BUILD_DIR/repo}"
+# Development signing key (lab only). Release keys never live on a build host.
+: "${GNUPGHOME_LAB:=$LAB_DIR/gpg}"
+: "${BASALT_GPG_PUBKEY:=}"
+: "${ARCH:=x86_64}"
+: "${FEDORA_IMAGE:=registry.fedoraproject.org/fedora:$FEDORA_RELEASE}"
 
-# Used by the scripts that source this file.
-# shellcheck disable=SC2034
-IMAGE="${REGISTRY}/${IMAGE_REPO}"
-# shellcheck disable=SC2034
-LOCAL_IMAGE="localhost/basalt-os"
+# shellcheck disable=SC2034  # used by the scripts that source this file
+RPM_DIR="$BUILD_DIR/rpms/$FEDORA_RELEASE"
 
 log() { printf '==> %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -37,22 +39,8 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 # Print a command, then run it. Secrets are never passed on a command line.
 run() { printf '  $ %s\n' "$*" >&2; "$@"; }
 
-# Lab registry trust and credentials, when the lab registry is in use. A public
-# registry needs neither: tools fall back to their normal configuration.
-lab_registry_opts() {
-  LAB_CERT_DIR="$LAB_DIR/registry/client-certs"
-  LAB_AUTH_FILE="$LAB_DIR/registry/auth.json"
-  PODMAN_REG_OPTS=()
-  SKOPEO_REG_OPTS=()   # skopeo inspect
-  SKOPEO_COPY_OPTS=()  # skopeo copy (source and destination are the same registry)
-  if [[ -d "$LAB_CERT_DIR" ]]; then
-    PODMAN_REG_OPTS+=(--cert-dir "$LAB_CERT_DIR")
-    SKOPEO_REG_OPTS+=(--cert-dir "$LAB_CERT_DIR")
-    SKOPEO_COPY_OPTS+=(--src-cert-dir "$LAB_CERT_DIR" --dest-cert-dir "$LAB_CERT_DIR")
-  fi
-  if [[ -f "$LAB_AUTH_FILE" ]]; then
-    PODMAN_REG_OPTS+=(--authfile "$LAB_AUTH_FILE")
-    SKOPEO_REG_OPTS+=(--authfile "$LAB_AUTH_FILE")
-    SKOPEO_COPY_OPTS+=(--authfile "$LAB_AUTH_FILE")
-  fi
+# Run a command in a throwaway Fedora container (host network: on some hosts
+# DNS does not resolve inside rootful podman's default network).
+in_fedora() {
+  $PODMAN run --rm --network=host --security-opt label=disable "$@"
 }

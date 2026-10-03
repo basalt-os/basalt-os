@@ -1,0 +1,12 @@
+/* Basalt OS branding for the Cockpit login page. */
+#badge {
+    inline-size: 96px;
+    block-size: 96px;
+    background-image: url("logo.png");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+#brand::before {
+    content: "${NAME} <b>${VARIANT}</b>";
+}

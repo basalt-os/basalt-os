@@ -1,0 +1,38 @@
+#!/usr/bin/bash
+# Copy the Basalt OS GRUB theme from the image (/usr) to /boot/grub2/themes,
+# where GRUB can read it before the encrypted root is unlocked. Runs at boot
+# (basalt-grub-theme.service) and does nothing when /boot is already current.
+set -euo pipefail
+
+src=/usr/share/basalt/grub2/themes/basalt
+dst=/boot/grub2/themes/basalt
+
+if [[ ! -d /boot/grub2 || ! -f "$src/theme.txt" ]]; then
+  echo "basalt-grub-theme-sync: nothing to do (no /boot/grub2 or no theme in $src)"
+  exit 0
+fi
+if cmp -s "$src/.basalt-version" "$dst/.basalt-version" 2>/dev/null; then
+  exit 0
+fi
+
+copy_theme() {
+  mkdir -p "$(dirname "$dst")"
+  rm -rf "$dst.new"
+  cp -r "$src" "$dst.new"
+  rm -rf "$dst"
+  mv "$dst.new" "$dst"
+  sync -f "$(dirname "$dst")"
+  echo "basalt-grub-theme-sync: installed $(cat "$dst/.basalt-version") into $dst"
+}
+
+if [[ -w /boot/grub2 ]]; then
+  copy_theme
+  exit 0
+fi
+
+# Image-based systems mount /boot read-only. Remount it read-write only inside
+# a private mount namespace, so the rest of the system keeps the read-only view.
+export src dst
+export -f copy_theme
+exec unshare --mount --propagation private \
+  bash -c 'mount -o remount,rw /boot && copy_theme'

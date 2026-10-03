@@ -1,0 +1,14 @@
+Basalt OS artwork (logos, icons, boot splash, GRUB theme, wallpapers)
+Copyright the Basalt OS project authors.
+
+The artwork in this package is licensed under the Creative Commons
+Attribution-ShareAlike 4.0 International license (CC-BY-SA-4.0):
+https://creativecommons.org/licenses/by-sa/4.0/
+
+The names "Basalt OS" and "OpenBasalt" and the Basalt mark identify the
+Basalt OS project. Distributions derived from Basalt OS that are not
+published by the project should replace this package with their own
+artwork (as generic-logos does for derivatives of Fedora).
+
+The wordmark outlines were drawn with the Inter typeface
+(https://rsms.me/inter/), licensed under the SIL Open Font License 1.1.

@@ -1,0 +1,2 @@
+# Basalt OS: keep the GRUB theme on /boot in sync with the image.
+enable basalt-grub-theme.service

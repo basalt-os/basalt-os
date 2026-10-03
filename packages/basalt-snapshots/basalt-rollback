@@ -1,0 +1,77 @@
+#!/usr/bin/bash
+# Roll the root file system back to a snapshot (snapper rollback, classic).
+#
+#   basalt-rollback NUMBER   make snapshot NUMBER the new root
+#   basalt-rollback          booted from a snapshot (boot menu): keep it
+#   basalt-rollback --yes    do not ask for confirmation
+#
+# snapper keeps a read-only snapshot of the current root, creates a writable
+# copy of the chosen snapshot and makes it the default subvolume; the
+# change takes effect at the next boot. Data subvolumes (/home, /var/log,
+# /var/lib/containers, /var/lib/pgsql, /var/lib/mysql, /var/lib/libvirt,
+# /srv, /var/cache, /var/tmp, /var/spool) are not part of the root and are
+# not touched.
+set -euo pipefail
+
+: "${SNAPPER_CONFIG:=root}"
+[[ -r /etc/basalt/snapshots.conf ]] && . /etc/basalt/snapshots.conf
+
+# Through snapperd when D-Bus is up (keeps its snapshot list current).
+snap() {
+  if [[ -S /run/dbus/system_bus_socket ]] && snapper -c "$SNAPPER_CONFIG" get-config >/dev/null 2>&1; then
+    snapper -c "$SNAPPER_CONFIG" "$@"
+  else
+    snapper --no-dbus -c "$SNAPPER_CONFIG" "$@"
+  fi
+}
+
+yes=0 num=""
+for a in "$@"; do
+  case "$a" in
+    --yes|-y) yes=1 ;;
+    [0-9]*) num="$a" ;;
+    *) sed -n '2,13p' "$0"; exit 2 ;;
+  esac
+done
+[[ $EUID -eq 0 ]] || { echo "basalt-rollback: run as root" >&2; exit 1; }
+
+booted="$(findmnt -no OPTIONS / | tr ',' '\n' | sed -n 's|^subvol=.*/\.snapshots/\([0-9]*\)/snapshot$|\1|p')"
+if [[ -z "$num" ]]; then
+  [[ -n "$booted" ]] || { echo "basalt-rollback: not booted from a snapshot; give a snapshot number (snapper list)" >&2; exit 1; }
+  echo "Booted from snapshot $booted (read-only). Rolling back to it."
+else
+  snap --csvout list --columns number | grep -qx "$num" ||
+    { echo "basalt-rollback: no snapshot $num" >&2; exit 1; }
+  echo "Rolling back to snapshot $num:"
+  snap --csvout list --columns number,type,date,description | awk -F, -v n="$num" '$1 == n' 
+fi
+
+cmd=(snap --ambit classic rollback -d "basalt-rollback" ${num:+"$num"})
+echo "Command: ${cmd[*]}"
+if [[ $yes -eq 0 ]]; then
+  read -r -p "Proceed? [y/N] " ans
+  [[ "$ans" == [yY]* ]] || { echo "Cancelled."; exit 1; }
+fi
+"${cmd[@]}"
+
+# Kernels live on /boot, outside the snapshots. If the rolled-back root
+# predates a kernel update, the newest boot entry has no modules in it, so
+# make the newest kernel that does have them the default boot entry.
+new_path="$(btrfs subvolume get-default / | awk '{print $NF}')"
+new_root="/.snapshots/$(sed -n 's|.*/\.snapshots/\([0-9]*\)/snapshot$|\1|p' <<<"$new_path")/snapshot"
+if [[ -d "$new_root/usr/lib/modules" ]]; then
+  mapfile -t kernels < <(for f in /boot/vmlinuz-*; do [[ -e "$f" && "$f" != *rescue* ]] && echo "${f#/boot/vmlinuz-}"; done | sort -rV)
+  for k in "${kernels[@]}"; do
+    [[ -d "$new_root/usr/lib/modules/$k" ]] || continue
+    for entry in /boot/loader/entries/*-"$k".conf; do
+      [[ -f "$entry" ]] || continue
+      grub2-set-default "$(basename "$entry" .conf)"
+      echo "Default boot entry: kernel $k (its modules are in the rolled-back root)."
+      break
+    done
+    break
+  done
+fi
+/usr/bin/basalt-snapshot-boot update || true
+echo "New default subvolume: $(btrfs subvolume get-default / | awk '{print $NF}')"
+echo "Reboot to start the rolled-back system."

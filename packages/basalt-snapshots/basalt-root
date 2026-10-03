@@ -1,0 +1,45 @@
+# snapper configuration template for the Basalt OS root file system.
+# Used by basalt-snapshots-setup: snapper -c root create-config -t basalt-root /
+# Values not set here take snapper's defaults; see snapper-configs(5).
+
+SUBVOLUME="/"
+FSTYPE="btrfs"
+QGROUP=""
+
+# Snapshots may use at most 30 % of the file system, and cleanup keeps at
+# least 20 % of it free.
+SPACE_LIMIT="0.3"
+FREE_LIMIT="0.2"
+
+ALLOW_USERS=""
+ALLOW_GROUPS=""
+SYNC_ACL="no"
+# No background comparison of each pre/post pair: on a full system update it
+# kept snapperd busy for over a minute with a peak of about 850 MiB of memory.
+# `snapper status PRE..POST` still compares on demand.
+BACKGROUND_COMPARISON="no"
+
+# Retention for the snapshots taken around dnf transactions (cleanup
+# algorithm "number"): keep the last 20, and the last 5 marked important,
+# never removing one younger than 30 minutes. snapper-cleanup.timer runs it
+# daily.
+NUMBER_CLEANUP="yes"
+NUMBER_MIN_AGE="1800"
+NUMBER_LIMIT="20"
+NUMBER_LIMIT_IMPORTANT="5"
+
+# No hourly snapshots of the system: it changes through dnf, and every dnf
+# transaction is already bracketed by a pre and a post snapshot.
+TIMELINE_CREATE="no"
+TIMELINE_CLEANUP="yes"
+TIMELINE_MIN_AGE="1800"
+TIMELINE_LIMIT_HOURLY="0"
+TIMELINE_LIMIT_DAILY="7"
+TIMELINE_LIMIT_WEEKLY="0"
+TIMELINE_LIMIT_MONTHLY="0"
+TIMELINE_LIMIT_QUARTERLY="0"
+TIMELINE_LIMIT_YEARLY="0"
+
+# Drop pre/post pairs whose transaction changed nothing.
+EMPTY_PRE_POST_CLEANUP="yes"
+EMPTY_PRE_POST_MIN_AGE="1800"

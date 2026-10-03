@@ -1,0 +1,7 @@
+Basalt OS repository signing key: PLACEHOLDER.
+
+This file is replaced at build time with the real public key
+(BASALT_GPG_PUBKEY, see scripts/build-rpms.sh). The release key does not
+exist yet; lab builds embed a development key that lives only on the lab
+host. A basalt-release package built with this placeholder cannot verify
+the Basalt OS repository, so dnf will refuse its packages.

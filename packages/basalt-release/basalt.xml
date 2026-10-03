@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Basalt OS default zone: only SSH is reachable from the network. -->
+<zone>
+  <short>Basalt</short>
+  <description>Basalt OS default zone. Only SSH is allowed in; add services explicitly.</description>
+  <service name="ssh"/>
+  <forward/>
+</zone>

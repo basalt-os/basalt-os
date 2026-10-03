@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">
+<wallpapers>
+  <wallpaper deleted="false">
+    <name>Basalt</name>
+    <filename>/usr/share/backgrounds/basalt/basalt-light-3840x2160.png</filename>
+    <filename-dark>/usr/share/backgrounds/basalt/basalt-dark-3840x2160.png</filename-dark>
+    <options>zoom</options>
+    <shade_type>solid</shade_type>
+    <pcolor>#14171B</pcolor>
+    <scolor>#14171B</scolor>
+  </wallpaper>
+</wallpapers>

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Basalt
+Description=Basalt OS boot splash: centered mark, subtle progress line and a readable passphrase prompt.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/basalt
+ScriptFile=/usr/share/plymouth/themes/basalt/basalt.script
