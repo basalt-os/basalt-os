@@ -154,6 +154,9 @@ fi
   token log-probabilities, per-question temperature). Rules stay the default.
 - Unit-cause questions carry the journal lines, disk-cause questions the
   sizes, for a model backend.
+- [translator] prompt = auto (new default): the compact prompt for a
+  fine-tuned translator (basalt-translator-*), the prompt with examples
+  for any other model, by the name the model service reports.
 
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: basalt CLI (status, why, fix selinux, snapshots, disk,

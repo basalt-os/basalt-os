@@ -146,7 +146,8 @@ func runTranslate(args []string) error {
 	set := fs.String("set", "eval/translator.jsonl", "test set")
 	out := fs.String("out", "", "per-item results (JSON lines)")
 	label := fs.String("label", "", "label for the summary")
-	compact := fs.Bool("compact", false, "use the compact prompt (fine-tuned model)")
+	compact := fs.Bool("compact", false, "use the compact prompt (fine-tuned model); same as -prompt compact")
+	prompt := fs.String("prompt", "examples", "prompt: examples, compact, or auto (by the served model's name)")
 	_ = fs.Parse(args)
 
 	var cases []tcase
@@ -160,7 +161,10 @@ func runTranslate(args []string) error {
 	}); err != nil {
 		return err
 	}
-	tr := &translate.Translator{C: &llm.Client{Endpoint: *ep, Model: *model, Timeout: 120 * time.Second}, Compact: *compact}
+	tr := &translate.Translator{C: &llm.Client{Endpoint: *ep, Model: *model, Timeout: 120 * time.Second}, Prompt: *prompt}
+	if *compact {
+		tr.Prompt = translate.PromptCompact
+	}
 	var w *bufio.Writer
 	if *out != "" {
 		f, err := os.Create(*out)

@@ -229,6 +229,46 @@ func (c *Client) Complete(ctx context.Context, r Request) (Response, error) {
 	return res, nil
 }
 
+// ServedModel asks the endpoint which model it serves (GET /models) and
+// returns the first one's id. llama-server answers with its --alias, which
+// the basalt-llm service sets to the model's file name.
+func (c *Client) ServedModel(ctx context.Context) (string, error) {
+	if err := c.init(); err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/models", nil)
+	if err != nil {
+		return "", err
+	}
+	if c.APIKey != "" && c.Remote() {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("model endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("model endpoint: HTTP %d: %s", resp.StatusCode, firstLine(string(raw)))
+	}
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("model endpoint: bad models list: %v", err)
+	}
+	if len(out.Data) == 0 || out.Data[0].ID == "" {
+		return "", errors.New("model endpoint: no model listed")
+	}
+	return out.Data[0].ID, nil
+}
+
 func firstLine(s string) string {
 	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
 	if len(s) > 300 {

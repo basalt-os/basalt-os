@@ -25,6 +25,7 @@ record.
 | `basalt-llm` (package, optional) | llama.cpp's `llama-server` 0.5.0 built for the CPU only (all x86-64 variants, the best one is picked at run time), in `/usr/lib64/basalt-llm`; `basalt-llm.service`; `basalt-llm-fetch`; `/etc/basalt/llm.conf`. About 9 MiB as an RPM, no model inside. |
 | `basalt-llm-selinux` | SELinux module `basalt_llm`: domain `basalt_llm_t` |
 | models | GGUF files in `/var/lib/basalt-llm/models`, downloaded by an administrator with `basalt-llm-fetch` and checked against the SHA-256 in `/usr/share/basalt-llm/models.manifest` |
+| model selection | `/usr/libexec/basalt-llm/basalt-llm-select`, used by the service at each start (`MODEL=auto`) and by `basalt-llm-fetch auto` |
 | `basalt ask` | part of `basalt-assistant` (`internal/translate`) |
 | model backend | part of `basalt-assistant` (`internal/decide/model.go`) |
 
@@ -35,30 +36,99 @@ pulls in about 6 GiB of GPU libraries, against a light server image.
 
 ```sh
 sudo dnf install basalt-llm               # also basalt-llm-selinux
-basalt-llm-fetch --list
-sudo basalt-llm-fetch qwen3-1.7b-q8_0     # downloads, verifies the SHA-256
-sudoedit /etc/basalt/llm.conf             # MODEL=qwen3-1.7b-q8_0
+basalt-llm-fetch --list                   # also says what MODEL=auto picks here
+sudo basalt-llm-fetch auto                # downloads it, verifies the SHA-256
 sudo systemctl enable --now basalt-llm
 sudoedit /etc/basalt/assistant.conf       # [translator] enabled = yes
 basalt ask "por que o nginx caiu?"
 ```
 
-The models in the manifest are the publisher's own GGUF files (the Qwen
-organisation), each pinned to a revision and checked by SHA-256; all
-three are Apache-2.0. A file given by absolute path (`MODEL=/path/x.gguf`)
-is used as is, without a checksum: only for models you built or trust.
+Until the fine-tuned translators are published (below), `basalt-llm-fetch
+auto` stops with a message that says so; use a published model instead:
+
+```sh
+sudo basalt-llm-fetch qwen3-1.7b-q8_0
+sudoedit /etc/basalt/llm.conf             # MODEL=qwen3-1.7b-q8_0
+sudo systemctl enable --now basalt-llm
+```
+
+## Which model runs
+
+`MODEL` in `/etc/basalt/llm.conf`:
+
+| Value | Model |
+|---|---|
+| `auto` (default; also an empty value) | the fine-tuned translator that fits this machine, see below |
+| `0.6b` | the fine-tuned 0.6B translator, `basalt-translator-0.6b-q8_0` |
+| `1.7b` | the fine-tuned 1.7B translator, `basalt-translator-1.7b-q8_0` |
+| a manifest name | that model, e.g. `qwen3-1.7b-q8_0` |
+| an absolute path | that GGUF file, used as is, without a checksum |
+
+`auto` selects the fine-tuned 1.7B (Q8_0) when all three hold, else the
+fine-tuned 0.6B (Q8_0):
+
+| Condition | Threshold | Why |
+|---|---|---|
+| CPU cores | 4 or more | physical cores, at most the CPUs the service may use; the 1.7B is about 3 times slower than the 0.6B per request ([report](milestone-2b-report.md)) |
+| available memory (`MemAvailable`) | 3584 MiB or more | the 1.7B Q8_0 server peaked at 2.36 GiB resident in the measurements (1.76 GiB mapped model, 0.6 GiB buffers and caches); about 1 GiB more stays for the rest of the system |
+| the service's memory limit (`MemoryHigh`, `MemoryMax`) | 3072 MiB or more | about 0.6 GiB above that peak; the shipped unit (`MemoryHigh=3G`, `MemoryMax=4G`) qualifies, a drop-in with less selects the 0.6B |
+
+The choice is made each time the service starts and logged with the
+numbers it used (`journalctl -u basalt-llm`), for example:
+
+```
+basalt-llm: model basalt-translator-1.7b-q8_0 (auto: 8 CPU cores, 12034 MiB available, memory limit 3072 MiB; 1.7b needs 4 cores, 3584 MiB available and a limit of 3072 MiB)
+```
+
+A running server never switches models: a machine that gains or loses
+memory gets a different model at the next start, never in the middle of
+a run. If `auto` allows the 1.7B but only the 0.6B is downloaded, the
+0.6B runs (the log says so); the 1.7B is never used where `auto` chose
+the 0.6B unless `MODEL=1.7b` asks for it. `basalt-llm-fetch auto` downloads
+the model `auto` selects on the machine it runs on.
+
+The assistant picks its prompt to match: with `[translator] prompt = auto`
+(the default) it asks the service which model it serves and uses the
+compact prompt for a fine-tuned translator (`basalt-translator-*`) and the
+prompt with examples for any other model.
+
+## Models
+
+The publisher models in the manifest are the Qwen organisation's own GGUF
+files, each pinned to a revision and checked by SHA-256; all three are
+Apache-2.0. A file given by absolute path (`MODEL=/path/x.gguf`) is used
+as is, without a checksum: only for models you built or trust. It must be
+readable by the service: its SELinux domain reads only files labeled as
+models, so keep it in `/var/lib/basalt-llm/models`.
 
 | Model | Download | Notes |
 |---|---|---|
+| `basalt-translator-0.6b-q8_0` | about 610 MiB | fine-tuned; the default of `auto`; not yet published |
+| `basalt-translator-1.7b-q8_0` | about 1.7 GiB | fine-tuned, most accurate; `auto` on 4 or more cores with memory to spare; not yet published |
 | `qwen3-0.6b-q8_0` | 610 MiB | fastest; weak translator without fine-tuning |
-| `qwen3-1.7b-q8_0` | 1.7 GiB | the default recommendation among the published files |
+| `qwen3-1.7b-q8_0` | 1.7 GiB | the recommendation among the published files |
 | `qwen3-4b-q4_k_m` | 2.4 GiB | best of the three untuned; slow on 2 to 4 CPUs |
 
-Fine-tuned translators (`basalt-translator-0.6b` and `-1.7b`, LoRA on
-generated request/intent pairs, see the report) were more accurate than
-all three and, at 0.6B, several times faster; they are not published yet,
-so they are not in the manifest. With such a model set `[translator]
-prompt = compact`.
+The fine-tuned translators (LoRA on generated request/intent pairs, see
+the report) were more accurate than all three publisher models and, at
+0.6B, several times faster. Their manifest entries are marked
+`unpublished`: the weights require a signed release (the key ceremony,
+[key-ceremony.md](key-ceremony.md)), so the entries carry placeholder
+checksums and `basalt-llm-fetch` refuses them (fail closed) with a message
+that points to the published models. When the weights are released, the
+entries get their checksum, size and URL and `auto` works with no change
+to an installed configuration.
+
+In a lab, a fine-tuned GGUF you built yourself can be used before then:
+
+```sh
+sudo install -m 0644 basalt-translator-0.6b-q8_0.gguf /var/lib/basalt-llm/models/
+sudo restorecon -v /var/lib/basalt-llm/models/basalt-translator-0.6b-q8_0.gguf
+sudo systemctl restart basalt-llm        # MODEL=auto or MODEL=0.6b
+```
+
+A file installed by hand has no checksum to verify against;
+`basalt-llm-fetch --verify` lists it as not yet published.
 
 ## basalt ask
 
@@ -77,7 +147,8 @@ Run it yourself to see the exact commands and confirm them:
 How a request becomes a command:
 
 1. The model receives the request and a prompt (instructions with
-   examples, or the compact prompt for a fine-tuned model). Its output is
+   examples, or the compact prompt for a fine-tuned model; `prompt = auto`
+   picks by the model's name). Its output is
    constrained by a JSON schema (llama.cpp turns it into a grammar): one
    of ten intents, each with exactly its arguments (`status`, `why` +
    unit, `fix_selinux` + time window, `snapshots` + list/diff/rollback and
@@ -164,6 +235,14 @@ The service is a background process: `THREADS=0` uses every CPU it may
 assistant's prompts; `CACHE_RAM=256` bounds the prompt cache
 (llama-server's own default is 8 GiB). The first request after a start
 reads the whole prompt; later ones reuse its cached prefix.
+
+## Tests
+
+`make llm-test` (`packages/basalt-llm/tests/select-test.sh`, also part of
+`make ci-lint`) checks the selection: the thresholds at and just below
+each limit, CPU topologies with and without SMT, memory and cgroup limits
+read from fake files, the start script's resolution and log line, and that
+every unpublished entry fails closed in `basalt-llm-fetch`.
 
 ## Build
 

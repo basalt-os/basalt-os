@@ -35,7 +35,26 @@ func TestShippedConfigLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Backend != "rules" || c.Translator || c.TranslatorEndpoint != "unix:/run/basalt-llm/llm.sock" || c.AllowRemote {
+	if c.Backend != "rules" || c.Translator || c.TranslatorEndpoint != "unix:/run/basalt-llm/llm.sock" || c.AllowRemote ||
+		c.TranslatorPrompt != "auto" {
 		t.Fatalf("shipped defaults changed: %+v", c)
+	}
+}
+
+func TestTranslatorPrompt(t *testing.T) {
+	p := t.TempDir() + "/assistant.conf"
+	if c := Defaults(); c.TranslatorPrompt != "auto" {
+		t.Errorf("default prompt %q, want auto", c.TranslatorPrompt)
+	}
+	for _, v := range []string{"auto", "examples", "compact"} {
+		_ = os.WriteFile(p, []byte("[translator]\nprompt = "+v+"\n"), 0o600)
+		c, err := Load(p)
+		if err != nil || c.TranslatorPrompt != v {
+			t.Errorf("prompt = %s: %q, %v", v, c.TranslatorPrompt, err)
+		}
+	}
+	_ = os.WriteFile(p, []byte("[translator]\nprompt = short\n"), 0o600)
+	if _, err := Load(p); err == nil {
+		t.Error("unknown prompt style accepted")
 	}
 }

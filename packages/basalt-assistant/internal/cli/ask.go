@@ -30,7 +30,7 @@ func (a *app) ask(ctx context.Context) error {
 	if c.Remote() {
 		fmt.Fprintf(a.out, "Note: the request is sent to %s (remote model, allow_remote = yes).\n", c.Endpoint)
 	}
-	tr := &translate.Translator{C: c, Compact: a.cfg.TranslatorCompact}
+	tr := &translate.Translator{C: c, Prompt: a.cfg.TranslatorPrompt}
 	res, err := tr.Translate(ctx, text)
 	if err != nil {
 		if res.Raw == "" {

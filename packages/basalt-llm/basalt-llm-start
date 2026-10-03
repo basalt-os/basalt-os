@@ -1,27 +1,47 @@
 #!/usr/bin/bash
-# Start llama-server for basalt-llm.service: resolve MODEL (a name from the
-# manifest or an absolute path), then exec the server on the Unix socket.
-# Settings come from /etc/basalt/llm.conf (EnvironmentFile of the unit).
+# Start llama-server for basalt-llm.service: resolve MODEL (auto, a size
+# alias, a name from the manifest or an absolute path), log the choice,
+# then exec the server on the Unix socket. Settings come from
+# /etc/basalt/llm.conf (EnvironmentFile of the unit). The model is chosen
+# here, once per start: the server keeps it until the service stops.
 set -euo pipefail
 
-MODELS=/var/lib/basalt-llm/models
+# The two overrides exist for packages/basalt-llm/tests/select-test.sh.
+MODELS="${BASALT_LLM_MODEL_DIR:-/var/lib/basalt-llm/models}"
 SOCK="${RUNTIME_DIRECTORY:-/run/basalt-llm}/llm.sock"
-SERVER=/usr/lib64/basalt-llm/llama-server
+SERVER="${BASALT_LLM_SERVER:-/usr/lib64/basalt-llm/llama-server}"
+LIB=/usr/libexec/basalt-llm/basalt-llm-select
+[[ -r "$LIB" ]] || LIB="$(dirname "$0")/basalt-llm-select"
+# shellcheck source=basalt-llm-select
+source "$LIB"
 
-model="${MODEL:-}"
-if [[ -z "$model" ]]; then
-  echo "basalt-llm: no MODEL in /etc/basalt/llm.conf (see basalt-llm-fetch --list)" >&2
-  exit 1
-fi
+log() { echo "basalt-llm: $*" >&2; }
+
+model="${MODEL:-auto}"
+reason="MODEL=$model in /etc/basalt/llm.conf"
+case "$model" in
+  auto)
+    basalt_llm_auto "$(basalt_llm_cores)" "$(basalt_llm_avail_mib)" "$(basalt_llm_cgroup_limit_mib)"
+    model="$BASALT_LLM_CHOICE"
+    reason="$BASALT_LLM_REASON"
+    # The machine allows the 1.7B but only the 0.6B is downloaded: use it.
+    if [[ "$model" == "$BASALT_LLM_LARGE" && ! -r "$MODELS/$model.gguf" && -r "$MODELS/$BASALT_LLM_SMALL.gguf" ]]; then
+      model="$BASALT_LLM_SMALL"
+      reason+="; $BASALT_LLM_LARGE is not downloaded"
+    fi
+    ;;
+  *) model="$(basalt_llm_alias "$model")" ;;
+esac
 case "$model" in
   /*) path="$model" ;;
-  *[!a-z0-9._-]*) echo "basalt-llm: invalid model name '$model'" >&2; exit 1 ;;
+  *[!a-z0-9._-]*) log "invalid model name '$model'"; exit 1 ;;
   *) path="$MODELS/$model.gguf" ;;
 esac
 if [[ ! -r "$path" ]]; then
-  echo "basalt-llm: $path is missing; run: basalt-llm-fetch $model" >&2
+  log "$path is missing ($reason); run: basalt-llm-fetch ${MODEL:-auto}"
   exit 1
 fi
+log "model $(basename "$path" .gguf) ($reason)"
 
 threads="${THREADS:-0}"
 if [[ ! "$threads" =~ ^[0-9]+$ || "$threads" == 0 ]]; then

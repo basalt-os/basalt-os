@@ -3,13 +3,27 @@
 # source tree; they are downloaded on request and checked against the
 # SHA-256 below before they are used.
 #
-# Columns: name  sha256  size_bytes  license  url
+# Columns: name  sha256  size_bytes  license  url  status
 #
-# Every URL is pinned to a revision of the publisher's own repository (the
+# status is "published" (the default when the column is missing) or
+# "unpublished": the entry is known to the service (MODEL=auto selects the
+# fine-tuned translators) but its weights have no signed release yet, so
+# the checksum is a placeholder and basalt-llm-fetch refuses to download
+# it. A placeholder checksum (all zeros) never verifies anything.
+#
+# Publisher models: every URL is pinned to a revision of the publisher's own repository (the
 # Qwen organisation on Hugging Face), so the file behind it cannot change;
 # the checksum is the Git LFS object id published for that revision.
 # License of all three checkpoints: Apache-2.0 (LICENSE file in each
 # repository, checked at the pinned revision).
-qwen3-0.6b-q8_0   9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031  639446688   Apache-2.0  https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf
-qwen3-1.7b-q8_0   061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a  1834426016  Apache-2.0  https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf
-qwen3-4b-q4_k_m   7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5  2497280256  Apache-2.0  https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf
+qwen3-0.6b-q8_0   9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031  639446688   Apache-2.0  https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf  published
+qwen3-1.7b-q8_0   061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a  1834426016  Apache-2.0  https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf  published
+qwen3-4b-q4_k_m   7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5  2497280256  Apache-2.0  https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf  published
+#
+# Fine-tuned translators (LoRA of Qwen3 0.6B and 1.7B on generated
+# request/intent pairs, Q8_0; docs/milestone-2b-report.md). Not yet
+# published: they require a signed release (key ceremony,
+# docs/key-ceremony.md). The checksum, size and URL are filled in when
+# the weights are released; until then these entries fail closed.
+basalt-translator-0.6b-q8_0  0000000000000000000000000000000000000000000000000000000000000000  0  Apache-2.0  -  unpublished
+basalt-translator-1.7b-q8_0  0000000000000000000000000000000000000000000000000000000000000000  0  Apache-2.0  -  unpublished

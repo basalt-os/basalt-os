@@ -33,7 +33,7 @@ type Config struct {
 	Translator         bool
 	TranslatorEndpoint string
 	TranslatorModel    string
-	TranslatorCompact  bool // the model is fine-tuned for the translator: short prompt
+	TranslatorPrompt   string // auto (default), examples or compact (translate.Prompt*)
 	DefaultThreshold   float64
 	Thresholds         map[string]float64
 
@@ -54,9 +54,9 @@ func Defaults() Config {
 	return Config{
 		StateDir: "/var/lib/basalt-assistant", AuditPath: "/var/log/basalt-assistant/audit.jsonl",
 		Backend: "rules", DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
-		TranslatorEndpoint: "unix:/run/basalt-llm/llm.sock",
-		Disk:               diag.DefaultDiskThresholds,
-		DedupWindow:        time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
+		TranslatorEndpoint: "unix:/run/basalt-llm/llm.sock", TranslatorPrompt: "auto",
+		Disk:        diag.DefaultDiskThresholds,
+		DedupWindow: time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
 		DnfMinAge: 2 * time.Minute, DnfSettle: 15 * time.Second, AVCSettle: 5 * time.Second, UnitSettle: 3 * time.Second,
 	}
 }
@@ -126,12 +126,10 @@ func (c *Config) set(sec, k, v string) error {
 		c.TranslatorModel = v
 	case "translator.prompt":
 		switch v {
-		case "examples":
-			c.TranslatorCompact = false
-		case "compact":
-			c.TranslatorCompact = true
+		case "auto", "examples", "compact":
+			c.TranslatorPrompt = v
 		default:
-			err = fmt.Errorf("prompt %q (examples or compact)", v)
+			err = fmt.Errorf("prompt %q (auto, examples or compact)", v)
 		}
 	case "decision.default_threshold":
 		c.DefaultThreshold, err = fl()

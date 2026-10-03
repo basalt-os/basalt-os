@@ -1,10 +1,15 @@
 package translate
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/llm"
 )
 
 func TestParseValidates(t *testing.T) {
@@ -108,5 +113,73 @@ func TestCompactPromptMatchesTraining(t *testing.T) {
 	s := strings.ReplaceAll(string(b), "\"\n                  \"", "")
 	if !strings.Contains(s, CompactPrompt) {
 		t.Fatal("CompactPrompt differs from COMPACT_PROMPT in eval/tools/train-translator-lora.py")
+	}
+}
+
+func TestPromptFor(t *testing.T) {
+	for name, want := range map[string]string{
+		"basalt-translator-0.6b-q8_0":                            PromptCompact,
+		"basalt-translator-1.7b-q8_0":                            PromptCompact,
+		"Basalt-Translator-0.6B-Q8_0":                            PromptCompact,
+		"/var/lib/basalt-llm/models/basalt-translator-0.6b-q8_0": PromptCompact,
+		"qwen3-1.7b-q8_0":                                        PromptExamples,
+		"mine":                                                   PromptExamples,
+		"":                                                       PromptExamples,
+		"basalt-translator":                                      PromptExamples, // the prefix needs its dash and a size
+	} {
+		if got := PromptFor(name); got != want {
+			t.Errorf("PromptFor(%q) = %s, want %s", name, got, want)
+		}
+	}
+}
+
+func TestPromptStyleAuto(t *testing.T) {
+	served := "basalt-translator-1.7b-q8_0"
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		calls++
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"` + served + `","object":"model"}]}`))
+	}))
+	defer srv.Close()
+	ctx := context.Background()
+	newT := func(prompt, model string) *Translator {
+		return &Translator{C: &llm.Client{Endpoint: srv.URL + "/v1", Model: model}, Prompt: prompt}
+	}
+
+	tr := newT(PromptAuto, "")
+	if got := tr.PromptStyle(ctx); got != PromptCompact {
+		t.Errorf("auto with a fine-tuned model served: %s", got)
+	}
+	_ = tr.PromptStyle(ctx)
+	if calls != 1 {
+		t.Errorf("the served model must be asked once per translator, asked %d times", calls)
+	}
+	served = "qwen3-1.7b-q8_0"
+	if got := newT(PromptAuto, "").PromptStyle(ctx); got != PromptExamples {
+		t.Errorf("auto with a general model served: %s", got)
+	}
+	// A configured model name decides without asking the endpoint.
+	calls = 0
+	if got := newT(PromptAuto, "basalt-translator-0.6b-q8_0").PromptStyle(ctx); got != PromptCompact || calls != 0 {
+		t.Errorf("auto with a configured model: %s, %d calls", got, calls)
+	}
+	// Explicit styles never ask.
+	if got := newT(PromptExamples, "").PromptStyle(ctx); got != PromptExamples || calls != 0 {
+		t.Errorf("examples: %s", got)
+	}
+	if got := newT(PromptCompact, "").PromptStyle(ctx); got != PromptCompact || calls != 0 {
+		t.Errorf("compact: %s", got)
+	}
+	if got := newT("", "").PromptStyle(ctx); got != PromptExamples {
+		t.Errorf("empty prompt must mean examples: %s", got)
+	}
+	// An unreachable endpoint falls back to the examples prompt.
+	down := &Translator{C: &llm.Client{Endpoint: "unix:/nonexistent/llm.sock"}, Prompt: PromptAuto}
+	if got := down.PromptStyle(ctx); got != PromptExamples {
+		t.Errorf("auto without an answer: %s", got)
 	}
 }

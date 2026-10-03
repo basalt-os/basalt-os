@@ -127,11 +127,64 @@ Answer with the JSON object only.`
 const CompactPrompt = "Translate the request to the Basalt OS system assistant into one JSON intent " +
 	"(status, why, fix_selinux, snapshots, disk, pending, show, apply, clarify, none). Never run anything."
 
+// Prompt styles.
+const (
+	PromptAuto     = "auto"     // compact for a fine-tuned translator, examples for any other model
+	PromptExamples = "examples" // SystemPrompt
+	PromptCompact  = "compact"  // CompactPrompt
+)
+
+// FineTunedPrefix starts the name of every fine-tuned translator
+// (basalt-translator-0.6b-q8_0, basalt-translator-1.7b-q8_0). The local
+// model service serves a model under its file name, so the name tells
+// which prompt the model was trained with.
+const FineTunedPrefix = "basalt-translator-"
+
+// PromptFor returns the prompt style for a model name: compact for a
+// fine-tuned translator, examples otherwise (also for an unknown name:
+// the examples prompt works with any model, only slower).
+func PromptFor(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if i := strings.LastIndex(m, "/"); i >= 0 {
+		m = m[i+1:]
+	}
+	if strings.HasPrefix(m, FineTunedPrefix) {
+		return PromptCompact
+	}
+	return PromptExamples
+}
+
 // Translator translates with a model.
 type Translator struct {
 	C         *llm.Client
 	MaxTokens int
-	Compact   bool // the model is fine-tuned: use CompactPrompt
+	// Prompt is auto, examples or compact; empty means examples. With auto
+	// the model's name decides (PromptFor): the configured model, or else
+	// the one the endpoint serves. The service picks its model when it
+	// starts, so the name is asked once per Translator.
+	Prompt string
+
+	resolved string
+}
+
+// PromptStyle resolves Prompt to examples or compact.
+func (t *Translator) PromptStyle(ctx context.Context) string {
+	switch t.Prompt {
+	case PromptCompact:
+		return PromptCompact
+	case PromptAuto:
+	default:
+		return PromptExamples
+	}
+	if t.resolved != "" {
+		return t.resolved
+	}
+	name := t.C.Model
+	if name == "" {
+		name, _ = t.C.ServedModel(ctx)
+	}
+	t.resolved = PromptFor(name)
+	return t.resolved
 }
 
 // Result is a translation with its cost.
@@ -155,7 +208,7 @@ func (t *Translator) Translate(ctx context.Context, text string) (Result, error)
 		max = 48
 	}
 	sys := SystemPrompt
-	if t.Compact {
+	if t.PromptStyle(ctx) == PromptCompact {
 		sys = CompactPrompt
 	}
 	resp, err := t.C.Complete(ctx, llm.Request{

@@ -16,7 +16,7 @@
 %global __requires_exclude ^lib(llama|ggml|mtmd).*$
 
 Name:           basalt-llm
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Local language model service for the Basalt OS assistant (no network)
 # basalt-llm files: Apache-2.0. llama.cpp and ggml: MIT; bundled
@@ -33,6 +33,7 @@ Source6:        basalt_llm.te
 Source7:        basalt_llm.if
 Source8:        basalt_llm.fc
 Source9:        LICENSE
+Source10:       basalt-llm-select
 
 ExclusiveArch:  x86_64 aarch64
 BuildRequires:  cmake
@@ -59,7 +60,10 @@ enabled, to translate requests in natural language into its commands
 (basalt ask) and as an opt-in backend of its decision layer.
 
 No model is included. basalt-llm-fetch downloads a model listed in the
-manifest and verifies its SHA-256.
+manifest and verifies its SHA-256. By default (MODEL=auto) the service
+runs the fine-tuned translator that fits the machine, chosen at each
+start: the 1.7B with 4 or more CPU cores and enough free memory, else
+the 0.6B.
 
 %package selinux
 Summary:        SELinux policy module for the Basalt OS local language model service
@@ -99,6 +103,8 @@ for f in %{__cmake_builddir}/bin/lib*.so*; do
     cp -P "$f" %{buildroot}%{_libdir}/basalt-llm/
 done
 install -Dpm 0755 %{SOURCE2} %{buildroot}%{_libexecdir}/basalt-llm/basalt-llm-start
+%{_libexecdir}/basalt-llm/basalt-llm-select
+install -Dpm 0644 %{SOURCE10} %{buildroot}%{_libexecdir}/basalt-llm/basalt-llm-select
 install -Dpm 0755 %{SOURCE3} %{buildroot}%{_bindir}/basalt-llm-fetch
 install -Dpm 0644 %{SOURCE4} %{buildroot}%{_datadir}/basalt-llm/models.manifest
 install -Dpm 0644 %{SOURCE5} %{buildroot}%{_sysconfdir}/basalt/llm.conf
@@ -154,6 +160,14 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- MODEL=auto (new default): the fine-tuned translator that fits the
+  machine, chosen and logged at each start: 1.7B Q8_0 with 4 or more CPU
+  cores, 3584 MiB available and a service memory limit of 3072 MiB or
+  more, else 0.6B Q8_0. MODEL=0.6b or 1.7b selects one explicitly.
+- Manifest entries for both fine-tuned translators, marked unpublished
+  until a signed release: basalt-llm-fetch refuses them (fail closed).
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: llama.cpp 0.5.0 server (CPU only), systemd unit
   without network, SELinux domain basalt_llm_t, model download tool.

@@ -19,7 +19,7 @@ tarball="$work/SOURCES/llama.cpp-$LLAMA_VERSION.tar.gz"
 curl -fsSL --proto '=https' -o "$tarball" "https://github.com/ggml-org/llama.cpp/archive/refs/tags/v$LLAMA_VERSION.tar.gz" ||
   die "download of llama.cpp $LLAMA_VERSION failed"
 echo "$LLAMA_SHA256  $tarball" | sha256sum -c --quiet - || die "llama.cpp archive checksum mismatch"
-cp -p "$pkg"/basalt-llm.service "$pkg"/basalt-llm-start "$pkg"/basalt-llm-fetch "$pkg"/models.manifest \
+cp -p "$pkg"/basalt-llm.service "$pkg"/basalt-llm-start "$pkg"/basalt-llm-fetch "$pkg"/basalt-llm-select "$pkg"/models.manifest \
   "$pkg"/llm.conf "$pkg"/LICENSE "$pkg"/selinux/basalt_llm.* "$work/SOURCES/"
 cp -p "$pkg/basalt-llm.spec" "$work/SPECS/"
 

@@ -7,7 +7,7 @@
 #                                   has the tools (what CI does)
 #
 # Checks: `make lint` (shell and Python syntax, ShellCheck, ksvalidator),
-# ShellCheck on the CI scripts, rpmlint on every package spec (filters in
+# ShellCheck on the CI scripts, the basalt-llm model selection tests, rpmlint on every package spec (filters in
 # scripts/ci/rpmlint.toml), ksvalidator on the kickstart for this Fedora
 # release, actionlint on the workflows.
 source "$(dirname "$0")/../lib.sh"
@@ -44,7 +44,11 @@ make --no-print-directory lint || fail=1
 
 step "ShellCheck: CI scripts, assistant and model service scripts, their lab scripts"
 shellcheck -x -S warning scripts/ci/*.sh packages/basalt-assistant/build.sh scripts/lab/assistant-*.sh scripts/lab/eval-capture.sh \
-  packages/basalt-llm/build.sh packages/basalt-llm/basalt-llm-start packages/basalt-llm/basalt-llm-fetch || fail=1
+  packages/basalt-llm/build.sh packages/basalt-llm/basalt-llm-start packages/basalt-llm/basalt-llm-fetch \
+  packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh || fail=1
+
+step "basalt-llm: model selection tests"
+packages/basalt-llm/tests/select-test.sh || fail=1
 
 step "Python syntax: evaluation suite tools"
 python3 -m py_compile eval/tools/*.py && rm -rf eval/tools/__pycache__ || fail=1

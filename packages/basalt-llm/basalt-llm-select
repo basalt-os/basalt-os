@@ -1,0 +1,141 @@
+# shellcheck shell=bash
+# Model selection for basalt-llm, sourced by basalt-llm-start (each time
+# the service starts) and by basalt-llm-fetch (to download the model the
+# service would pick). Not a program: it only defines functions.
+#
+# MODEL in /etc/basalt/llm.conf:
+#   auto (default, or empty)  the fine-tuned translator that fits this machine
+#   0.6b | 1.7b               the fine-tuned translator of that size
+#   NAME                      a model of the manifest
+#   /path/to/file.gguf        a file you trust (no checksum is checked)
+#
+# auto picks the fine-tuned 1.7B (Q8_0) only when all of these hold, else
+# the fine-tuned 0.6B (Q8_0):
+#   - at least 4 CPU cores (physical cores, at most the CPUs the service
+#     may use);
+#   - at least 3584 MiB available memory (MemAvailable): the 1.7B Q8_0
+#     server peaked at 2.36 GiB resident in the measurements (model file
+#     1.76 GiB mapped, 0.6 GiB of buffers and caches), plus about 1 GiB
+#     left for the rest of the system;
+#   - a memory limit of the service (MemoryHigh, MemoryMax) of at least
+#     3072 MiB, about 0.6 GiB above that peak. The shipped unit has
+#     MemoryHigh=3G, so it qualifies; a lower drop-in selects the 0.6B.
+# The choice is made when the service starts and holds until it stops: a
+# running server never switches models.
+
+BASALT_LLM_SMALL=basalt-translator-0.6b-q8_0
+BASALT_LLM_LARGE=basalt-translator-1.7b-q8_0
+BASALT_LLM_LARGE_MIN_CORES=4
+BASALT_LLM_LARGE_MIN_AVAIL_MIB=3584
+BASALT_LLM_LARGE_MIN_LIMIT_MIB=3072
+# Stands for "no limit" in MiB comparisons.
+BASALT_LLM_UNLIMITED=1073741824
+
+# basalt_llm_pick CORES AVAIL_MIB LIMIT_MIB: prints 1.7b or 0.6b.
+basalt_llm_pick() {
+  local cores="$1" avail="$2" limit="$3"
+  if [[ "$cores" =~ ^[0-9]+$ && "$avail" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] &&
+    ((cores >= BASALT_LLM_LARGE_MIN_CORES && avail >= BASALT_LLM_LARGE_MIN_AVAIL_MIB &&
+      limit >= BASALT_LLM_LARGE_MIN_LIMIT_MIB)); then
+    echo 1.7b
+  else
+    # Anything unknown or malformed selects the small model.
+    echo 0.6b
+  fi
+}
+
+# basalt_llm_alias VALUE: the manifest name behind a size alias, or VALUE.
+basalt_llm_alias() {
+  case "$1" in
+    0.6b) echo "$BASALT_LLM_SMALL" ;;
+    1.7b) echo "$BASALT_LLM_LARGE" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# basalt_llm_cores [CPU_SYSFS_DIR] [NPROC]: physical cores, at most NPROC
+# (the CPUs this process may run on). Counts distinct sibling lists in the
+# CPU topology; without topology it is NPROC.
+basalt_llm_cores() {
+  local sys="${1:-/sys/devices/system/cpu}" n="${2:-}" f
+  [[ -n "$n" ]] || n="$(nproc 2>/dev/null || echo 1)"
+  local -A seen=()
+  for f in "$sys"/cpu[0-9]*/topology/core_cpus_list "$sys"/cpu[0-9]*/topology/thread_siblings_list; do
+    [[ -r "$f" ]] || continue
+    seen["${f%/topology/*}"]="$(<"$f")"
+  done
+  local -A cores=()
+  for f in "${seen[@]}"; do cores["$f"]=1; done
+  if ((${#cores[@]} > 0 && ${#cores[@]} < n)); then
+    n=${#cores[@]}
+  fi
+  echo "$n"
+}
+
+# basalt_llm_avail_mib [MEMINFO]: MemAvailable in MiB, 0 if unknown.
+basalt_llm_avail_mib() {
+  local key val _ kib=0
+  if [[ -r "${1:-/proc/meminfo}" ]]; then
+    while read -r key val _; do
+      if [[ "$key" == MemAvailable: && "$val" =~ ^[0-9]+$ ]]; then
+        kib="$val"
+        break
+      fi
+    done <"${1:-/proc/meminfo}"
+  fi
+  echo $((kib / 1024))
+}
+
+# basalt_llm_mib_of BYTES: MiB of a limit in bytes; "max", "infinity" or
+# empty mean no limit.
+basalt_llm_mib_of() {
+  case "$1" in
+    "" | max | infinity) echo "$BASALT_LLM_UNLIMITED" ;;
+    *[!0-9]*) echo 0 ;;
+    *) echo $(($1 / 1048576)) ;;
+  esac
+}
+
+# basalt_llm_min_mib A B: the smaller of two MiB values.
+basalt_llm_min_mib() { if (($1 < $2)); then echo "$1"; else echo "$2"; fi; }
+
+# basalt_llm_cgroup_limit_mib [CGROUP_DIR]: the smaller of memory.high and
+# memory.max of the cgroup this process runs in (cgroup v2), in MiB.
+basalt_llm_cgroup_limit_mib() {
+  local dir="${1:-}" line high="" max=""
+  if [[ -z "$dir" ]]; then
+    # cgroup v2: the line "0::/system.slice/basalt-llm.service".
+    dir=/sys/fs/cgroup/nonexistent
+    if [[ -r /proc/self/cgroup ]]; then
+      while IFS= read -r line; do
+        [[ "$line" == 0::* ]] && { dir="/sys/fs/cgroup${line#0::}"; break; }
+      done </proc/self/cgroup
+    fi
+  fi
+  [[ -r "$dir/memory.high" ]] && high="$(<"$dir/memory.high")"
+  [[ -r "$dir/memory.max" ]] && max="$(<"$dir/memory.max")"
+  basalt_llm_min_mib "$(basalt_llm_mib_of "$high")" "$(basalt_llm_mib_of "$max")"
+}
+
+# basalt_llm_unit_limit_mib: the same limit read from the unit's settings,
+# for tools that do not run inside the service (basalt-llm-fetch).
+basalt_llm_unit_limit_mib() {
+  local high max
+  high="$(systemctl show -P MemoryHigh basalt-llm.service 2>/dev/null || true)"
+  max="$(systemctl show -P MemoryMax basalt-llm.service 2>/dev/null || true)"
+  basalt_llm_min_mib "$(basalt_llm_mib_of "$high")" "$(basalt_llm_mib_of "$max")"
+}
+
+# basalt_llm_auto CORES AVAIL_MIB LIMIT_MIB: sets BASALT_LLM_CHOICE (a
+# manifest name) and BASALT_LLM_REASON (one line for the log).
+basalt_llm_auto() {
+  local size limit_txt
+  size="$(basalt_llm_pick "$1" "$2" "$3")"
+  # shellcheck disable=SC2034  # read by the scripts that source this file
+  BASALT_LLM_CHOICE="$(basalt_llm_alias "$size")"
+  limit_txt="$3 MiB"
+  (($3 >= BASALT_LLM_UNLIMITED)) && limit_txt="none"
+  BASALT_LLM_REASON="auto: $1 CPU cores, $2 MiB available, memory limit $limit_txt"
+  BASALT_LLM_REASON+="; 1.7b needs $BASALT_LLM_LARGE_MIN_CORES cores, $BASALT_LLM_LARGE_MIN_AVAIL_MIB MiB available"
+  BASALT_LLM_REASON+=" and a limit of $BASALT_LLM_LARGE_MIN_LIMIT_MIB MiB"
+}

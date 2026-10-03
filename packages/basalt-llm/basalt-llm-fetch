@@ -4,6 +4,8 @@
 #
 #   basalt-llm-fetch --list                 models in the manifest, and which are present
 #   basalt-llm-fetch NAME                   download NAME into the model directory
+#   basalt-llm-fetch auto                   download the model MODEL=auto selects here
+#   basalt-llm-fetch 0.6b | 1.7b            download that fine-tuned translator
 #   basalt-llm-fetch --verify [NAME]        re-check the checksum of downloaded models
 #
 # Options: --dir DIR (default /var/lib/basalt-llm/models),
@@ -11,7 +13,8 @@
 #
 # The download is the only network access the model needs, and it happens
 # here, run by an administrator, never in the model service (which has no
-# network at all). A file whose checksum does not match is deleted.
+# network at all). A file whose checksum does not match is deleted. An
+# entry whose weights are not published yet is refused (fail closed).
 set -euo pipefail
 
 DIR="${BASALT_LLM_MODEL_DIR:-/var/lib/basalt-llm/models}"
@@ -20,7 +23,12 @@ mode=fetch
 name=""
 
 die() { printf 'basalt-llm-fetch: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,15s/^# \{0,1\}//p' "$0"; exit "${1:-0}"; }
+usage() { sed -n '2,17s/^# \{0,1\}//p' "$0"; exit "${1:-0}"; }
+
+LIB=/usr/libexec/basalt-llm/basalt-llm-select
+[[ -r "$LIB" ]] || LIB="$(dirname "$0")/basalt-llm-select"
+# shellcheck source=basalt-llm-select
+source "$LIB"
 
 while (($#)); do
   case "$1" in
@@ -37,11 +45,30 @@ done
 
 [[ -r "$MANIFEST" ]] || die "manifest $MANIFEST not readable"
 
-# entry NAME: prints "sha256 size license url" for NAME, fails if unknown.
+# entry NAME: prints "sha256 size license url status" for NAME, fails if
+# unknown. The status column is optional and defaults to "published".
 entry() {
-  awk -v n="$1" '!/^#/ && NF >= 5 && $1 == n {print $2, $3, $4, $5; found=1} END {exit !found}' "$MANIFEST"
+  awk -v n="$1" '!/^#/ && NF >= 5 && $1 == n {print $2, $3, $4, $5, (NF >= 6 ? $6 : "published"); found=1}
+    END {exit !found}' "$MANIFEST"
 }
 names() { awk '!/^#/ && NF >= 5 {print $1}' "$MANIFEST"; }
+
+# A placeholder checksum (all zeros) can never verify a download.
+placeholder() { [[ ! "$1" =~ ^[0-9a-f]{64}$ || "$1" =~ ^0+$ ]]; }
+
+unpublished() { # unpublished NAME
+  cat >&2 <<MSG
+basalt-llm-fetch: $1 is not yet published: its weights need a signed release
+(the project's key ceremony, docs/key-ceremony.md), which has not happened yet,
+so there is no file or checksum to download and verify.
+Until then:
+  - use a published model: basalt-llm-fetch --list, then e.g.
+    basalt-llm-fetch qwen3-1.7b-q8_0 and MODEL=qwen3-1.7b-q8_0 in /etc/basalt/llm.conf;
+  - in a lab, with a GGUF you built yourself: install it as $DIR/$1.gguf
+    (then restorecon -v that file); it is used as is, without a checksum.
+MSG
+  exit 1
+}
 
 check() { # check NAME SHA FILE
   local got
@@ -51,26 +78,47 @@ check() { # check NAME SHA FILE
 
 case "$mode" in
   list)
-    printf '%-18s %8s  %-10s %s\n' NAME MiB LICENSE STATE
+    printf '%-28s %8s  %-10s %s\n' NAME MiB LICENSE STATE
     while read -r n; do
-      read -r sha size lic _url < <(entry "$n")
+      read -r sha size lic _url status < <(entry "$n")
       state=absent
       [[ -f "$DIR/$n.gguf" ]] && state=present
-      printf '%-18s %8d  %-10s %s\n' "$n" $((size / 1048576)) "$lic" "$state"
+      [[ "$status" == published ]] || state="$state, not yet published"
+      mib="$((size / 1048576))"
+      ((size > 0)) || mib="-"
+      printf '%-28s %8s  %-10s %s\n' "$n" "$mib" "$lic" "$state"
     done < <(names)
+    basalt_llm_auto "$(basalt_llm_cores)" "$(basalt_llm_avail_mib)" "$(basalt_llm_unit_limit_mib)"
+    echo "MODEL=auto selects $BASALT_LLM_CHOICE on this machine ($BASALT_LLM_REASON)"
     ;;
   verify)
     rc=0
     for n in ${name:-$(names)}; do
-      read -r sha _size _lic _url < <(entry "$n") || die "unknown model $n"
+      n="$(basalt_llm_alias "$n")"
+      read -r sha _size _lic _url status < <(entry "$n") || die "unknown model $n"
       [[ -f "$DIR/$n.gguf" ]] || { [[ -z "$name" ]] && continue; die "$n is not downloaded"; }
+      if [[ "$status" != published ]] || placeholder "$sha"; then
+        echo "$n: not yet published, no checksum to verify against (installed by hand)"
+        continue
+      fi
       if check "$n" "$sha" "$DIR/$n.gguf"; then echo "$n: ok"; else echo "$n: CHECKSUM MISMATCH"; rc=1; fi
     done
     exit "$rc"
     ;;
   fetch)
     [[ -n "$name" ]] || usage 1
-    read -r sha size lic url < <(entry "$name") || die "unknown model $name (see --list)"
+    if [[ "$name" == auto ]]; then
+      basalt_llm_auto "$(basalt_llm_cores)" "$(basalt_llm_avail_mib)" "$(basalt_llm_unit_limit_mib)"
+      name="$BASALT_LLM_CHOICE"
+      echo "auto selects $name ($BASALT_LLM_REASON)"
+    else
+      name="$(basalt_llm_alias "$name")"
+    fi
+    read -r sha size lic url status < <(entry "$name") || die "unknown model $name (see --list)"
+    # Fail closed: an unpublished entry has no real URL or checksum.
+    if [[ "$status" != published ]] || placeholder "$sha" || [[ "$url" != https://* ]]; then
+      unpublished "$name"
+    fi
     command -v curl >/dev/null || die "curl is needed to download"
     install -d -m 0755 "$DIR"
     dest="$DIR/$name.gguf"
@@ -92,6 +140,7 @@ case "$mode" in
     mv -f "$part" "$dest"
     command -v restorecon >/dev/null && restorecon "$dest" 2>/dev/null || true
     echo "$name: verified, saved as $dest"
-    echo "Select it with MODEL=$name in /etc/basalt/llm.conf, then: systemctl restart basalt-llm"
+    echo "MODEL=auto (the default) uses it when it fits this machine; or set MODEL=$name in"
+    echo "/etc/basalt/llm.conf. Then: systemctl restart basalt-llm"
     ;;
 esac
