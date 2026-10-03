@@ -1,0 +1,41 @@
+#!/usr/bin/bash
+# Start llama-server for basalt-llm.service: resolve MODEL (a name from the
+# manifest or an absolute path), then exec the server on the Unix socket.
+# Settings come from /etc/basalt/llm.conf (EnvironmentFile of the unit).
+set -euo pipefail
+
+MODELS=/var/lib/basalt-llm/models
+SOCK="${RUNTIME_DIRECTORY:-/run/basalt-llm}/llm.sock"
+SERVER=/usr/lib64/basalt-llm/llama-server
+
+model="${MODEL:-}"
+if [[ -z "$model" ]]; then
+  echo "basalt-llm: no MODEL in /etc/basalt/llm.conf (see basalt-llm-fetch --list)" >&2
+  exit 1
+fi
+case "$model" in
+  /*) path="$model" ;;
+  *[!a-z0-9._-]*) echo "basalt-llm: invalid model name '$model'" >&2; exit 1 ;;
+  *) path="$MODELS/$model.gguf" ;;
+esac
+if [[ ! -r "$path" ]]; then
+  echo "basalt-llm: $path is missing; run: basalt-llm-fetch $model" >&2
+  exit 1
+fi
+
+threads="${THREADS:-0}"
+if [[ ! "$threads" =~ ^[0-9]+$ || "$threads" == 0 ]]; then
+  # Every CPU the service may use, at most 8 (more rarely helps a small
+  # model); the unit runs it at a low priority (Nice, CPUWeight).
+  threads=$(nproc)
+  (( threads <= 8 )) || threads=8
+fi
+ctx="${CTX_SIZE:-2048}"
+[[ "$ctx" =~ ^[0-9]+$ ]] || { echo "basalt-llm: invalid CTX_SIZE" >&2; exit 1; }
+[[ "${CACHE_RAM:-256}" =~ ^[0-9]+$ ]] || { echo "basalt-llm: invalid CACHE_RAM" >&2; exit 1; }
+
+rm -f "$SOCK"
+# shellcheck disable=SC2086  # EXTRA_ARGS is a list of options on purpose
+exec "$SERVER" --model "$path" --alias "$(basename "$path" .gguf)" --host "$SOCK" \
+  --threads "$threads" --threads-batch "$threads" --ctx-size "$ctx" --parallel 1 \
+  --cache-ram "${CACHE_RAM:-256}" --no-webui --no-slots ${EXTRA_ARGS:-}

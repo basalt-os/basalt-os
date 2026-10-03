@@ -1,0 +1,96 @@
+policy_module(basalt_llm, 0.1.0)
+
+# Basalt OS local language model service (llama.cpp's llama-server).
+#
+# basalt_llm_t runs the model server started by systemd. It may read its
+# program, libraries, configuration and model files, use the CPU and
+# memory, and answer on one Unix socket in /run/basalt-llm. It has no
+# network access of any kind (no TCP, UDP or raw sockets: none are
+# allowed below), no transitions out of its domain, and writes nothing
+# but that socket. The systemd unit adds an empty network namespace and
+# RestrictAddressFamilies=AF_UNIX as independent fences.
+#
+# Who may talk to it: the assistant (basalt_assistant_t) and unconfined
+# administrators. Nothing the model returns is executed by anyone: the
+# assistant constrains and validates every answer.
+
+type basalt_llm_t;
+type basalt_llm_exec_t;
+init_daemon_domain(basalt_llm_t, basalt_llm_exec_t)
+# The unit sets NoNewPrivileges=yes.
+init_nnp_daemon_domain(basalt_llm_t)
+
+type basalt_llm_model_t;
+files_type(basalt_llm_model_t)
+
+type basalt_llm_conf_t;
+files_config_file(basalt_llm_conf_t)
+
+type basalt_llm_var_run_t;
+files_pid_file(basalt_llm_var_run_t)
+
+type basalt_llm_unit_file_t;
+systemd_unit_file(basalt_llm_unit_file_t)
+
+########################################
+#
+# Local policy
+#
+
+allow basalt_llm_t self:process { getsched setsched signal_perms };
+allow basalt_llm_t self:fifo_file rw_fifo_file_perms;
+allow basalt_llm_t self:unix_stream_socket { create_stream_socket_perms connectto };
+
+# The wrapper (bash) execs the server, both basalt_llm_exec_t.
+can_exec(basalt_llm_t, basalt_llm_exec_t)
+corecmd_exec_shell(basalt_llm_t)
+corecmd_exec_bin(basalt_llm_t)
+
+# Models: read and map, never write.
+files_search_var_lib(basalt_llm_t)
+list_dirs_pattern(basalt_llm_t, basalt_llm_model_t, basalt_llm_model_t)
+read_files_pattern(basalt_llm_t, basalt_llm_model_t, basalt_llm_model_t)
+allow basalt_llm_t basalt_llm_model_t:file map;
+
+read_files_pattern(basalt_llm_t, basalt_llm_conf_t, basalt_llm_conf_t)
+files_read_etc_files(basalt_llm_t)
+
+# The socket directory /run/basalt-llm (created by systemd) and the socket.
+manage_dirs_pattern(basalt_llm_t, basalt_llm_var_run_t, basalt_llm_var_run_t)
+manage_sock_files_pattern(basalt_llm_t, basalt_llm_var_run_t, basalt_llm_var_run_t)
+files_pid_filetrans(basalt_llm_t, basalt_llm_var_run_t, dir)
+
+# CPU features and topology, memory size.
+kernel_read_system_state(basalt_llm_t)
+kernel_read_kernel_sysctls(basalt_llm_t)
+dev_read_sysfs(basalt_llm_t)
+dev_read_urand(basalt_llm_t)
+files_read_usr_files(basalt_llm_t)
+miscfiles_read_localization(basalt_llm_t)
+auth_read_passwd(basalt_llm_t)
+logging_send_syslog_msg(basalt_llm_t)
+# nproc and the thread pool read the service's own CPU limits.
+fs_search_cgroup_dirs(basalt_llm_t)
+fs_read_cgroup_files(basalt_llm_t)
+# The service runs as a DynamicUser: name lookups go through userdb.
+systemd_userdbd_stream_connect(basalt_llm_t)
+systemd_userdbd_runtime_read_symlinks(basalt_llm_t)
+optional_policy(`
+	# nss-systemd also asks systemd-homed, which has nothing for a service.
+	gen_require(`
+		type systemd_homed_t;
+	')
+	dontaudit basalt_llm_t systemd_homed_t:unix_stream_socket connectto;
+')
+
+########################################
+#
+# Clients
+#
+
+optional_policy(`
+	gen_require(`
+		type basalt_assistant_t;
+	')
+	basalt_llm_stream_connect(basalt_assistant_t)
+')

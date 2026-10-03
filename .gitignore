@@ -15,3 +15,7 @@ passphrase
 site.conf
 site.ks
 RPM-GPG-KEY-*-lab
+
+# Model files (downloaded by basalt-llm-fetch, never committed).
+*.gguf
+*.safetensors

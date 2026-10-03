@@ -1,0 +1,17 @@
+## <summary>Basalt OS local language model service (no network).</summary>
+
+########################################
+## <summary>
+##	Connect to the model service over its Unix socket.
+## </summary>
+## <param name="domain">
+##	<summary>Domain allowed access.</summary>
+## </param>
+#
+interface(`basalt_llm_stream_connect',`
+	gen_require(`
+		type basalt_llm_t, basalt_llm_var_run_t;
+	')
+	files_search_pids($1)
+	stream_connect_pattern($1, basalt_llm_var_run_t, basalt_llm_var_run_t, basalt_llm_t)
+')

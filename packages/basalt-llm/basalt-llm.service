@@ -1,0 +1,67 @@
+[Unit]
+Description=Basalt OS local language model (llama.cpp server, no network)
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/local-model.md
+After=local-fs.target
+ConditionPathExists=/etc/basalt/llm.conf
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/basalt/llm.conf
+ExecStart=/usr/libexec/basalt-llm/basalt-llm-start
+Restart=on-failure
+RestartSec=10s
+
+# The model answers on a Unix socket only: /run/basalt-llm/llm.sock. The
+# directory is closed to other users (0750); root and the assistant reach
+# it, SELinux (basalt_llm_t) decides which domains may connect.
+DynamicUser=yes
+User=basalt-llm
+Group=basalt-llm
+RuntimeDirectory=basalt-llm
+RuntimeDirectoryMode=0750
+UMask=0000
+# Models are downloaded by an administrator (basalt-llm-fetch) into
+# /var/lib/basalt-llm/models; the service only reads them.
+ReadOnlyPaths=/var/lib/basalt-llm
+
+# No network at all: an empty network namespace (only its own loopback),
+# no IP sockets, no IP traffic. SELinux grants the domain no network
+# socket either: three independent fences.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectProc=invisible
+ProcSubset=all
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+# Resources: a background service. Override in a drop-in to change.
+Nice=10
+CPUWeight=50
+MemoryHigh=3G
+MemoryMax=4G
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

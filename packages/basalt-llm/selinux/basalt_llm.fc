@@ -1,0 +1,10 @@
+/usr/libexec/basalt-llm/basalt-llm-start	--	gen_context(system_u:object_r:basalt_llm_exec_t,s0)
+# /usr/lib64 is an equivalence of /usr/lib in Fedora's file contexts, so the
+# server installed in /usr/lib64/basalt-llm is matched as /usr/lib/basalt-llm.
+/usr/lib/basalt-llm/llama-server		--	gen_context(system_u:object_r:basalt_llm_exec_t,s0)
+
+/var/lib/basalt-llm(/.*)?			gen_context(system_u:object_r:basalt_llm_model_t,s0)
+/run/basalt-llm(/.*)?				gen_context(system_u:object_r:basalt_llm_var_run_t,s0)
+/etc/basalt/llm\.conf			--	gen_context(system_u:object_r:basalt_llm_conf_t,s0)
+
+/usr/lib/systemd/system/basalt-llm\.service	--	gen_context(system_u:object_r:basalt_llm_unit_file_t,s0)

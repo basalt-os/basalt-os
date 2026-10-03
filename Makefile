@@ -131,7 +131,7 @@ ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwa
 
 # --- system assistant (packages/basalt-assistant) -----------------------------------
 
-.PHONY: rpm-assistant assistant-test lab-assistant-test
+.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-llm eval-rules lab-eval-capture
 
 rpm-assistant: ## Build only basalt-assistant (+ -selinux, source) into the RPM directory
 	packages/basalt-assistant/build.sh
@@ -141,3 +141,14 @@ assistant-test: ## go vet + go test of basalt-assistant in a Fedora container
 
 lab-assistant-test: ## Assistant on a lab VM: events, proposals, confirmed applies, rollback, confinement (scripts/lab/assistant-test.sh)
 	$(L)/assistant-test.sh
+
+# --- optional local model service (packages/basalt-llm) and evaluation suite --------
+
+rpm-llm: ## Build basalt-llm (+ -selinux): llama.cpp server for the CPU, unit without network, SELinux domain (not in CI)
+	packages/basalt-llm/build.sh
+
+eval-rules: ## Decision-layer evaluation suite (eval/cases) against the rules backend (needs Go)
+	@cd packages/basalt-assistant && go run ./tools/basalt-eval decide -cases ../../eval/cases
+
+lab-eval-capture: ## Record labeled decision cases on a lab VM (scripts/lab/eval-capture.sh)
+	$(L)/eval-capture.sh
