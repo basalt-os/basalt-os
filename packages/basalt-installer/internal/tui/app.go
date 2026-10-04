@@ -745,9 +745,10 @@ func (m *model) View() string {
 		body = m.progress.View(t, w, bodyH, m.opt.ASCII)
 	case scDone:
 		lines := []string{t.OK.Render("Basalt OS is installed on " + m.preview.Resolved.Disk.Path), "",
-			"Install record on the new system: /var/log/basalt-installer/ (plan, summary, log).",
-			"The first boot takes the first snapshot and the disk unlocks by itself while",
-			"Secure Boot is unchanged. Keep the recovery key off this machine.", ""}
+			// Wrapped by hand to fit an 80 column serial console, like the welcome text.
+			"Install record on the new system: /var/log/basalt-installer/ (plan, summary,",
+			"log). The first boot takes the first snapshot and the disk unlocks by itself",
+			"while Secure Boot is unchanged. Keep the recovery key off this machine.", ""}
 		if fin := m.p.Finish; fin != "none" {
 			lines = append(lines, t.Key.Render("enter")+t.KeyDesc.Render(" "+fin+" now    ")+t.Key.Render("q")+t.KeyDesc.Render(" stay in the installer"))
 		} else {
