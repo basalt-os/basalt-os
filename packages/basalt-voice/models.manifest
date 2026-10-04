@@ -1,0 +1,37 @@
+# Models that basalt-voice-fetch can download for the desktop's voice
+# (speech to text, voice activity detection, text to speech). Model files
+# are never part of a package or of the source tree; they are downloaded
+# on request and checked against the SHA-256 below before they are used.
+#
+# Columns: name  sha256  size_bytes  license  url
+#
+# Every URL is pinned to a revision of the publisher's repository on
+# Hugging Face. Licenses were read at those revisions:
+#   whisper.cpp ggml conversions of OpenAI Whisper: MIT (Whisper weights
+#   are MIT); Silero VAD v5.1.2 (ggml conversion by ggml-org): MIT.
+#   Piper voices: only voices trained from scratch on public-domain data
+#   are listed (LJ Speech, LibriVox readings by Kristin and Norman, John
+#   fine-tuned from Kristin). Most other English Piper voices are
+#   fine-tuned from the "lessac" voice, whose dataset license (Blizzard
+#   2013) does not allow redistribution for commercial use: not listed.
+#   Kokoro-82M (ONNX export by kokoro-onnx): Apache-2.0.
+# A Piper voice is two entries: the model (.onnx) and its settings (.json).
+ggml-tiny.en            921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  77704715   MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en.bin
+ggml-base.en            a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002  147964211  MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin
+ggml-base.en-q5_1       4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f  59721011   MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en-q5_1.bin
+ggml-small.en           c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d  487614201  MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.en.bin
+ggml-small.en-q5_1      bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30  190098681  MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.en-q5_1.bin
+ggml-large-v3-turbo-q5_0  394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2  574041195  MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin
+ggml-silero-v5.1.2      29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf  885098     MIT  https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v5.1.2.bin
+en_US-ljspeech-medium   6f52a751e2349abe7a76735eb09dc1875298c77ea2342ffd2fef79ff81b87f22  63531379   public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx
+en_US-ljspeech-medium.json  141d612cc0a95ed7efc1ca936b845c2364967f2e9217c5dbfcf69fc4d6c65860  4972  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
+en_US-ljspeech-high     5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a  114199011  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx
+en_US-ljspeech-high.json  7e1f4634af596d83cca997fb7a931ba80b70f8a316a2655ee69c55365e0ace14  4970  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx.json
+en_US-kristin-medium    5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4  63531379   public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/kristin/medium/en_US-kristin-medium.onnx
+en_US-kristin-medium.json  5681426d4aead22195de70531eeeeddb46493cfaffc5764b2ea3db73428b651c  4968  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/kristin/medium/en_US-kristin-medium.onnx.json
+en_US-norman-medium     b9739443232a80a59c7d18810dd856899bf16a7964725f5ab81ea49b1351cb71  63531379   public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/norman/medium/en_US-norman-medium.onnx
+en_US-norman-medium.json  6c2db7f558a4a8deb9fe822583c1c5105f6c4e834dd0f9de8ad17a888ee9fe1d  4968  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/norman/medium/en_US-norman-medium.onnx.json
+en_US-john-medium       789c6c875726e627ddee93d51d8727859abe9c091c3d141591f4b83c2072e988  63531379   public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/john/medium/en_US-john-medium.onnx
+en_US-john-medium.json  af60f177b6b550f3d7a302720c0fb89e7f94a82b5dca464775ef63b1c69ba09a  4965  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/john/medium/en_US-john-medium.onnx.json
+kokoro-v1.0-int8        6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb  92361271   Apache-2.0  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx
+kokoro-voices-v1.0      bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  28214398   Apache-2.0  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin

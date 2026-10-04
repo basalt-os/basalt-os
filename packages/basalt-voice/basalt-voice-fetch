@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Download a model for the desktop's voice (speech to text, voice activity
+# detection, text to speech) and verify it against the pinned SHA-256 of
+# models.manifest.
+#
+#   basalt-voice-fetch --list            models in the manifest, and which are present
+#   basalt-voice-fetch NAME...           download into the model directory
+#   basalt-voice-fetch default           the default set: ggml-base.en, ggml-silero-v5.1.2, en_US-ljspeech-medium (+ .json)
+#   basalt-voice-fetch --verify          re-check the checksums of downloaded models
+#
+# Options: --dir DIR (default /var/lib/basalt-voice/models),
+#          --manifest FILE (default /usr/share/basalt-voice/models.manifest).
+#
+# The download is the only network access voice needs, and it happens
+# here, run by an administrator, never in the voice service (which has no
+# network at all). A file whose checksum does not match is deleted.
+set -euo pipefail
+DIR="${BASALT_VOICE_MODEL_DIR:-/var/lib/basalt-voice/models}"
+MANIFEST="${BASALT_VOICE_MANIFEST:-/usr/share/basalt-voice/models.manifest}"
+mode=fetch
+names=()
+die() { printf 'basalt-voice-fetch: %s\n' "$*" >&2; exit 1; }
+while (($#)); do
+  case "$1" in
+    --list) mode=list ;;
+    --verify) mode=verify ;;
+    --dir) DIR="${2:?--dir needs a directory}"; shift ;;
+    --manifest) MANIFEST="${2:?--manifest needs a file}"; shift ;;
+    -h | --help) sed -n '2,17s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    default) names+=(ggml-base.en ggml-silero-v5.1.2 en_US-ljspeech-medium en_US-ljspeech-medium.json) ;;
+    -*) die "unknown option $1" ;;
+    *) names+=("$1") ;;
+  esac
+  shift
+done
+[[ -r "$MANIFEST" ]] || die "manifest $MANIFEST not readable"
+entry() { awk -v n="$1" '!/^#/ && NF >= 5 && $1 == n {print $2, $3, $4, $5; found=1} END {exit !found}' "$MANIFEST"; }
+file_of() { local url=$1; basename "${url%%\?*}"; }
+case "$mode" in
+  list)
+    awk '!/^#/ && NF >= 5 {print $1, $3, $4, $5}' "$MANIFEST" | while read -r n size lic url; do
+      f="$DIR/$(file_of "$url")"
+      st="-"; [[ -f "$f" ]] && st="present"
+      printf '%-26s %6d MiB  %-20s %s\n' "$n" $((size / 1048576)) "$lic" "$st"
+    done ;;
+  verify)
+    rc=0
+    awk '!/^#/ && NF >= 5 {print $1, $2, $5}' "$MANIFEST" | while read -r n sha url; do
+      f="$DIR/$(file_of "$url")"
+      [[ -f "$f" ]] || continue
+      if echo "$sha  $f" | sha256sum -c --quiet - 2>/dev/null; then echo "$n: ok"; else echo "$n: CHECKSUM MISMATCH ($f)"; rc=1; fi
+    done
+    exit $rc ;;
+  fetch)
+    ((${#names[@]})) || die "which model? (--list shows them, default fetches the default set)"
+    [[ -w "$DIR" ]] || die "$DIR is not writable (run as root)"
+    for n in "${names[@]}"; do
+      read -r sha size lic url < <(entry "$n") || die "no model $n in the manifest"
+      f="$DIR/$(file_of "$url")"
+      if [[ -f "$f" ]] && echo "$sha  $f" | sha256sum -c --quiet - 2>/dev/null; then echo "$n: already present"; continue; fi
+      tmp="$f.part"
+      echo "$n: downloading $((size / 1048576)) MiB ($lic)"
+      curl -fL --proto '=https' --retry 3 -o "$tmp" "$url" || { rm -f "$tmp"; die "download of $n failed"; }
+      echo "$sha  $tmp" | sha256sum -c --quiet - || { rm -f "$tmp"; die "$n: checksum mismatch, file removed"; }
+      chmod 0644 "$tmp"; mv "$tmp" "$f"
+      command -v restorecon >/dev/null && restorecon "$f" || true
+      echo "$n: ok -> $f"
+    done ;;
+esac

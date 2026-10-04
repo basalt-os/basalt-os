@@ -134,7 +134,7 @@ ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwa
 
 # --- system assistant (packages/basalt-assistant) -----------------------------------
 
-.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-agent agent-test lab-agent-test rpm-llm rpm-swayfx llm-test eval-rules eval-check lab-eval-capture
+.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-agent agent-test lab-agent-test rpm-llm rpm-swayfx rpm-voice llm-test eval-rules eval-check lab-eval-capture
 
 rpm-assistant: ## Build only basalt-assistant (+ -selinux, source) into the RPM directory
 	packages/basalt-assistant/build.sh
@@ -180,6 +180,9 @@ rpm-llm: ## Build basalt-llm (+ -selinux): llama.cpp server for the CPU, unit wi
 
 rpm-swayfx: ## Build swayfx: SwayFX (sway with corners, shadows, blur) for the desktop session (not in CI)
 	packages/swayfx/build.sh
+
+rpm-voice: ## Build basalt-voice: whisper.cpp speech to text for the CPU and the speech model download tool (not in CI)
+	packages/basalt-voice/build.sh
 
 llm-test: ## Unit tests of basalt-llm's model selection (MODEL=auto, aliases, unpublished models fail closed)
 	packages/basalt-llm/tests/select-test.sh
