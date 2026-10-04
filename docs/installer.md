@@ -70,7 +70,9 @@ has one.
 | `accounts.user` | none | `name`, `password` or `password_hash`, `ssh_keys`, `admin` (wheel, default true) |
 | `ssh.password_auth` | `false` | Basalt OS accepts public keys only; `true` adds a drop-in and a warning |
 | `network.mode` | `dhcp` | `static`: `interface`, `address` (CIDR), `gateway`, `dns` |
-| `repos.basalt.url` | `media` | the repository on the installer image, or an http(s) URL; `installed_url` is what the installed system uses |
+| `repos.basalt.url` | `media` | the repository on the installer image, or an http(s) URL |
+| `repos.basalt.installed_url` | `url` when it is http(s), else `https://obpkg.org/basalt` | what the installed system uses (`/etc/dnf/vars/basalt_repo_url`) |
+| `repos.basalt.installed_tools_url` | `https://obpkg.org/basalt-tools` with the default repository, else `<installed_url>/tools` (a lab or mirror) | the basalt-tools repository of the installed system (`/etc/dnf/vars/basalt_tools_url`) |
 | `repos.basalt.gpg_key` | the media's key | the repository key used during the installation; the preview says whether it is the OpenBasalt release key (fingerprint `3601734842BD4E482D19DE4AE4EED5ECA395B302`) or another one, such as a lab key. The installed system trusts the key that `basalt-release` ships |
 | `repos.fedora.baseurl`, `updates_baseurl` | Fedora's mirrors | for a local mirror |
 | `repos.tools` | `true` | `basalt-tools` configured, metadata only (ADR 0005) |

@@ -384,8 +384,8 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	if b.InstalledURL != "" && !validRepoURL(b.InstalledURL) {
 		add(Error, "repos.basalt.installed_url", "must be an http(s) or file URL, got %q", b.InstalledURL)
 	}
-	if b.InstalledURL == "" && !strings.HasPrefix(b.URL, "http") {
-		add(Warning, "repos.basalt.installed_url", "the installed system gets no Basalt repository URL: updates of Basalt packages need /etc/dnf/vars/basalt_repo_url")
+	if b.InstalledToolsURL != "" && !validRepoURL(b.InstalledToolsURL) {
+		add(Error, "repos.basalt.installed_tools_url", "must be an http(s) or file URL, got %q", b.InstalledToolsURL)
 	}
 	if b.GPGKey != "" && !filepath.IsAbs(b.GPGKey) {
 		add(Error, "repos.basalt.gpg_key", "must be an absolute path")

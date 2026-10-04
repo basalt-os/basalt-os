@@ -91,15 +91,39 @@ remaining presets are Fedora's, unchanged.
 Basalt OS serves one small RPM repository with only its own packages
 (`/etc/yum.repos.d/basalt.repo`, base URL from the dnf variable
 `/etc/dnf/vars/basalt_repo_url`). Packages and repository metadata are
-signed with GPG and checked (`gpgcheck=1`, `repo_gpgcheck=1`), so the
-repository can be served over any transport or mirror. Source RPMs are
-published next to the binaries.
+signed with GPG and checked (`gpgcheck=1`, `repo_gpgcheck=1`) against the
+OpenBasalt release key that `basalt-release` ships, so the repository can
+be served over any transport or mirror. Source RPMs are published next to
+the binaries.
+
+The repositories live on one domain, https://obpkg.org, with one path per
+repository:
+
+| Path | Content | dnf variable (default) | Enabled |
+|---|---|---|---|
+| `/basalt/<releasever>/<arch>/` | Basalt OS packages (`[basalt]`) | `basalt_repo_url` (`https://obpkg.org/basalt`) | yes |
+| `/basalt-tools/<releasever>/<arch>/` | OpenBasalt tools, metadata only unless chosen (`[basalt-tools]`, ADR 0005) | `basalt_tools_url` (`https://obpkg.org/basalt-tools`) | yes (installer option `repos.tools`) |
+| `/basalt-testing/<releasever>/<arch>/` | packages on their way to `/basalt/` (`[basalt-testing]`) | `basalt_testing_url` (`https://obpkg.org/basalt-testing`) | no |
+| `/apt/` | Samba Conductor for Debian and Ubuntu | | |
+| `/keys/` | public keys (`openbasalt-release-key.asc`) | | |
+| `/iso/` | installer images and their checksums | | |
+
+`basalt-release` ships the three dnf variables. Builds for a lab or a
+mirror override them with `BASALT_DEFAULT_REPO_URL`,
+`BASALT_DEFAULT_TOOLS_URL` and `BASALT_DEFAULT_TESTING_URL`
+(`scripts/build-rpms.sh`); an installation points one machine elsewhere
+with `repos.basalt.installed_url` and `installed_tools_url` (installer
+plan) or `BASALT_REPO_URL` (kickstart), which write the same variables;
+on an installed system, edit the files in `/etc/dnf/vars/`. The
+repositories are published, signed, by the release step that holds the
+release key; no build host signs them.
 
 `scripts/build-rpms.sh` builds every package in a clean Fedora container;
 `scripts/repo.sh` signs packages (`rpmsign`), builds metadata
-(`createrepo_c`) and signs `repomd.xml` (detached, armored). A release key
-does not exist yet: it will be created offline and kept out of build hosts.
-Lab builds use a development key that never leaves the lab host.
+(`createrepo_c`) and signs `repomd.xml` (detached, armored). The OpenBasalt
+release key was created offline ([key-ceremony.md](key-ceremony.md)) and is
+kept out of build hosts. Lab builds use a development key that never leaves
+the lab host.
 
 ## Installer
 

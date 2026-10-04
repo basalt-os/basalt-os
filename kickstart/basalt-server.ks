@@ -268,9 +268,12 @@ set -eu
 . /root/.basalt-install.env
 log() { echo "basalt-post: $*"; }
 
-# Lab or private repository URL for the installed system.
+# Lab or private repository URL for the installed system (default: the
+# https://obpkg.org URLs basalt-release ships). Its tools repository is
+# <URL>/tools, the lab layout.
 if [ -n "${BASALT_REPO_URL:-}" ]; then
   echo "$BASALT_REPO_URL" >/etc/dnf/vars/basalt_repo_url
+  echo "$BASALT_REPO_URL/tools" >/etc/dnf/vars/basalt_tools_url
 fi
 
 # --- boot loader: serial-first menu with a visible timeout, no splash args --

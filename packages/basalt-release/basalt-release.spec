@@ -21,7 +21,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        5%{?dist}
+Release:        6%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -34,6 +34,8 @@ Source2:        basalt.repo
 Source3:        RPM-GPG-KEY-basalt
 Source4:        basalt_repo_url
 Source5:        20-basalt-defaults.conf
+Source6:        basalt_tools_url
+Source7:        basalt_testing_url
 Source10:       80-basalt.preset
 Source11:       85-display-manager.preset
 Source12:       90-default.preset
@@ -150,6 +152,8 @@ EOF
 install -Dpm 0644 basalt.repo %{buildroot}%{_sysconfdir}/yum.repos.d/basalt.repo
 install -Dpm 0644 RPM-GPG-KEY-basalt %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-basalt
 install -Dpm 0644 basalt_repo_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_repo_url
+install -Dpm 0644 basalt_tools_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_tools_url
+install -Dpm 0644 basalt_testing_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_testing_url
 install -Dpm 0644 20-basalt-defaults.conf %{buildroot}%{_datadir}/dnf5/libdnf.conf.d/20-basalt-defaults.conf
 
 # --- presets --------------------------------------------------------------------
@@ -207,6 +211,8 @@ fi
 %config(noreplace) %{_sysconfdir}/yum.repos.d/basalt.repo
 %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-basalt
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_repo_url
+%config(noreplace) %{_sysconfdir}/dnf/vars/basalt_tools_url
+%config(noreplace) %{_sysconfdir}/dnf/vars/basalt_testing_url
 %dir %{_datadir}/dnf5
 %dir %{_datadir}/dnf5/libdnf.conf.d
 %{_datadir}/dnf5/libdnf.conf.d/20-basalt-defaults.conf
@@ -227,6 +233,14 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44-6
+- Repositories on https://obpkg.org: basalt_repo_url is
+  https://obpkg.org/basalt; new dnf variables basalt_tools_url
+  (https://obpkg.org/basalt-tools) and basalt_testing_url
+  (https://obpkg.org/basalt-testing); new [basalt-testing] repository,
+  disabled. Builds may override the three defaults (BASALT_DEFAULT_REPO_URL,
+  BASALT_DEFAULT_TOOLS_URL, BASALT_DEFAULT_TESTING_URL in scripts/build-rpms.sh).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44-5
 - RPM-GPG-KEY-basalt is the OpenBasalt release key (fingerprint
   3601734842BD4E482D19DE4AE4EED5ECA395B302) instead of a placeholder.

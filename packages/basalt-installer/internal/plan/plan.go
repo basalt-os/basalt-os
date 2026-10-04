@@ -18,6 +18,15 @@ import (
 // APIVersion identifies the plan schema. Plans with another value are rejected.
 const APIVersion = "basalt-install-plan/v1"
 
+// Default package repositories of an installed system, on obpkg.org (the
+// same defaults basalt-release ships in /etc/dnf/vars). Layout:
+// <URL>/<releasever>/<arch>/. A lab or mirror sets repos.basalt.installed_url.
+const (
+	DefaultRepoURL    = "https://obpkg.org/basalt"
+	DefaultToolsURL   = "https://obpkg.org/basalt-tools"
+	DefaultTestingURL = "https://obpkg.org/basalt-testing"
+)
+
 // Plan is one installation, as written by a person or a frontend.
 type Plan struct {
 	APIVersion string     `json:"apiVersion" yaml:"apiVersion"`
@@ -141,8 +150,14 @@ type BasaltRepo struct {
 	// is <URL>/<release>/<arch>/.
 	URL string `json:"url" yaml:"url"`
 	// InstalledURL is the base URL the installed system uses
-	// (/etc/dnf/vars/basalt_repo_url). Default: URL when it is http(s).
+	// (/etc/dnf/vars/basalt_repo_url). Default: URL when it is http(s),
+	// else DefaultRepoURL.
 	InstalledURL string `json:"installed_url,omitempty" yaml:"installed_url,omitempty"`
+	// InstalledToolsURL is the base URL of the basalt-tools repository on
+	// the installed system (/etc/dnf/vars/basalt_tools_url). Default:
+	// DefaultToolsURL with the default repository, else <InstalledURL>/tools
+	// (the layout of a lab or mirror repository).
+	InstalledToolsURL string `json:"installed_tools_url,omitempty" yaml:"installed_tools_url,omitempty"`
 	// GPGKey is the repository key file (default: the one on the media).
 	GPGKey string `json:"gpg_key,omitempty" yaml:"gpg_key,omitempty"`
 }

@@ -9,9 +9,13 @@
 # $BUILD_DIR/rpms/<fedora>/lab/. FEDORA_RELEASE selects the base (default 44).
 # BASALT_GPG_PUBKEY, when set, is the repository key shipped in basalt-release
 # (otherwise basalt-release ships the OpenBasalt release key from packages/basalt-release).
+# BASALT_DEFAULT_REPO_URL, BASALT_DEFAULT_TOOLS_URL and BASALT_DEFAULT_TESTING_URL,
+# when set, replace the default repository URLs basalt-release ships
+# (https://obpkg.org/basalt, /basalt-tools, /basalt-testing), for a lab or a mirror.
 # BASALT_MODULE_CA_CERT and BASALT_MODULE_SIGNING_CERT (DER or PEM), when set,
-# are the kernel module CA (the MOK) and signing certificate shipped in
-# basalt-security (otherwise its placeholders are kept).
+# replace the kernel module CA (the MOK) and signing certificate shipped in
+# basalt-security (a lab override; otherwise the OpenBasalt certificates in
+# packages/basalt-security are shipped).
 source "$(dirname "$0")/lib.sh"
 
 lab=0
@@ -35,11 +39,23 @@ else
   log "basalt-release ships the OpenBasalt release key (set BASALT_GPG_PUBKEY for a repository signed with another key)"
 fi
 
+# Default repository URLs in basalt-release (/etc/dnf/vars): https://obpkg.org
+# unless a lab or a mirror build overrides them.
+for pair in "BASALT_DEFAULT_REPO_URL:basalt_repo_url" "BASALT_DEFAULT_TOOLS_URL:basalt_tools_url" \
+  "BASALT_DEFAULT_TESTING_URL:basalt_testing_url"; do
+  var="${pair%%:*}" dst="${pair#*:}"
+  url="${!var:-}"
+  [[ -n "$url" ]] || continue
+  [[ "$url" =~ ^(https?|file)://[^[:space:]]+$ ]] || die "$var=$url is not an http(s) or file URL"
+  printf '%s\n' "${url%/}" >"$work/SOURCES/$dst"
+  log "basalt-release: $dst = ${url%/} (override of $(cat "$REPO_ROOT/packages/basalt-release/$dst"))"
+done
+
 # Module certificates for basalt-security, converted to DER.
 for pair in "BASALT_MODULE_CA_CERT:basalt-module-ca.der" "BASALT_MODULE_SIGNING_CERT:basalt-module-signing.der"; do
   var="${pair%%:*}" dst="${pair#*:}"
   src="${!var:-}"
-  [[ -n "$src" ]] || { log "basalt-security ships the placeholder $dst"; continue; }
+  [[ -n "$src" ]] || { log "basalt-security ships the OpenBasalt $dst"; continue; }
   [[ -f "$src" ]] || die "$var=$src not found"
   if grep -q 'BEGIN CERTIFICATE' "$src"; then
     openssl x509 -in "$src" -outform DER -out "$work/SOURCES/$dst"
@@ -47,7 +63,7 @@ for pair in "BASALT_MODULE_CA_CERT:basalt-module-ca.der" "BASALT_MODULE_SIGNING_
     openssl x509 -inform DER -in "$src" -noout || die "$src is not a certificate"
     cp "$src" "$work/SOURCES/$dst"
   fi
-  log "basalt-security ships $dst from $src"
+  log "basalt-security ships $dst from $src (override of the OpenBasalt certificate)"
 done
 
 # basalt-logos: the artwork tree travels as a tarball.

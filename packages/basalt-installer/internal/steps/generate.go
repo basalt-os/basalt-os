@@ -202,6 +202,7 @@ func (g *gen) all() error {
 	g.add(Step{Title: "Set the time zone", Write: &FileWrite{Path: g.t("/etc/localtime"), Symlink: "../usr/share/zoneinfo/" + p.Timezone}})
 	if u := g.installedRepoURL(); u != "" {
 		g.write("Point the Basalt repository at its URL", g.t("/etc/dnf/vars/basalt_repo_url"), 0o644, u+"\n")
+		g.write("Point the basalt-tools repository at its URL", g.t("/etc/dnf/vars/basalt_tools_url"), 0o644, g.installedToolsURL(u)+"\n")
 	}
 	g.run("Create the temporary repository directory", "install", "-d", "-m", "0700", r.ReposDir())
 	g.write("Write the install-time repositories (Fedora, Basalt)", filepath.Join(r.ReposDir(), "basalt-install.repo"), 0o600, g.installRepos())
@@ -346,7 +347,20 @@ func (g *gen) installedRepoURL() string {
 	if strings.HasPrefix(b.URL, "http") {
 		return strings.TrimRight(b.URL, "/")
 	}
-	return ""
+	// Installed from the media: the published repositories.
+	return plan.DefaultRepoURL
+}
+
+// installedToolsURL is the basalt-tools base URL that goes with the
+// installed Basalt repository u.
+func (g *gen) installedToolsURL(u string) string {
+	if t := g.r.Plan.Repos.Basalt.InstalledToolsURL; t != "" {
+		return strings.TrimRight(t, "/")
+	}
+	if u == plan.DefaultRepoURL {
+		return plan.DefaultToolsURL
+	}
+	return u + "/tools"
 }
 
 func (g *gen) basaltKey() string {
@@ -425,11 +439,11 @@ func (g *gen) repos() error {
 	g.write("Configure the basalt-tools repository (ADR 0005)", g.t("/etc/yum.repos.d/basalt-tools.repo"), 0o644,
 		`# OpenBasalt tools (Samba Conductor, future tools): metadata only, nothing is
 # installed unless chosen. Disable with: dnf config-manager setopt basalt-tools.enabled=0
-# Written by the Basalt OS installer; it moves to basalt-release once the
-# repository is published.
+# Written by the Basalt OS installer. The base URL comes from
+# /etc/dnf/vars/basalt_tools_url (default `+plan.DefaultToolsURL+`).
 [basalt-tools]
 name=Basalt OS tools $releasever - $basearch
-baseurl=$basalt_repo_url/tools/$releasever/$basearch/
+baseurl=$basalt_tools_url/$releasever/$basearch/
 enabled=`+enabled(p.Repos.Tools)+`
 gpgcheck=1
 repo_gpgcheck=1
