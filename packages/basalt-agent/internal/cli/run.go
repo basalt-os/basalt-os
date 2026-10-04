@@ -19,6 +19,8 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/allowlist"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/audit"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/egress"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/ledger"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/native"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/podman"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/profile"
@@ -46,16 +48,23 @@ type run struct {
 	allowed   int
 	denied    int
 	auditErrs int
+
+	// kernel is set when basalt-resolver filters the session in the
+	// kernel (default-deny by cgroup); ledger forwards the records.
+	kernel bool
+	ledger *ledger.Client
 }
 
 func (r *run) record(event, outcome string, data map[string]any) {
-	_, err := r.log.Append(audit.Record{UID: os.Getuid(), Session: r.info.ID, Event: event, Outcome: outcome,
+	rec, err := r.log.Append(audit.Record{UID: os.Getuid(), Session: r.info.ID, Event: event, Outcome: outcome,
 		Subject: r.subject, Data: data})
 	if err != nil {
 		r.mu.Lock()
 		r.auditErrs++
 		r.mu.Unlock()
+		return
 	}
+	r.ledger.Send(rec)
 }
 
 func cmdRun(args []string) (int, error) {
@@ -108,7 +117,17 @@ func cmdRun(args []string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	r := &run{dirs: d, pr: pr, log: audit.Open(d.AuditLog()), seen: map[string]bool{}}
+	// Native mode is default-deny in the kernel: without basalt-resolver
+	// there is no kernel filter, so the session does not start (fail closed).
+	r := &run{dirs: d, pr: pr, log: audit.Open(d.AuditLog()), seen: map[string]bool{}, kernel: egress.Available()}
+	if *mode == "native" && !r.kernel {
+		return 1, errors.New("native mode needs basalt-resolver for its default-deny network (systemctl enable --now basalt-resolver)")
+	}
+	if !r.kernel {
+		fmt.Fprintln(os.Stderr, "basalt-agent: basalt-resolver is not running; the container has no network and the proxy filters by name, but the proxy itself is not filtered in the kernel")
+	}
+	r.ledger = ledger.New()
+	defer r.ledger.Flush(3 * time.Second)
 	r.info = session.Info{ID: session.NewID(), Profile: pr.Name, Mode: *mode, Level: level, Project: proj,
 		PID: os.Getpid(), Started: time.Now()}
 	r.subject = audit.Subject{Profile: pr.Name, Mode: *mode, Level: level, Project: proj}
@@ -124,7 +143,7 @@ func cmdRun(args []string) (int, error) {
 		return 1, err
 	}
 	home := d.AgentHome(pr.Name)
-	if err := os.MkdirAll(home, 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".tmp"), 0o700); err != nil {
 		return 1, err
 	}
 
@@ -151,6 +170,16 @@ func cmdRun(args []string) (int, error) {
 	}
 	defer r.stopProxy()
 	r.info.Proxy = addr
+	filter := "proxy"
+	if r.kernel {
+		dns, err := r.registerEgress()
+		if err != nil {
+			r.record(audit.SessionStart, "error", map[string]any{"error": err.Error()})
+			return 1, fmt.Errorf("kernel egress filter: %w", err)
+		}
+		defer r.endEgress()
+		filter = "kernel+proxy (resolver " + dns + ")"
+	}
 	b, _ := json.Marshal(r.info)
 	if err := os.WriteFile(filepath.Join(r.rtDir, "session.json"), b, 0o600); err != nil {
 		return 1, err
@@ -173,7 +202,8 @@ func cmdRun(args []string) (int, error) {
 	command := append(append([]string{pr.Command}, pr.Args...), extra...)
 
 	var cmd *exec.Cmd
-	startData := map[string]any{"command": command, "egress": hosts, "secrets": names, "proxy": addr}
+	startData := map[string]any{"command": command, "egress": hosts, "secrets": names, "proxy": addr, "egress_filter": filter,
+		"loopback": pr.Loopback}
 	if *mode == "container" {
 		cmd, err = r.containerCmd(proj, home, vals, command, startData)
 	} else {
@@ -228,11 +258,51 @@ func cmdRun(args []string) (int, error) {
 	return code, nil
 }
 
+// registerEgress hands the session's cgroup (the slice the proxy runs
+// in, and the native agent later) and allowlist to basalt-resolver, which
+// makes the session default-deny in the kernel.
+func (r *run) registerEgress() (string, error) {
+	cg, err := egress.CgroupOf(r.proxyCmd.Process.Pid)
+	if err != nil {
+		return "", err
+	}
+	slice, err := egress.SessionSlice(cg, r.info.ID)
+	if err != nil {
+		return "", err
+	}
+	allow := make([]string, 0, len(r.pr.Egress))
+	for _, e := range r.pr.Egress {
+		allow = append(allow, e.String())
+	}
+	lb := r.pr.Loopback
+	rep, err := egress.Do(egress.Request{Op: "register", Session: r.info.ID, Profile: r.pr.Name, Mode: r.info.Mode,
+		Level: r.info.Level, Project: r.info.Project, Cgroup: slice, Allow: allow, Loopback: &lb})
+	if err != nil {
+		return "", err
+	}
+	return rep.DNS, nil
+}
+
+func (r *run) endEgress() {
+	if _, err := egress.Do(egress.Request{Op: "end", Session: r.info.ID}); err != nil {
+		fmt.Fprintf(os.Stderr, "basalt-agent: ending the kernel egress filter: %v\n", err)
+	}
+}
+
 // startProxy starts the proxy process in basalt_agent_proxy_t at the
-// session level and returns its address.
+// session level and returns its address. With kernel filtering it runs in
+// the session's slice, so its own connections are default-deny as well:
+// a proxy bug cannot reach an address no allowed name resolved to.
 func (r *run) startProxy(listen, token string) (string, error) {
 	argv := native.Runcon(native.ProxyDomain, r.info.Level, native.ProxyHelper)
+	if r.kernel {
+		argv = append(egress.ScopeArgs(r.info.ID, "proxy"), argv...)
+	}
 	cmd := exec.Command(argv[0], argv[1:]...)
+	// The pure Go resolver sends DNS to the stub address, which the kernel
+	// redirects to the session resolver (the C library could use other
+	// paths, such as systemd-resolved's varlink socket).
+	cmd.Env = append(os.Environ(), "GODEBUG=netdns=go")
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return "", err
@@ -396,6 +466,17 @@ func (r *run) nativeCmd(proj, home string, vals map[string]string, command []str
 	proxyURL := fmt.Sprintf("http://basalt:%s@%s", token, addr)
 	env := native.Env(home, tools, podman.ProxyEnv(proxyURL), r.pr.Env, vals)
 	argv := native.Runcon(native.Domain, lvl, native.ExecHelper, append([]string{proj}, command...)...)
+	if r.kernel {
+		// The agent joins the session slice, where the kernel filter applies.
+		// systemd-run needs the user's runtime directory to reach the user
+		// service manager; the exec helper removes it before the agent runs.
+		argv = append(egress.ScopeArgs(r.info.ID, "agent"), argv...)
+		for _, k := range []string{"XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"} {
+			if v, ok := os.LookupEnv(k); ok {
+				env = append(env, k+"="+v)
+			}
+		}
+	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
 	cmd.Dir = proj

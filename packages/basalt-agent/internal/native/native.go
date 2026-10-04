@@ -51,7 +51,10 @@ func Env(home, tools string, proxyEnv, profileEnv, secrets map[string]string) []
 		"PATH":            strings.Join([]string{filepath.Join(tools, "bin"), filepath.Join(tools, "venv/bin"), "/usr/local/bin", "/usr/bin"}, ":"),
 		"XDG_CONFIG_HOME": filepath.Join(home, ".config"), "XDG_DATA_HOME": filepath.Join(home, ".local/share"),
 		"XDG_CACHE_HOME": filepath.Join(home, ".cache"), "XDG_STATE_HOME": filepath.Join(home, ".local/state"),
-		"TMPDIR": "/tmp",
+		// A private temporary directory in the agent's own home (labeled at
+		// the session level): tools' caches in a shared /tmp (node's compile
+		// cache, for one) belong to the user and stay out of reach.
+		"TMPDIR": filepath.Join(home, ".tmp"),
 	}
 	for _, k := range []string{"TERM", "COLORTERM", "LANG", "LC_ALL", "TZ", "COLUMNS", "LINES"} {
 		if v, ok := os.LookupEnv(k); ok {
@@ -68,6 +71,23 @@ func Env(home, tools string, proxyEnv, profileEnv, secrets map[string]string) []
 		out = append(out, k+"="+v)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// launcherOnly are variables systemd-run needs to start the session's
+// scope (it talks to the user's service manager); the agent never gets
+// them, so nothing in the session tries the user's runtime sockets.
+var launcherOnly = map[string]bool{"XDG_RUNTIME_DIR": true, "DBUS_SESSION_BUS_ADDRESS": true}
+
+// AgentEnv drops the launcher-only variables from env.
+func AgentEnv(env []string) []string {
+	out := env[:0:0]
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		if !launcherOnly[k] {
+			out = append(out, kv)
+		}
+	}
 	return out
 }
 
@@ -98,5 +118,5 @@ func Exec(args []string) error {
 	if err != nil {
 		return fmt.Errorf("%s not found in the session PATH (basalt-agent install PROFILE): %w", args[1], err)
 	}
-	return syscall.Exec(path, args[1:], os.Environ())
+	return syscall.Exec(path, args[1:], AgentEnv(os.Environ()))
 }

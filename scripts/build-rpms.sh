@@ -102,9 +102,11 @@ fi
 sudo chown -R "$(id -u):$(id -g)" "$RPM_DIR"
 find "$RPM_DIR" -name "*.rpm" -printf "%P  %s bytes\n" | sort
 
-# basalt-assistant and basalt-agent (Go and SELinux modules) build in
-# their own container runs.
+# basalt-assistant, basalt-agent, basalt-resolver and basalt-ledger (Go
+# and SELinux modules) build in their own container runs.
 "$REPO_ROOT/packages/basalt-assistant/build.sh"
 "$REPO_ROOT/packages/basalt-agent/build.sh"
+"$REPO_ROOT/packages/basalt-resolver/build.sh"
+"$REPO_ROOT/packages/basalt-ledger/build.sh"
 # basalt-installer (Go with the upstream toolchain named in its go.mod).
 "$REPO_ROOT/packages/basalt-installer/build.sh"

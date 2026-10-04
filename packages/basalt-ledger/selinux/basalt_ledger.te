@@ -1,0 +1,88 @@
+policy_module(basalt_ledger, 0.1.0)
+
+# basalt-ledger: the system audit service (docs/ledger.md). A root
+# service in its own domain that
+#   - accepts records on its socket (/run/basalt-ledger/ledger.sock) and
+#     appends them to its chain in /var/log/basalt-ledger (outside the
+#     root snapshot, so a rollback never rewinds the audit trail);
+#   - makes the current file append-only and sealed files immutable;
+#   - reads the journal through journalctl (journalctl_t) for SELinux
+#     denials, logins, polkit, pkexec, sudo and the system assistant;
+#   - reads snapper's snapshot descriptions for rollbacks.
+# Producers get only "connect to the socket": nobody but this domain
+# writes the ledger files, and confined agent domains cannot connect.
+
+type basalt_ledger_t;
+type basalt_ledger_exec_t;
+init_daemon_domain(basalt_ledger_t, basalt_ledger_exec_t)
+init_nnp_daemon_domain(basalt_ledger_t)
+
+# The chain, its sealed files, state and the export key.
+type basalt_ledger_log_t;
+logging_log_file(basalt_ledger_log_t)
+
+type basalt_ledger_var_run_t;
+files_pid_file(basalt_ledger_var_run_t)
+
+########################################
+#
+# basalt_ledger_t
+#
+
+allow basalt_ledger_t self:capability linux_immutable;
+allow basalt_ledger_t self:process { getsched signal_perms };
+allow basalt_ledger_t self:fifo_file rw_fifo_file_perms;
+allow basalt_ledger_t self:unix_stream_socket { create_stream_socket_perms listen accept };
+allow basalt_ledger_t self:unix_dgram_socket create_socket_perms;
+
+manage_dirs_pattern(basalt_ledger_t, basalt_ledger_log_t, basalt_ledger_log_t)
+manage_files_pattern(basalt_ledger_t, basalt_ledger_log_t, basalt_ledger_log_t)
+allow basalt_ledger_t basalt_ledger_log_t:file { link map };
+logging_log_filetrans(basalt_ledger_t, basalt_ledger_log_t, dir)
+logging_search_logs(basalt_ledger_t)
+
+manage_dirs_pattern(basalt_ledger_t, basalt_ledger_var_run_t, basalt_ledger_var_run_t)
+manage_sock_files_pattern(basalt_ledger_t, basalt_ledger_var_run_t, basalt_ledger_var_run_t)
+files_pid_filetrans(basalt_ledger_t, basalt_ledger_var_run_t, { dir sock_file })
+
+# The journal, through journalctl in its own domain.
+journalctl_domtrans(basalt_ledger_t)
+gen_require(`
+	type journalctl_t;
+')
+allow basalt_ledger_t journalctl_t:process2 { nnp_transition nosuid_transition };
+allow basalt_ledger_t journalctl_t:process { sigkill signal };
+allow journalctl_t basalt_ledger_t:fd use;
+allow journalctl_t basalt_ledger_t:fifo_file rw_inherited_fifo_file_perms;
+allow journalctl_t basalt_ledger_t:process sigchld;
+# journalctl reads its cursor argument only; it writes nothing here.
+
+kernel_read_system_state(basalt_ledger_t)
+dev_read_urand(basalt_ledger_t)
+files_read_etc_files(basalt_ledger_t)
+miscfiles_read_localization(basalt_ledger_t)
+logging_send_syslog_msg(basalt_ledger_t)
+# User names for login and escalation records.
+auth_use_nsswitch(basalt_ledger_t)
+
+# Snapshot descriptions (/.snapshots/N/info.xml), read only.
+optional_policy(`
+	gen_require(`
+		type snapperd_data_t;
+	')
+	list_dirs_pattern(basalt_ledger_t, snapperd_data_t, snapperd_data_t)
+	read_files_pattern(basalt_ledger_t, snapperd_data_t, snapperd_data_t)
+')
+
+########################################
+#
+# Producers and readers: users (the ledger answers each with its own
+# records), the resolver (its own module calls the interface).
+#
+
+gen_require(`
+	type unconfined_t;
+	attribute userdomain;
+')
+basalt_ledger_stream_connect(unconfined_t)
+basalt_ledger_stream_connect(userdomain)

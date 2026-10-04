@@ -1,0 +1,2 @@
+/usr/libexec/basalt-resolver/basalt-resolverd	--	gen_context(system_u:object_r:basalt_resolver_exec_t,s0)
+/run/basalt-resolver(/.*)?				gen_context(system_u:object_r:basalt_resolver_var_run_t,s0)

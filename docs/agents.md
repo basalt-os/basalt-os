@@ -17,6 +17,8 @@ basalt-agent image build claude                       # build a tool image (cont
 basalt-agent install claude                           # install for native mode
 basalt-agent grant SESSION host api.example.com       # widen a session (admin auth)
 basalt-agent grant SESSION path ~/src/lib             # (native) add a directory
+basalt-agent egress claude                            # a profile's effective allowlist
+basalt-agent egress propose claude add api.example.com [--system]   # persistent change: preview, confirm, audit
 ```
 
 ## The model
@@ -26,7 +28,9 @@ Every agent session gets:
 - only the project directory it was given, read-write, and its own
   per-profile configuration directory; nothing else from `$HOME`;
 - the network only to the names in the profile's egress allowlist, through
-  a per-session filtering proxy; everything else is refused and recorded;
+  a per-session filtering proxy, and default deny in the kernel for
+  everything the session does (`docs/network.md`); everything else is
+  refused and recorded;
 - API keys injected for that one session, never readable by another;
 - a unique SELinux MCS level, so two sessions cannot see each other.
 
@@ -110,18 +114,39 @@ ollama.lab.example:11434 private  # may resolve to a private address (a local mo
 
 Rules: names only (no IP literals, no bare `*`); a wildcard is the first
 label only; ports default to 443; `private` relaxes the non-global-address
-refusal for that entry. This is the format the future Basalt resolver will
-read to fill per-session nftables sets; the proxy and the resolver share it.
+refusal for that entry. basalt-resolver reads the same format (the same
+parser) to fill the per-session nftables sets, so the proxy and the kernel
+filter never disagree.
 
-### Backstop with nftables (ADR 0010 default-deny)
+### Default deny in the kernel (basalt-resolver)
 
-`basalt-agent-egress.service` loads an nftables table that drops and audits
-any connection to the session proxy ports (`tcp 47100-47163`) that is not on
-loopback. The proxy ports reach only the local proxy; the proxy is the filter.
-This is the first, static step toward ADR 0010's per-session default-deny
-sets; when the Basalt resolver lands, the same allowlist fills per-session
-sets and the model becomes default-deny for all of a session's egress, not
-only the proxy ports.
+Every session runs in its own systemd user slice
+(`basaltagent.slice/basaltagent-<id>.slice`): the proxy, and in native mode
+the agent. The launcher registers the slice with `basalt-resolver`, which
+makes it default-deny with nftables (matched on the cgroup) and fills
+per-session sets from DNS answers for the allowlisted names; the session's
+DNS is redirected to a resolver port of its own. A bug in the proxy, or a
+tool that ignores the proxy settings, cannot reach an address no allowed
+name resolved to. Native mode requires the resolver and refuses to start
+without it; container mode uses it when present (the container itself has
+no network). The details, and the SELinux boolean
+`basalt_agent_direct_egress` that lets native agents also connect without
+the proxy, are in `docs/network.md`.
+
+`basalt-agent-egress.service` still loads a small static table that drops
+and audits any connection to the proxy ports (`tcp 47100-47163`) that is
+not on loopback.
+
+### Changing an allowlist
+
+`basalt-agent grant SESSION host NAME[:PORTS]` widens one running session
+(proxy and kernel filter) after administrator authentication.
+`basalt-agent egress propose PROFILE add|remove ENTRY` changes a profile
+for later sessions: it prints the proposal, the file it writes and the
+resulting list, asks, and records the change; `--system` writes
+`/etc/basalt-agent/profiles` for every user through polkit. A profile may
+also set `loopback = no` in `[egress]` (default yes: unprivileged loopback
+ports, such as a dev server the agent started).
 
 ## Secrets
 
@@ -183,9 +208,12 @@ include = registries
 
 Each session appends to `~/.local/state/basalt-agent/audit.jsonl`: JSON
 lines, one record per event, each chained to the previous by SHA-256
-(`basalt-agent audit --verify` checks the chain). The record schema (below)
-is the one ADR 0010's `basalt-ledger` will accept unchanged; `basalt-agent`
-is one producer of it.
+(`basalt-agent audit --verify` checks the chain). The launcher also sends
+every record to `basalt-ledger`, the system audit service
+(`docs/ledger.md`), which keeps it in the system chain with this log's
+sequence and hash as its source position; `basalt-ledger` shows it in
+plain English next to the network decisions of `basalt-resolver` and the
+SELinux denials of the session.
 
 ```jsonc
 {
@@ -243,15 +271,16 @@ policy is built) forbid any agent domain from reading `ssh_home_t`,
 
 ## Limits (today)
 
-- Native mode and SELinux reason about port types, not hostnames, so the
-  per-host egress rule is enforced by the proxy, with nftables as the
-  loopback backstop. Full per-session default-deny for all egress (not only
-  the proxy ports) arrives with ADR 0010's resolver and nftables sets.
+- SELinux reasons about port types, not hostnames: the per-host rule is
+  enforced by the proxy and by basalt-resolver's kernel sets. The proxy's
+  domain connects only to HTTP port types, so a `private` entry on another
+  port works through direct egress, not through the proxy.
 - A profile that allows a package registry allows uploads to it too (`npm
   publish`, `twine`); GitHub is opt-in for the same reason. Treat the egress
   list as the trust boundary and keep it short.
 - Blocked reads of another user's home content are denied but not AVC-logged
-  (Fedora `dontaudit`); the session audit log is the reliable record.
+  (Fedora `dontaudit`); the session audit log and the ledger are the
+  reliable record.
 - One session per profile at a time (the profile's home is relabeled to the
   session level). Run different agents, or copies of a profile, in parallel.
 
@@ -264,4 +293,6 @@ an allowed `curl`/`npm install`) and the escape-attempt matrix (reading
 `~/.ssh`, writing outside the project, reaching an unlisted host, reading
 another session's secret, confirming a shell proposal, `sudo`), in both
 modes. All escapes must be denied, and allowed work must leave zero AVC
-denials.
+denials. The network matrix with the kernel filter (direct egress,
+rebinding, other DNS servers, another session's resolver, leaving the
+cgroup) is `scripts/lab/ledger-test.sh` (`docs/network.md`).

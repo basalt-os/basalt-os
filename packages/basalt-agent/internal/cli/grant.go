@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/egress"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/session"
 )
 
@@ -57,6 +58,12 @@ func GrantMain(args []string) int {
 	if err != nil || uid <= 0 {
 		return fail("PKEXEC_UID missing: run it as basalt-agent grant")
 	}
+	if len(args) > 0 && args[0] == "profile" {
+		if err := grantProfile(uid, args[1:]); err != nil {
+			return fail("uid %d profile change: %v", uid, err)
+		}
+		return 0
+	}
 	if len(args) != 3 || !session.ValidID(args[0]) || (args[1] != "host" && args[1] != "path") || len(args[2]) > 4096 {
 		return fail("bad arguments")
 	}
@@ -82,6 +89,13 @@ func GrantMain(args []string) int {
 	msg := fmt.Sprintf("uid %d session %s %s %q", uid, args[0], args[1], args[2])
 	if !rep.OK {
 		return fail("%s: %s", msg, rep.Error)
+	}
+	// The kernel filter: only root may widen a session's allowlist in
+	// basalt-resolver, so the grant goes there from this helper.
+	if args[1] == "host" && egress.Available() {
+		if _, err := egress.Do(egress.Request{Op: "allow", Session: args[0], Entry: args[2], ByUID: uid}); err != nil {
+			return fail("%s: the proxy allows it but the kernel filter refused: %v", msg, err)
+		}
 	}
 	_ = exec.Command("logger", "-p", "authpriv.notice", "-t", "basalt-agent-grant", "granted: "+msg).Run()
 	fmt.Printf("granted: %s %s to session %s\n", args[1], args[2], args[0])

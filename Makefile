@@ -151,6 +151,25 @@ lab-agent-test: ## basalt-agent on a lab VM: profiles, container+native modes, e
 lab-assistant-test: ## Assistant on a lab VM: events, proposals, confirmed applies, rollback, confinement (scripts/lab/assistant-test.sh)
 	$(L)/assistant-test.sh
 
+# --- per-session egress and the audit ledger (docs/network.md, docs/ledger.md) ------
+
+.PHONY: rpm-resolver resolver-test rpm-ledger ledger-test lab-ledger-test
+
+rpm-resolver: ## Build only basalt-resolver (+ -selinux, source) into the RPM directory
+	packages/basalt-resolver/build.sh
+
+resolver-test: ## go vet + go test of basalt-resolver in a Fedora container
+	packages/basalt-resolver/build.sh test
+
+rpm-ledger: ## Build only basalt-ledger (+ -selinux, source) into the RPM directory
+	packages/basalt-ledger/build.sh
+
+ledger-test: ## go vet + go test of basalt-ledger in a Fedora container
+	packages/basalt-ledger/build.sh test
+
+lab-ledger-test: ## Egress + ledger on a lab VM: default-deny sessions, rebinding, append-only ledger, chain across rotation, 0 AVC (scripts/lab/ledger-test.sh)
+	$(L)/ledger-test.sh
+
 # --- optional local model service (packages/basalt-llm) and evaluation suite --------
 
 rpm-llm: ## Build basalt-llm (+ -selinux): llama.cpp server for the CPU, unit without network, SELinux domain (not in CI)

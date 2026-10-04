@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Basalt OS</vendor>
+  <vendor_url>https://basalt-os.org</vendor_url>
+
+  <!-- basalt-ledger --all: read every user's records and the system
+       records (SELinux denials not tied to your sessions, logins of other
+       users). Administrator authentication, kept for a few minutes. -->
+  <action id="org.basalt-os.ledger.read-all">
+    <description>Read the whole system audit trail</description>
+    <message>Authentication is required to read every user's audit records</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/basalt-ledger</annotate>
+  </action>
+</policyconfig>

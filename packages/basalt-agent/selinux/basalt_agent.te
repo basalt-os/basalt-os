@@ -59,6 +59,48 @@ allow basalt_agent_t unconfined_t:fd use;
 allow basalt_agent_t unconfined_t:fifo_file rw_inherited_fifo_file_perms;
 allow basalt_agent_t unconfined_t:process sigchld;
 
+# Direct egress (off by default): with basalt-resolver making every
+# session default-deny in the kernel (nftables matched by the session's
+# cgroup, sets filled only from DNS answers for allowlisted names), an
+# agent may also connect without the proxy and resolve names itself (its
+# DNS is redirected to its session resolver). The kernel filter is then
+# the boundary for those connections; turn it on with
+# setsebool -P basalt_agent_direct_egress on.
+#
+# Deliberately not granted: reading /etc/resolv.conf through /run/systemd
+# (sysnet_read_config). Searching /run/systemd would also reach
+# systemd-resolved's varlink socket, which every domain may connect to,
+# and resolve any name outside the session resolver (a DNS exfiltration
+# path). Without resolv.conf the C library and Go use 127.0.0.1:53, which
+# the session rules redirect to the session resolver too.
+gen_tunable(basalt_agent_direct_egress, false)
+tunable_policy(`basalt_agent_direct_egress',`
+	allow basalt_agent_t self:udp_socket create_socket_perms;
+	allow basalt_agent_t self:tcp_socket create_stream_socket_perms;
+	allow basalt_agent_t self:netlink_route_socket r_netlink_socket_perms;
+	corenet_tcp_connect_all_ports(basalt_agent_t)
+	kernel_read_network_state(basalt_agent_t)
+	kernel_read_network_state_symlinks(basalt_agent_t)
+	kernel_read_net_sysctls(basalt_agent_t)
+')
+# The resolver library still tries /etc/resolv.conf and /etc/hosts (host
+# network configuration, net_conf_t); both stay unreadable, quietly, and
+# it falls back to 127.0.0.1:53, the session resolver.
+gen_require(`
+	type net_conf_t;
+')
+dontaudit basalt_agent_t net_conf_t:file read_file_perms;
+dontaudit basalt_agent_t net_conf_t:lnk_file read_lnk_file_perms;
+
+# Node (libuv) probes io_uring and falls back to threads when refused;
+# agents do not get io_uring (a large kernel attack surface), quietly.
+optional_policy(`
+	gen_require(`
+		type io_uring_t;
+	')
+	dontaudit basalt_agent_t io_uring_t:anon_inode create;
+')
+
 # The helper checks its own context before running the agent.
 allow basalt_agent_t self:process { getattr setexec };
 # Programs re-execute themselves (node spawns node).

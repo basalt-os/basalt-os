@@ -47,6 +47,10 @@ func listen(spec string) (net.Listener, error) {
 		if err != nil {
 			return nil, err
 		}
+		// The launcher removes the session directory; in container mode the
+		// socket is relabeled for the container and the proxy may not
+		// unlink it.
+		l.(*net.UnixListener).SetUnlinkOnClose(false)
 		return l, os.Chmod(path, 0o600)
 	}
 	rest, ok := strings.CutPrefix(spec, "tcp:")

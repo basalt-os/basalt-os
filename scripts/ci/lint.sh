@@ -45,14 +45,22 @@ make --no-print-directory lint || fail=1
 step "ShellCheck: CI scripts, assistant and model service scripts, their lab scripts"
 shellcheck -x -S warning scripts/ci/*.sh packages/basalt-assistant/build.sh scripts/lab/assistant-*.sh scripts/lab/eval-capture.sh \
   packages/basalt-agent/build.sh scripts/lab/agent-test.sh packages/basalt-agent/tests/normal.sh packages/basalt-agent/tests/attacks.sh packages/basalt-agent/tests/driver.sh \
+  packages/basalt-resolver/build.sh packages/basalt-ledger/build.sh scripts/lab/ledger-test.sh packages/basalt-ledger/tests/*.sh \
   packages/basalt-llm/build.sh packages/basalt-llm/basalt-llm-start packages/basalt-llm/basalt-llm-fetch \
   packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh scripts/data-package.sh || fail=1
+
+step "Shared egress allowlist format: basalt-agent and basalt-resolver carry the same parser"
+for f in allowlist.go allowlist_test.go; do
+  cmp -s "packages/basalt-agent/internal/allowlist/$f" "packages/basalt-resolver/internal/allowlist/$f" ||
+    { echo "packages/basalt-resolver/internal/allowlist/$f differs from basalt-agent's copy" >&2; fail=1; }
+done
 
 step "basalt-llm: model selection tests"
 packages/basalt-llm/tests/select-test.sh || fail=1
 
-step "Python syntax: evaluation suite tools"
+step "Python syntax: evaluation suite tools, ledger lab fixtures"
 python3 -m py_compile eval/tools/*.py && rm -rf eval/tools/__pycache__ || fail=1
+python3 -m py_compile packages/basalt-ledger/tests/*.py && rm -rf packages/basalt-ledger/tests/__pycache__ || fail=1
 
 step "Python syntax: assistant policy query helper"
 python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" packages/basalt-assistant/dist/basalt-policy-query || fail=1

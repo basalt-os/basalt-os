@@ -40,6 +40,10 @@ const usage = `basalt-agent: run AI coding agents confined by SELinux
   basalt-agent grant SESSION host NAME[:PORTS]
   basalt-agent grant SESSION path DIR    (native mode) give the session one more directory
                                          grants need administrator authentication (polkit)
+  basalt-agent egress PROFILE            the profile's effective network allowlist
+  basalt-agent egress propose PROFILE add|remove ENTRY [--system] [--yes]
+                                         change a profile's allowlist: preview, confirm, audit
+                                         (--system: every user, administrator authentication)
   basalt-agent version
 
 Profiles: ~/.config/basalt-agent/profiles, /etc/basalt-agent/profiles,
@@ -69,6 +73,8 @@ func Main(args []string) int {
 		err = cmdInstall(args[1:])
 	case "grant":
 		err = cmdGrant(args[1:])
+	case "egress":
+		err = cmdEgress(args[1:])
 	case "version":
 		fmt.Println(Version)
 	case "help", "-h", "--help":

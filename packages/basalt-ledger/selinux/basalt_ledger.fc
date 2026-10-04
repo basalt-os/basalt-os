@@ -1,0 +1,3 @@
+/usr/libexec/basalt-ledger/basalt-ledgerd	--	gen_context(system_u:object_r:basalt_ledger_exec_t,s0)
+/var/log/basalt-ledger(/.*)?			gen_context(system_u:object_r:basalt_ledger_log_t,s0)
+/run/basalt-ledger(/.*)?			gen_context(system_u:object_r:basalt_ledger_var_run_t,s0)

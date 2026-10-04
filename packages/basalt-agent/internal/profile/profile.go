@@ -9,7 +9,9 @@
 //	             store and injected for one session only
 //	[egress]     allow = name[:ports] (repeatable, allowlist format),
 //	             include = SET (repeatable): a shared list from the egress
-//	             directory (SET.list)
+//	             directory (SET.list),
+//	             loopback = yes|no (the session may reach unprivileged
+//	             loopback ports, e.g. a dev server it started), default yes
 //
 // Profiles are looked up in the user's directory first
 // (~/.config/basalt-agent/profiles), then in /usr/share/basalt-agent/profiles.
@@ -47,6 +49,7 @@ type Profile struct {
 	Allow       []allowlist.Entry // own entries
 	Includes    []string
 	Egress      []allowlist.Entry // own entries plus resolved includes
+	Loopback    bool              // unprivileged loopback ports allowed
 	Source      string
 }
 
@@ -160,7 +163,7 @@ func ParseFile(path string) (*Profile, error) {
 		return nil, err
 	}
 	defer fh.Close()
-	pr := &Profile{Env: map[string]string{}, Method: "none", Source: path}
+	pr := &Profile{Env: map[string]string{}, Method: "none", Source: path, Loopback: true}
 	sc := bufio.NewScanner(fh)
 	section, n := "", 0
 	fail := func(format string, a ...any) error {
@@ -214,6 +217,12 @@ func ParseFile(path string) (*Profile, error) {
 			pr.Allow = append(pr.Allow, e)
 		case "egress.include":
 			pr.Includes = append(pr.Includes, v)
+		case "egress.loopback":
+			b, ok := map[string]bool{"yes": true, "true": true, "1": true, "no": false, "false": false, "0": false}[v]
+			if !ok {
+				return nil, fail("%s must be yes or no", k)
+			}
+			pr.Loopback = b
 		default:
 			if section == "env" {
 				if !envRe.MatchString(k) || reservedEnv[k] {

@@ -1,0 +1,86 @@
+package record
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func mk(event, outcome string, data map[string]any) Record {
+	d, _ := json.Marshal(data)
+	return Record{Producer: "basalt-agent", UID: 1000, Session: "s-0123456789ab", Event: event, Outcome: outcome,
+		Severity: Severity(event, outcome), Subject: Subject{Profile: "claude", Mode: "native", Project: "/home/dev/src/app"}, Data: d}
+}
+
+func TestSeverity(t *testing.T) {
+	for _, c := range []struct{ ev, out, want string }{
+		{"session.start", "ok", "info"}, {"egress.deny", "denied", "warning"}, {"selinux.avc", "denied", "warning"},
+		{"snapshot.rollback", "ok", "notice"}, {"polkit.auth", "ok", "notice"}, {"ledger.chain_error", "error", "critical"},
+		{"dns.rebinding", "denied", "warning"}, {"egress.grant", "ok", "notice"},
+	} {
+		if got := Severity(c.ev, c.out); got != c.want {
+			t.Errorf("%s/%s: %s, want %s", c.ev, c.out, got, c.want)
+		}
+	}
+}
+
+func TestDescribe(t *testing.T) {
+	cases := map[string]Record{
+		"Agent claude (s-0123456789ab) was stopped from reaching example.com:443 (not in the session allowlist)": mk("egress.deny", "denied",
+			map[string]any{"host": "example.com", "port": 443, "reason": "not in the session allowlist"}),
+		"Agent claude (s-0123456789ab) started in native mode on ~/src/app":                                       mk("session.start", "ok", nil),
+		"Agent claude (s-0123456789ab) tried to connect straight to 1.1.1.1:443 without an allowed name; dropped": mk("egress.drop", "denied", map[string]any{"dst": "1.1.1.1", "port": 443}),
+	}
+	for want, r := range cases {
+		if got := Describe(r); got != want {
+			t.Errorf("got  %q\nwant %q", got, want)
+		}
+	}
+	end := mk("session.end", "ok", map[string]any{"duration_s": 125, "exit_code": 0, "egress_allowed": 4, "egress_denied": 1})
+	if got := Describe(end); !strings.Contains(got, "after 2m5s") || !strings.Contains(got, "4 connections allowed, 1 refused") {
+		t.Errorf("%q", got)
+	}
+	unknown := mk("custom.thing", "ok", nil)
+	if got := Describe(unknown); !strings.Contains(got, "custom.thing") {
+		t.Errorf("%q", got)
+	}
+	avc := Record{Producer: "selinux", Event: "selinux.avc", Outcome: "denied", Data: json.RawMessage(
+		`{"comm":"cat","perms":"read","tclass":"file","name":"id_ed25519","scontext":"u:r:basalt_agent_t:s0:c1,c2"}`)}
+	if got := Describe(avc); got != "SELinux stopped cat (basalt_agent_t) from read on file id_ed25519" {
+		t.Errorf("%q", got)
+	}
+}
+
+func TestSummarize(t *testing.T) {
+	recs := []Record{
+		mk("session.start", "ok", nil),
+		mk("egress.allow", "allowed", map[string]any{"host": "api.anthropic.com", "port": 443}),
+		mk("dns.deny", "denied", map[string]any{"name": "example.org"}),
+		mk("egress.drop", "denied", map[string]any{"dst": "1.1.1.1", "port": 443}),
+		mk("session.end", "ok", map[string]any{"exit_code": 0}),
+		{Producer: "login", Event: "login.session", Severity: "info"},
+	}
+	s := Summarize(recs)
+	if len(s.Sessions) != 1 || s.Sessions[0].Refusals != 2 || len(s.Sessions[0].Reached) != 1 {
+		t.Fatalf("%+v", s)
+	}
+	joined := strings.Join(s.Lines, "\n")
+	for _, want := range []string{"Agent claude worked on ~/src/app (native mode", "reached api.anthropic.com", "2 attempts refused (example.org, 1.1.1.1)", "1 logins."} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("summary lacks %q:\n%s", want, joined)
+		}
+	}
+}
+
+func TestHashStableAcrossRoundTrip(t *testing.T) {
+	r := mk("egress.deny", "denied", map[string]any{"n": 123456789, "f": 0.25, "s": "<html>&"})
+	r.Hash = HashOf(r)
+	b, _ := json.Marshal(r)
+	var back Record
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if HashOf(back) != r.Hash {
+		t.Fatal("hash changes after a JSON round trip")
+	}
+}

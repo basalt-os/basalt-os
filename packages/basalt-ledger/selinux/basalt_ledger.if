@@ -1,0 +1,43 @@
+## <summary>basalt-ledger: the append-only system audit service.</summary>
+
+########################################
+## <summary>
+##	Connect to the basalt-ledger socket: append records (the service
+##	decides which producer names a peer may use) and read the peer's own
+##	records. There is no operation that changes or removes a record.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`basalt_ledger_stream_connect',`
+	gen_require(`
+		type basalt_ledger_t, basalt_ledger_var_run_t;
+	')
+
+	files_search_pids($1)
+	stream_connect_pattern($1, basalt_ledger_var_run_t, basalt_ledger_var_run_t, basalt_ledger_t)
+')
+
+########################################
+## <summary>
+##	Read the ledger files directly (verification tools run by an
+##	administrator). Never grant write.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`basalt_ledger_read_files',`
+	gen_require(`
+		type basalt_ledger_log_t;
+	')
+
+	logging_search_logs($1)
+	list_dirs_pattern($1, basalt_ledger_log_t, basalt_ledger_log_t)
+	read_files_pattern($1, basalt_ledger_log_t, basalt_ledger_log_t)
+')

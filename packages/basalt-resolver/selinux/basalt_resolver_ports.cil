@@ -1,0 +1,4 @@
+; basalt-resolver: loopback DNS ports of the session resolvers. The type
+; is declared by the basalt_resolver module.
+(portcon tcp (47200 47263) (system_u object_r basalt_resolver_port_t ((s0) (s0))))
+(portcon udp (47200 47263) (system_u object_r basalt_resolver_port_t ((s0) (s0))))

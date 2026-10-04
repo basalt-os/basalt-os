@@ -1,0 +1,100 @@
+policy_module(basalt_resolver, 0.1.0)
+
+# basalt-resolver: per-session default-deny egress (docs/network.md). A
+# root service in its own domain that
+#   - listens on the control socket (/run/basalt-resolver/control.sock),
+#   - answers DNS for registered sessions on loopback ports
+#     (basalt_resolver_port_t, tcp/udp 47200-47263),
+#   - forwards allowed names to the system stub resolver,
+#   - changes its own nftables table through nft (iptables_t) and reads
+#     the session drop log over nflog (netlink),
+#   - checks that a session's cgroup exists,
+#   - sends records to basalt-ledger.
+# Nothing else: no home directories, no other sockets, no exec besides nft.
+
+type basalt_resolver_t;
+type basalt_resolver_exec_t;
+init_daemon_domain(basalt_resolver_t, basalt_resolver_exec_t)
+# The unit sets NoNewPrivileges.
+init_nnp_daemon_domain(basalt_resolver_t)
+
+# Control socket and per-session state.
+type basalt_resolver_var_run_t;
+files_pid_file(basalt_resolver_var_run_t)
+
+# Session resolver ports (the portcon is in basalt_resolver_ports.cil).
+type basalt_resolver_port_t;
+corenet_port(basalt_resolver_port_t)
+
+########################################
+#
+# basalt_resolver_t
+#
+
+allow basalt_resolver_t self:capability net_admin;
+allow basalt_resolver_t self:process { getsched signal_perms };
+allow basalt_resolver_t self:fifo_file rw_fifo_file_perms;
+allow basalt_resolver_t self:unix_stream_socket { create_stream_socket_perms listen accept };
+allow basalt_resolver_t self:unix_dgram_socket create_socket_perms;
+allow basalt_resolver_t self:netlink_netfilter_socket create_socket_perms;
+allow basalt_resolver_t self:tcp_socket { create_stream_socket_perms listen accept };
+allow basalt_resolver_t self:udp_socket create_socket_perms;
+
+manage_dirs_pattern(basalt_resolver_t, basalt_resolver_var_run_t, basalt_resolver_var_run_t)
+manage_files_pattern(basalt_resolver_t, basalt_resolver_var_run_t, basalt_resolver_var_run_t)
+manage_sock_files_pattern(basalt_resolver_t, basalt_resolver_var_run_t, basalt_resolver_var_run_t)
+files_pid_filetrans(basalt_resolver_t, basalt_resolver_var_run_t, { dir file sock_file })
+
+# DNS for sessions on loopback.
+allow basalt_resolver_t basalt_resolver_port_t:tcp_socket name_bind;
+allow basalt_resolver_t basalt_resolver_port_t:udp_socket name_bind;
+corenet_tcp_bind_generic_node(basalt_resolver_t)
+corenet_udp_bind_generic_node(basalt_resolver_t)
+
+# Upstream: the system stub resolver.
+sysnet_dns_name_resolve(basalt_resolver_t)
+
+# nft for the table, in iptables_t; nft reads the script on a pipe.
+iptables_domtrans(basalt_resolver_t)
+gen_require(`
+	type iptables_t;
+')
+allow iptables_t basalt_resolver_t:fd use;
+allow iptables_t basalt_resolver_t:fifo_file rw_inherited_fifo_file_perms;
+allow iptables_t basalt_resolver_t:process sigchld;
+allow basalt_resolver_t iptables_t:process2 { nnp_transition nosuid_transition };
+
+# Sessions' cgroups: existence and owner.
+fs_getattr_cgroup(basalt_resolver_t)
+fs_list_cgroup_dirs(basalt_resolver_t)
+fs_search_cgroup_dirs(basalt_resolver_t)
+
+kernel_read_system_state(basalt_resolver_t)
+kernel_read_net_sysctls(basalt_resolver_t)
+dev_read_urand(basalt_resolver_t)
+files_read_etc_files(basalt_resolver_t)
+miscfiles_read_localization(basalt_resolver_t)
+logging_send_syslog_msg(basalt_resolver_t)
+
+########################################
+#
+# Clients: users' launchers register and end their own sessions (the
+# service checks SO_PEERCRED); agent domains get no rule here.
+#
+
+gen_require(`
+	type unconfined_t;
+	attribute userdomain;
+')
+basalt_resolver_stream_connect(unconfined_t)
+basalt_resolver_stream_connect(userdomain)
+
+# Records to basalt-ledger (the same rules as basalt_ledger_stream_connect,
+# written out so this module builds without the ledger's interface file).
+optional_policy(`
+	gen_require(`
+		type basalt_ledger_t, basalt_ledger_var_run_t;
+	')
+	files_search_pids(basalt_resolver_t)
+	stream_connect_pattern(basalt_resolver_t, basalt_ledger_var_run_t, basalt_ledger_var_run_t, basalt_ledger_t)
+')

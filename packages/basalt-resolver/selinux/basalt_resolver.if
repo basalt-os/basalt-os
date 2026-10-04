@@ -1,0 +1,21 @@
+## <summary>basalt-resolver: per-session default-deny egress with DNS-aware allowlists.</summary>
+
+########################################
+## <summary>
+##	Connect to the basalt-resolver control socket (register and end
+##	sessions; the service decides what each peer may do).
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`basalt_resolver_stream_connect',`
+	gen_require(`
+		type basalt_resolver_t, basalt_resolver_var_run_t;
+	')
+
+	files_search_pids($1)
+	stream_connect_pattern($1, basalt_resolver_var_run_t, basalt_resolver_var_run_t, basalt_resolver_t)
+')
