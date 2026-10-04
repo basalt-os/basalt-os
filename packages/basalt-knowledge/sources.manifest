@@ -4,10 +4,12 @@
 # location and refuses it unless the SHA-256 and the size match.
 #
 # The manifest.json.sig line is written by scripts/sign-knowledge.sh when
-# the release signs the index with the OpenBasalt knowledge subkey; until
-# then the package cannot be built (the spec needs the signature).
+# the release signs the index with the OpenBasalt knowledge subkey (here:
+# subkey 85D61430B70438680F6EB955E79E4020605A659A, 2026-10-04). The
+# package cannot be built without it (the spec needs the signature).
 #
 # Columns: name  sha256  bytes  path
 cases.jsonl    ed3e96f53d140fcbb885c5901f1a35fe62b43b5b469bf9dbe86fd8d28965e7eb  28453  knowledge/44/20261004/cases.jsonl
 index.bin      f8bfcad7aa5dbf48230e2a3a799d71190c41107dabfb0457bab94136b278411e  1310   knowledge/44/20261004/index.bin
 manifest.json  fb946ade619cd9ef9bbf1f942da2357184bff0879e94358c84c76c2ac50b8064  1350   knowledge/44/20261004/manifest.json
+manifest.json.sig  861408663ae70f4a75c7b6a6f89fae702cef897bea407aa41ff7cb34ba2bdbb9  566  knowledge/44/20261004/manifest.json.sig
