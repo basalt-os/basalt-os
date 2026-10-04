@@ -530,10 +530,33 @@ func (p *Progress) Add(line string) {
 	if n == 0 {
 		n = 8
 	}
-	p.Tail = append(p.Tail, line)
+	p.Tail = append(p.Tail, plainLine(line))
 	if len(p.Tail) > n {
 		p.Tail = p.Tail[len(p.Tail)-n:]
 	}
+}
+
+// plainLine makes a command's output line safe to lay out: tabs become
+// spaces, control characters go, and emoji (systemd-cryptenroll prints a
+// lock before the recovery key) become "*". Terminals draw emoji two
+// columns wide while the layout may count one, and a line one column too
+// long wraps on an 80 column serial console and scrolls the whole screen.
+func plainLine(line string) string {
+	var b strings.Builder
+	for _, r := range line {
+		switch {
+		case r == '\t':
+			b.WriteString("    ")
+		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
+		case r >= 0x1f000 || (r >= 0x2600 && r <= 0x27bf) || r == 0xfe0f:
+			if r != 0xfe0f {
+				b.WriteByte('*')
+			}
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // Bar renders a bar of the given width. ASCII when ascii is true (serial

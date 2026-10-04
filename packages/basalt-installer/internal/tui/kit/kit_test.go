@@ -33,3 +33,13 @@ func TestProgressLongCommandKeepsTailAndStatus(t *testing.T) {
 		t.Fatalf("shortened command not marked:\n%s", out)
 	}
 }
+
+// Output lines with tabs, control characters or emoji must not be wider
+// on the terminal than the layout counts.
+func TestProgressAddPlainLine(t *testing.T) {
+	var p Progress
+	p.Add("\t\U0001F510 key\r\x1b")
+	if got, want := p.Tail[0], "    * key"; got != want {
+		t.Fatalf("Add stored %q, want %q", got, want)
+	}
+}
