@@ -21,6 +21,8 @@ ExclusiveArch:  x86_64
 # Built with the upstream Go toolchain named in go.mod (toolchain go1.27.1):
 # tui-kit needs Go 1.27 and Fedora 44 ships 1.26. build.sh puts a
 # checksum-verified official Go first in PATH; nothing is downloaded here.
+# gcc: a position-independent, dynamically linked binary (Fedora policy).
+BuildRequires:  gcc
 
 Requires:       util-linux
 Requires:       gdisk
@@ -71,11 +73,11 @@ progress and recovery key as the text installer.
 tar -xzf %{SOURCE1}
 
 %build
-export GOFLAGS="-mod=vendor -trimpath" GOTOOLCHAIN=local GOPROXY=off CGO_ENABLED=0
-go build -ldflags "-s -w -X main.Version=%{version}" -o basalt-installer ./cmd/basalt-installer
+export GOFLAGS="-mod=vendor -trimpath" GOTOOLCHAIN=local GOPROXY=off
+go build -buildmode=pie -ldflags "-s -w -linkmode=external -X main.Version=%{version}" -o basalt-installer ./cmd/basalt-installer
 
 %check
-export GOFLAGS="-mod=vendor" GOTOOLCHAIN=local GOPROXY=off CGO_ENABLED=0
+export GOFLAGS="-mod=vendor" GOTOOLCHAIN=local GOPROXY=off
 go vet ./...
 go test ./...
 

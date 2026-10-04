@@ -41,7 +41,7 @@ cp -p "$pkg/basalt-installer.spec" "$work/SPECS/"
 mode="${1:-build}"
 log "basalt-installer $ver: $mode in $FEDORA_IMAGE (Go $GO_VERSION)"
 in_fedora -v "$work:/rpmbuild" -v "$tarball:/go.tar.gz:ro" -e MODE="$mode" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
-  dnf -q -y install rpm-build tar gzip >/dev/null 2>&1 || { echo "dnf install failed"; exit 1; }
+  dnf -q -y install rpm-build tar gzip gcc >/dev/null 2>&1 || { echo "dnf install failed"; exit 1; }
   tar -C /opt -xzf /go.tar.gz
   export PATH=/opt/go/bin:$PATH GOTOOLCHAIN=local GOFLAGS=-mod=mod GOPATH=/tmp/gopath GOCACHE=/tmp/gocache
   mkdir -p /src && tar -C /src -xzf /rpmbuild/SOURCES/basalt-installer-$VER.tar.gz && cd /src
