@@ -44,9 +44,8 @@ matching `baseurl=$basalt_tools_url/$releasever/$basearch/` with
 installer in `basalt-tools.repo` with `gpgcheck=1`, `repo_gpgcheck=1` and
 the same key (one packages signing subkey signs every repository).
 `sign.sh` takes any directory of unsigned RPMs with a `SHA256SUMS` that
-lists exactly them, so a tools build (for Samba Conductor:
-`planning/release/build-all.sh --formats rpm --arch amd64` in its own
-family) is signed the same way. `sign.sh` records the repository in
+lists exactly them, so a tools build (for Samba Conductor, its x86_64
+and noarch RPMs) is signed the same way. `sign.sh` records the repository in
 `SIGNED-OK` (`repo:`) and `upload.sh` publishes that repository only.
 `client-test.sh` needs the package names for a repository other than
 `basalt`; dependencies come from Fedora's repositories in the test
