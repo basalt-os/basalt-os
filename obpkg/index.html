@@ -229,8 +229,8 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
       <section aria-labelledby="repos">
         <h2 id="repos">Repositories</h2>
         <p>
-          The Basalt OS repository is live. The others will appear at their paths below, and this page will carry their
-          setup instructions once they are live.
+          The Basalt OS and Basalt tools repositories are live. The others will appear at their paths below, and this
+          page will carry their setup instructions once they are live.
         </p>
         <div class="table-wrap">
           <table>
@@ -252,8 +252,11 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
               </tr>
               <tr>
                 <td><code>/basalt-tools/</code></td>
-                <td>OpenBasalt tools for Basalt OS. Enabled by default.</td>
-                <td class="soon">Coming soon</td>
+                <td>
+                  Official OpenBasalt tools for Basalt OS, today Samba Conductor.
+                  Release 44: <code>/basalt-tools/44/x86_64/</code>.
+                </td>
+                <td class="live">Available</td>
               </tr>
               <tr>
                 <td><code>/basalt-testing/</code></td>
@@ -297,6 +300,36 @@ metadata_expire=6h</code></pre>
           Packages are signed by the packages subkey of the release key, with fingerprint
           <code>3024 61D2 6520 E077 D07F FCA9 AA27 C62C 36CC FC4B</code>. Repository metadata is signed too, in a
           detached <code>repomd.xml.asc</code> next to each <code>repomd.xml</code>.
+        </p>
+      </section>
+
+      <section aria-labelledby="tools">
+        <h2 id="tools">Basalt tools</h2>
+        <p>
+          <code>/basalt-tools/</code> carries the official OpenBasalt tools. Today that is
+          <a href="https://github.com/openbasalt/samba-conductor">Samba Conductor</a>
+          (<a href="https://github.com/openbasalt/samba-conductor-docs">docs</a>): the packages
+          <code>conductor</code>, <code>conductor-idp</code>, <code>conductor-sync</code>,
+          <code>conductor-backup</code> and <code>conductor-files</code>, each with its <code>-selinux</code> policy
+          package. They are signed by the same packages subkey as <code>/basalt/</code>. There is no source repository.
+        </p>
+        <p>
+          An upcoming <code>basalt-release</code> will enable this repository by default on Basalt OS. Until then, set
+          it up by hand: save this as <code>/etc/yum.repos.d/basalt-tools.repo</code>:
+        </p>
+        <pre><code>[basalt-tools]
+name=Basalt OS tools $releasever - $basearch
+baseurl=https://obpkg.org/basalt-tools/$releasever/$basearch/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://obpkg.org/keys/openbasalt-release-key.asc
+metadata_expire=6h</code></pre>
+        <p>Then install Samba Conductor:</p>
+        <pre><code>sudo dnf install conductor</code></pre>
+        <p>
+          Once <code>basalt-release</code> ships the repository, you can turn it off with
+          <code>sudo dnf config-manager setopt basalt-tools.enabled=0</code>.
         </p>
       </section>
 
