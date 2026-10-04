@@ -2,6 +2,7 @@ package explain
 
 import (
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -22,6 +23,9 @@ type Allowed struct {
 	paths   []string
 	words   map[string]bool
 	subject string
+	values  []string // the values themselves, longest first
+	ok      bool     // nothing is wrong
+	changes bool     // a change is planned (or hinted)
 }
 
 var (
@@ -33,9 +37,14 @@ var (
 	reIDRef   = regexp.MustCompile(`\bp-[0-9a-f]{6}\b`)
 	// File names without a directory (nginx.conf, key.pem).
 	reFileRef = regexp.MustCompile(`\b[A-Za-z0-9_][A-Za-z0-9_.-]*\.(?:conf|cfg|cf|ini|xml|json|ya?ml|toml|log|pem|key|crt|db|sock|rpm|repo|env|sh|py)\b`)
-	reURL     = regexp.MustCompile(`(?i)\b(?:https?|ftp)://|\bwww\.|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+	reURL     = regexp.MustCompile(`(?i)\b(?:https?|ftp)://|(?:^|\s)www\.|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 	reWord    = regexp.MustCompile(`[A-Za-z][A-Za-z0-9_-]*`)
 	reLetters = regexp.MustCompile(`[a-z]+`)
+	// Claims that contradict the facts' shape: a change when none is
+	// planned, a fault when nothing is wrong, health when something is.
+	reApplyClaim  = regexp.MustCompile(`(?i)\bappl(?:y|ying|ied)\b|\bthe (?:planned |proposed )?(?:fix|change)s? (?:will|would)\b`)
+	reFaultClaim  = regexp.MustCompile(`(?i)\b(?:fail\w*|error\w*|crash\w*|problem\w*|issue\w*|broken|denied|blocked|wrong)\b`)
+	reHealthClaim = regexp.MustCompile(`(?i)\brunning (?:normally|fine)\b|\bno (?:issues?|problems?)\b|\bnothing (?:is )?wrong\b|\bnot experiencing\b|\bnothing to (?:do|fix)\b`)
 	// Advice the assistant never gives, whatever the facts say.
 	reForbidden = regexp.MustCompile(`(?i)\b(?:disabl\w*|turn\w* off|switch\w* off)\s+(?:the\s+)?selinux\b|\bpermissive mode\b|\bsetenforce\b|\baudit2allow\b|\bchmod\s+777\b|\bcurl\b.*\|\s*(?:ba)?sh\b`)
 )
@@ -66,7 +75,14 @@ func NewAllowed(f *Facts, changes []action.Action) *Allowed {
 			parts = append(parts, v)
 		}
 	}
-	al := &Allowed{corpus: strings.Join(parts, "\n"), numbers: map[string]bool{}, words: map[string]bool{}, subject: f.Subject}
+	al := &Allowed{corpus: strings.Join(parts, "\n"), numbers: map[string]bool{}, words: map[string]bool{}, subject: f.Subject,
+		ok: f.OK, changes: len(changes) > 0}
+	for _, v := range parts {
+		if len(v) >= 3 {
+			al.values = append(al.values, v)
+		}
+	}
+	sort.Slice(al.values, func(i, j int) bool { return len(al.values[i]) > len(al.values[j]) })
 	for _, n := range reNumber.FindAllString(al.corpus, -1) {
 		al.numbers[normNumber(n)] = true
 		for _, piece := range strings.FieldsFunc(n, func(r rune) bool { return r == '.' || r == ',' }) {
@@ -128,10 +144,16 @@ func (al *Allowed) Check(text string, maxChars int) []string {
 			break
 		}
 	}
-	if strings.ContainsAny(text, "`#*$|<>{}[]") {
+	// Characters a value itself holds (a quoted config line) are fine
+	// where the text quotes that value.
+	quoted := text
+	for _, v := range al.values {
+		quoted = strings.ReplaceAll(quoted, v, " ")
+	}
+	if strings.ContainsAny(quoted, "`#*$|<>{}[]") {
 		bad = append(bad, "markup or command characters")
 	}
-	if m := reURL.FindString(text); m != "" {
+	if m := reURL.FindString(quoted); m != "" {
 		add("address", m)
 	}
 	if m := reForbidden.FindString(text); m != "" {
@@ -194,6 +216,18 @@ func (al *Allowed) Check(text string, maxChars int) []string {
 		if commandWords[w] && !al.words[w] {
 			add("command", w)
 		}
+	}
+	if !al.changes {
+		if m := reApplyClaim.FindString(text); m != "" {
+			add("claims a change, none is planned:", m)
+		}
+	}
+	if al.ok {
+		if m := reFaultClaim.FindString(text); m != "" {
+			add("claims a fault, nothing is wrong:", m)
+		}
+	} else if m := reHealthClaim.FindString(text); m != "" {
+		add("claims all is well, it is not:", m)
 	}
 	if al.subject != "" && !mentions(text, al.subject) {
 		add("does not name", al.subject)

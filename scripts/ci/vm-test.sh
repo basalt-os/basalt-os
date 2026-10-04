@@ -342,7 +342,7 @@ dom="$(vm 'ps -eo label,comm | awk "/basalt-assistan/ {print \$1}"' || true)"
 nt="$(vm 'printf "%s %s" "$(systemctl is-enabled basalt-notify)" "$(systemctl show -p Result --value basalt-notify)"; echo; journalctl -b -u basalt-notify -o cat | grep -m1 "^basalt-notify:"' || true)"
 [[ "$nt" == "enabled success"*"nothing to deliver"* ]] && result PASS "notifications on a server" "basalt-notify enabled, nothing to deliver (no desktop, no webhook)" ||
   result FAIL "notifications on a server" "$nt"
-if vm 'basalt status' >"$LOGS/basalt-status.txt" 2>&1 && grep -q '^SELinux: *Enforcing' "$LOGS/basalt-status.txt"; then
+if vm 'basalt status' >"$LOGS/basalt-status.txt" 2>&1 && grep -q '^  SELinux  *Enforcing' "$LOGS/basalt-status.txt"; then
   result PASS "basalt status" "$(grep -c . "$LOGS/basalt-status.txt") lines"
 else
   result FAIL "basalt status" "see basalt-status.txt"
@@ -351,7 +351,7 @@ if vm 'basalt audit verify && basalt audit rotate --force && basalt audit verify
   cur_attr="$(vm 'lsattr -l /var/log/basalt-assistant/audit.jsonl' 2>&1 || true)"
   old_attr="$(vm 'lsattr -l /var/log/basalt-assistant/audit-*.jsonl' 2>&1 || true)"
   attrs="current: ${cur_attr##* }, sealed: ${old_attr##* }"
-  if grep -q 'in 2 file(s), 1 seal(s)' "$LOGS/audit-rotate.txt" && [[ "$cur_attr" == *Append_Only* && "$old_attr" == *Immutable* ]]; then
+  if grep -q '2 files, 1 seal,' "$LOGS/audit-rotate.txt" && [[ "$cur_attr" == *Append_Only* && "$old_attr" == *Immutable* ]]; then
     result PASS "audit sealed rotation" "$(tail -1 "$LOGS/audit-rotate.txt"); $attrs"
   else
     result FAIL "audit sealed rotation" "see audit-rotate.txt; attributes: $attrs"

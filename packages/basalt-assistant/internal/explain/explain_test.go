@@ -76,6 +76,26 @@ func TestCheck(t *testing.T) {
 	}
 }
 
+func TestCheckClaims(t *testing.T) {
+	rep := New("dnf", "investigate", "")
+	rep.Set("command", "dnf install jq")
+	if bad := NewAllowed(rep, nil).Check("The transaction dnf install jq failed. Applying the planned changes would resolve the issue.", 0); len(bad) == 0 {
+		t.Error("a change claimed for a report was accepted")
+	}
+	ok := New("unit", "unknown", "exim.service")
+	ok.OK = true
+	if bad := NewAllowed(ok, nil).Check("exim.service has an error and failed.", 0); len(bad) == 0 {
+		t.Error("a fault claimed for a healthy unit was accepted")
+	}
+	if bad := NewAllowed(ok, nil).Check("exim.service is running normally.", 0); len(bad) > 0 {
+		t.Errorf("healthy text rejected: %v", bad)
+	}
+	f, acts := nginxFacts()
+	if bad := NewAllowed(f, acts).Check("nginx.service is running normally, nothing is wrong.", 0); len(bad) == 0 {
+		t.Error("health claimed for a failed unit was accepted")
+	}
+}
+
 // The templates (default wording and every variant) pass the check.
 func TestVariantsAreFaithful(t *testing.T) {
 	f, acts := nginxFacts()
