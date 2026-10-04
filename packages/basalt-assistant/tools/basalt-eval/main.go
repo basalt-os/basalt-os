@@ -37,7 +37,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: basalt-eval translate|decide|check|render-data|humanize [flags]")
+		fmt.Fprintln(os.Stderr, "usage: basalt-eval translate|decide|check|render-data|humanize|knowledge-verify [flags]")
 		os.Exit(2)
 	}
 	var err error
@@ -54,6 +54,8 @@ func main() {
 		err = runRenderData(os.Args[2:])
 	case "humanize":
 		err = runHumanize(os.Args[2:])
+	case "knowledge-verify":
+		err = runKnowledgeVerify(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -342,7 +344,16 @@ type Case struct {
 	Expected   json.RawMessage `json:"expected"`
 	Provenance struct {
 		Source string `json:"source"`
+		Notes  string `json:"notes"`
 	} `json:"provenance"`
+}
+
+// confinedView: the case was recorded from the confined view (the daemon's
+// proposal, or a generated case for that view). Its unit.cause, avc.class and
+// disk.cause questions get the fact the diagnosers set there today
+// (view = confined); the recordings predate that fact.
+func (c Case) confinedView() bool {
+	return c.Provenance.Source == "lab-daemon" || strings.Contains(c.Provenance.Notes, "confined")
 }
 
 // CaseQuestion is one decision-layer question of a case, exactly as the
@@ -457,6 +468,15 @@ func runDecide(args []string) error {
 			}
 			q := b(cq.Subject, cq.Features)
 			q.Facts = cq.Facts
+			if c.confinedView() && qid != "dnf.next" {
+				if _, ok := q.Facts["view"]; !ok {
+					f := map[string]any{"view": "confined"}
+					for k, v := range q.Facts {
+						f[k] = v
+					}
+					q.Facts = f
+				}
+			}
 			want := cq.Want
 			ra, err := decide.Rules{}.Answer(context.Background(), q)
 			if err != nil {

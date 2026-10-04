@@ -24,6 +24,5 @@
     "kb-unit-selinux-avc",
     "kb-unit-selinux-label",
     "kb-unit-selinux-port"
-  ],
-  "index_sha256": "3ea231510b0df7eb74713510dddf2ce3eed0fb06f3c96f03acc26784806a9f3f"
+  ]
 }

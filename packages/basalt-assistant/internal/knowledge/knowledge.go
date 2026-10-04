@@ -147,6 +147,9 @@ type Index struct {
 	// ExtractErrors names extractors that do not compile here (they are
 	// left out; the knowledge build checks them for RE2 syntax).
 	ExtractErrors []string
+	// Signature: who signed the manifest (OpenSigned); nil when the index
+	// was opened without verification (tests, the evaluation tool).
+	Signature *Signature
 
 	cases    []*Case
 	goals    []uint8
@@ -162,6 +165,13 @@ func Open(dir string) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openManifest(dir, mb, false)
+}
+
+// openManifest opens the index whose manifest bytes are mb (already read,
+// and verified by OpenSigned when signed). requireIndex: the manifest must
+// address index.bin too (a signature over it then covers every file).
+func openManifest(dir string, mb []byte, requireIndex bool) (*Index, error) {
 	var man Manifest
 	if err := json.Unmarshal(mb, &man); err != nil {
 		return nil, fmt.Errorf("manifest.json: %v", err)
@@ -180,6 +190,9 @@ func Open(dir string) (*Index, error) {
 	bin, err := os.ReadFile(filepath.Join(dir, "index.bin"))
 	if err != nil {
 		return nil, err
+	}
+	if requireIndex && man.IndexSHA256 == "" {
+		return nil, errors.New("manifest.json does not address index.bin (index_sha256), so a signature would not cover it")
 	}
 	if man.IndexSHA256 != "" {
 		s := sha256.Sum256(bin)
@@ -318,6 +331,9 @@ func (ix *Index) Version() string {
 	v := fmt.Sprintf("knowledge %s (%d cases)", s, len(ix.cases))
 	if ix.Manifest.BuildID != "" {
 		v = fmt.Sprintf("knowledge %s %s (%d cases)", ix.Manifest.BuildID, s, len(ix.cases))
+	}
+	if ix.Signature != nil {
+		v += fmt.Sprintf(", signed by %s on %s", ix.Signature.Signer[24:], ix.Signature.Created.Format("2006-01-02"))
 	}
 	return v
 }

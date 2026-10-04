@@ -10,6 +10,8 @@
 # Where the files come from (the first one set):
 #   BASALT_ARTIFACTS_DIR  a local directory with the same layout (a mirror)
 #   BASALT_ARTIFACTS_URL  the published artifacts location (https only)
+# BASALT_SOURCES_MANIFEST replaces the package's sources.manifest (lab
+# builds: knowledge signed with a lab key, see scripts/sign-knowledge.sh).
 # The public location is not published yet: the default below is a
 # placeholder, so a build without one of these fails at the download.
 source "$(dirname "$0")/lib.sh"
@@ -19,7 +21,7 @@ source "$(dirname "$0")/lib.sh"
 name="${1:-}"
 [[ "$name" == basalt-knowledge || "$name" == basalt-vsm-planner ]] || die "usage: $0 basalt-knowledge|basalt-vsm-planner"
 pkg="$REPO_ROOT/packages/$name"
-manifest="$pkg/sources.manifest"
+manifest="${BASALT_SOURCES_MANIFEST:-$pkg/sources.manifest}"
 [[ -f "$manifest" ]] || die "$manifest missing"
 
 work="$(mktemp -d)"
@@ -42,7 +44,10 @@ while read -r file sha bytes path; do
   log "$name: $file verified ($bytes bytes)"
 done <"$manifest"
 
-cp -p "$manifest" "$pkg/LICENSE" "$work/SOURCES/"
+cp -p "$manifest" "$work/SOURCES/sources.manifest"
+cp -p "$pkg/LICENSE" "$work/SOURCES/"
+# Files kept in the repository next to the spec (the release key).
+for f in "$pkg"/*.asc; do [[ -e "$f" ]] && cp -p "$f" "$work/SOURCES/"; done
 cp -p "$pkg/$name.spec" "$work/SPECS/"
 log "$name: build in $FEDORA_IMAGE"
 in_fedora -v "$work:/rpmbuild" "$FEDORA_IMAGE" bash -euc '

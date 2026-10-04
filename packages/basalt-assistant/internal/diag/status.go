@@ -24,7 +24,9 @@ func (e *Env) FixSELinux(ctx context.Context, since time.Time) []SELinuxItem {
 	e.PrefetchAVCs(ctx, groups)
 	for _, g := range groups {
 		f := e.AnalyzeAVC(ctx, g)
-		d := e.ask(ctx, decide.AVCClass(g.AVC.Key(), f.Features))
+		q := decide.AVCClass(g.AVC.Key(), f.Features)
+		e.MarkView(&q)
+		d := e.ask(ctx, q)
 		out = append(out, SELinuxItem{Fix: f, Decision: d})
 	}
 	return out

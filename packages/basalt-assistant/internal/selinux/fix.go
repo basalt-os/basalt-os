@@ -475,6 +475,10 @@ func (z Analyzer) analyzeFile(ctx context.Context, f *Fix) {
 	f.Path, f.PathFrom = p, how
 	f.Features["has_path"] = true
 	f.Evidence = append(f.Evidence, fmt.Sprintf("object: %s (found via %s), labeled %s", p, how, tgt))
+	if PseudoPath(p) {
+		f.Explanation = fmt.Sprintf("%s is on a kernel file system: its label (%s) comes from the kernel, not from a file context; no relabel applies", p, tgt)
+		return
+	}
 
 	perm, write := filePerm(a)
 	def := z.defaultType(ctx, p)
@@ -540,7 +544,25 @@ func labelDir(p, class string) string {
 	return dir
 }
 
+// PseudoPath reports a path on a kernel pseudo file system (/proc, /sys):
+// its labels come from the kernel and the policy (genfscon, the owning
+// process), never from file contexts, so no relabel or file context rule
+// applies there. Looking one up would also stat the object (matchpathcon
+// lstat()s the path), which the confined domain may not do on other
+// processes' /proc entries (getattr denials of its own).
+func PseudoPath(p string) bool {
+	for _, root := range []string{"/proc", "/sys"} {
+		if p == root || strings.HasPrefix(p, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func (z Analyzer) defaultType(ctx context.Context, p string) string {
+	if PseudoPath(p) {
+		return ""
+	}
 	res := z.R.Read(ctx, "matchpathcon", "-n", p)
 	if res.Code != 0 {
 		return ""

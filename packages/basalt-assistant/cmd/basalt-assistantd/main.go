@@ -72,7 +72,7 @@ func main() {
 // there (no denial) while --probe-write shows they are not writable.
 func probeVSM(cfg config.Config) int {
 	c := cfg.DecideConfig()
-	vb := decide.NewVSMBackend(c.VSMKnowledgeRoot, c.VSMKnowledge, c.VSMPlanner)
+	vb := decide.NewVSMBackend(c.VSMKnowledgeRoot, c.VSMKnowledge, c.VSMPlanner, c.VSMVerifier)
 	e, err := vb.Engine()
 	if err != nil {
 		fmt.Println("vsm:", err)

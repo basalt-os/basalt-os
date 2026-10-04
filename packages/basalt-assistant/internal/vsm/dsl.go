@@ -26,8 +26,10 @@ import (
 	"strings"
 )
 
-// DSLVersion this package speaks (candidates shown in rank order).
-const DSLVersion = "basalt-os-dsl/2"
+// DSLVersion this package speaks: candidates shown in rank order (2) and
+// the code dm for a file-permission (DAC) finding, om tied to oom_killed
+// (3). A planner and a knowledge index must speak the same version.
+const DSLVersion = "basalt-os-dsl/3"
 
 // Planner goals and the decision-layer question each one answers.
 const (
@@ -77,9 +79,11 @@ var Features = map[string]string{
 	"config_check_failed": "cf", "config_check_passed": "cp", "config_check_runtime": "cr",
 	"avc_for_domain": "av", "port_case": "pc", "port_type_found": "pt", "port_owned_by_other": "pb",
 	"boolean_off": "bo", "sensitive_target": "st", "permissive": "pv", "unsupported_class": "uc",
-	"path_label_problem": "lp", "path_mislabeled": "lm", "default_differs": "dd", "default_allowed": "da",
+	"path_label_problem": "lp", "path_mislabeled": "lm", "dac_denied": "dm",
+	"default_differs": "dd", "default_allowed": "da",
 	"generic_target": "gt", "candidate_type": "ct", "has_path": "hp", "no_avc": "nv",
 	"port_owner_found": "po",
+	"oom_killed":       "om",
 	"disk_full":        "fs", "disk_warn": "dw", "disk_crit": "dc", "snapshots_large": "sl", "journal_large": "jl",
 	"cache_large":      "kl",
 	"pre_without_post": "pp", "scriptlet_failed": "sf", "post_scriptlet_failed": "ps", "pre_scriptlet_failed": "pr",
@@ -87,12 +91,23 @@ var Features = map[string]string{
 }
 
 // Extensions are assistant features newer than the planner's DSL table,
-// mapped onto existing codes. They are part of the assistant's adapter,
-// not of the reference: the parity tests turn them off.
-var Extensions = map[string]string{
-	// Result=oom-kill (assistant 0.4.0): the same code the journal reader
-	// gives "killed by the OOM killer".
-	"oom_killed": "om",
+// mapped onto existing codes (part of the adapter, not of the reference:
+// the parity tests turn them off). Empty in DSL 3: oom_killed, the
+// extension of DSL 2, is in the table.
+var Extensions = map[string]string{}
+
+// NotCodes are the diagnosers' features deliberately left out of the DSL
+// (audit of DSL 3, the same table as VSM's dsl.NOT_CODES), with the reason.
+var NotCodes = map[string]string{
+	"policy_query_failed": "not evidence about the fault: a deterministic guard answers the cautious option",
+	"resolved":            "internal to the SELinux analysis; resolved findings are dropped before the question",
+	"avc":                 "event.severity input (rules only)",
+	"enforcing":           "event.severity input (rules only)",
+	"suspicious":          "event.severity input (rules only)",
+	"dnf_failed":          "event.severity input (rules only)",
+	"severity_high":       "event.notify input (rules only)",
+	"severity_low":        "event.notify input (rules only)",
+	"repeat":              "event.notify input (rules only)",
 }
 
 // Code groups by the tool that produces them.
@@ -100,7 +115,7 @@ var (
 	unitCodes    = set("uf", "sg")
 	journalCodes = set("ce", "cl", "pd", "au", "ns", "nf", "dp", "to", "om")
 	configCodes  = set("cf", "cp", "cr")
-	labelCodes   = set("lp", "lm")
+	labelCodes   = set("lp", "lm", "dm")
 )
 
 func set(xs ...string) map[string]bool {

@@ -3,6 +3,8 @@ package decide
 import (
 	"context"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,7 +12,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/vsm"
 )
 
-// The test index (16 cases) and a tiny random planner speak the shipped
+// The test index (18 cases) and a tiny random planner speak the shipped
 // DSL, so the backend's plumbing runs in CI without the real weights;
 // the answers of the real planner are tested against the reference in
 // internal/vsm.
@@ -39,10 +41,10 @@ func TestVSMBackendAnswers(t *testing.T) {
 		for _, o := range q.Options {
 			sum += a.Probabilities[o]
 		}
-		if math.Abs(sum-1) > 0.01 || a.Top == "" || a.VSM == nil || !strings.Contains(a.VSM.Knowledge, "16 cases") {
+		if math.Abs(sum-1) > 0.01 || a.Top == "" || a.VSM == nil || !strings.Contains(a.VSM.Knowledge, "18 cases") {
 			t.Errorf("%s: %+v %+v", q.ID, a, a.VSM)
 		}
-		if a.Backend != "vsm/basalt-os-dsl/2" {
+		if a.Backend != "vsm/basalt-os-dsl/3" {
 			t.Errorf("backend %q", a.Backend)
 		}
 	}
@@ -92,4 +94,39 @@ func (fixedVSM) Name() string { return "fixed" }
 
 func (f fixedVSM) Answer(_ context.Context, q Question) (Answer, error) {
 	return Answer{Probabilities: map[string]float64{q.Options[0]: 0.99}, Top: q.Options[0], Confidence: 0.99, VSM: f.info}, nil
+}
+
+// Knowledge must be signed by the pinned key (DSL 3): unsigned knowledge
+// is never used, the rules answer and the reason is recorded; with the
+// test key trusted, the same index answers.
+func TestVSMKnowledgeSignatureFailsClosed(t *testing.T) {
+	unsigned := &knowledge.Verifier{KeyFile: "../knowledge/testdata/sig/cert.asc",
+		Trust: knowledge.TrustAnchor{Primary: "D986089B64B7311272ACA248EADD0248F2A7AA92",
+			Signer: "96B79DC85FD762B956BA11C4012C95042E303AFC"}}
+	l := FromConfigFull(Config{Backend: "vsm", VSMKnowledge: testKnowledge, VSMPlanner: testPlanner,
+		VSMVerifier: unsigned}, nil, nil, 0)
+	d := l.Ask(context.Background(), UnitCause("nginx.service", map[string]bool{"config_check_failed": true}))
+	if d.Answer.Backend != "rules/v1 (fallback)" || !strings.Contains(d.Answer.FallbackReason, "not signed") {
+		t.Errorf("unsigned knowledge: %+v", d.Answer)
+	}
+	// The same index with its signature, the test key trusted.
+	dir := t.TempDir()
+	for _, f := range []string{"cases.jsonl", "index.bin", "manifest.json"} {
+		b, _ := os.ReadFile(filepath.Join(testKnowledge, f))
+		_ = os.WriteFile(filepath.Join(dir, f), b, 0o644)
+	}
+	sig, _ := os.ReadFile("../knowledge/testdata/sig/manifest.json.sig")
+	_ = os.WriteFile(filepath.Join(dir, knowledge.SigFile), sig, 0o644)
+	l = FromConfigFull(Config{Backend: "vsm", VSMKnowledge: dir, VSMPlanner: testPlanner, VSMVerifier: unsigned}, nil, nil, 0)
+	d = l.Ask(context.Background(), UnitCause("nginx.service", map[string]bool{"config_check_failed": true}))
+	if d.Answer.Backend != "vsm/basalt-os-dsl/3" || !strings.Contains(d.Answer.VSM.Knowledge, "signed by 012C95042E303AFC") {
+		t.Errorf("signed knowledge: %+v %+v", d.Answer, d.Answer.VSM)
+	}
+	// The default trust (OpenBasalt) refuses the test key's signature.
+	def := &knowledge.Verifier{KeyFile: "../knowledge/testdata/sig/openbasalt-release-key.asc", Trust: knowledge.OpenBasaltKnowledge}
+	l = FromConfigFull(Config{Backend: "vsm", VSMKnowledge: dir, VSMPlanner: testPlanner, VSMVerifier: def}, nil, nil, 0)
+	d = l.Ask(context.Background(), UnitCause("nginx.service", map[string]bool{"config_check_failed": true}))
+	if d.Answer.Backend != "rules/v1 (fallback)" {
+		t.Errorf("test signature under the OpenBasalt trust: %+v", d.Answer)
+	}
 }

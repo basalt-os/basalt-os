@@ -86,7 +86,7 @@ func TestLookupGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ix.Len() != 16 || ix.Manifest.DSL != "basalt-os-dsl/2" {
+	if ix.Len() != 18 || ix.Manifest.DSL != "basalt-os-dsl/3" || ix.Manifest.IndexSHA256 == "" {
 		t.Fatalf("index: %d cases, dsl %q", ix.Len(), ix.Manifest.DSL)
 	}
 	if ix.Extractors["cx"] == nil {

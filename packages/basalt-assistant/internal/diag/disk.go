@@ -259,6 +259,7 @@ func (e *Env) Disk(ctx context.Context, th DiskThresholds, maxSnaps int) (*DiskR
 		q.Facts["snapshots_bytes"] = r.SnapshotTotal
 		q.Facts["package_cache_bytes"] = r.PkgCache
 	}
+	e.MarkView(&q) // confined: space per snapshot and cache size were not measured
 	r.Decision = e.ask(ctx, q)
 	e.diskPlan(r, th)
 	return r, nil

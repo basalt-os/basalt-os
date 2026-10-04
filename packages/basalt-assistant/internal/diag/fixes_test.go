@@ -96,9 +96,9 @@ func TestDACDenialOfAShellUnit(t *testing.T) {
 	te.fake.Answers["sesearch -T -s init_t -t shell_exec_t -c process"] = runner.Result{Out: "type_transition init_t shell_exec_t:process unconfined_service_t;"}
 	te.fake.Answers["id -u nobody"] = runner.Result{Out: "65534"}
 	te.fake.Answers["id -G nobody"] = runner.Result{Out: "65534"}
-	te.fake.Answers["stat -c '%f %u %g %U %G' /var"] = runner.Result{Out: "41ed 0 0 root root"}
-	te.fake.Answers["stat -c '%f %u %g %U %G' /var/lib"] = runner.Result{Out: "41ed 0 0 root root"}
-	te.fake.Answers["stat -c '%f %u %g %U %G' /var/lib/basalt-lab-dac"] = runner.Result{Out: "41c0 0 0 root root"}
+	te.fake.Answers["stat -c '%f %u %g' /var"] = runner.Result{Out: "41ed 0 0"}
+	te.fake.Answers["stat -c '%f %u %g' /var/lib"] = runner.Result{Out: "41ed 0 0"}
+	te.fake.Answers["stat -c '%f %u %g' /var/lib/basalt-lab-dac"] = runner.Result{Out: "41c0 0 0"}
 	rep, err := WhyUnit(context.Background(), te.Env, "basalt-lab-dac")
 	if err != nil {
 		t.Fatal(err)
@@ -304,5 +304,33 @@ func TestDocRootSearch(t *testing.T) {
 	te.fake.Answers["find /data/www -xdev -inum 4242 -name index.html -print -quit"] = runner.Result{Out: "/usr/bin/find: '/var/www': No such file or directory", Code: 1}
 	if p, _ := te.resolveAVCPath(context.Background(), a); p != "" {
 		t.Fatalf("got %q", p)
+	}
+}
+
+// Users and groups come from /etc/passwd and /etc/group (no id, getent or
+// stat %U: NSS's systemd module reads userdbd's runtime directory, which
+// the confined domain may not).
+func TestDACUsesLocalFiles(t *testing.T) {
+	te := newEnv(t)
+	te.fake.Prefixes["systemctl show --timestamp=unix"] = runner.Result{Out: fixture(t, "dac.show.txt")}
+	te.fake.Prefixes["journalctl --no-pager -o json -u basalt-lab-dac.service"] = runner.Result{Out: fixture(t, "dac.journal.json")}
+	te.labels["/bin/sh"] = "system_u:object_r:shell_exec_t:s0"
+	te.fake.Answers["sesearch -T -s init_t -t shell_exec_t -c process"] = runner.Result{Out: "type_transition init_t shell_exec_t:process unconfined_service_t;"}
+	te.files["/etc/passwd"] = "root:x:0:0:root:/root:/bin/bash\nnobody:x:65534:65534:Kernel Overflow User:/:/usr/sbin/nologin\n"
+	te.files["/etc/group"] = "root:x:0:\nnobody:x:65534:\n"
+	te.fake.Answers["stat -c '%f %u %g' /var"] = runner.Result{Out: "41ed 0 0"}
+	te.fake.Answers["stat -c '%f %u %g' /var/lib"] = runner.Result{Out: "41ed 0 0"}
+	te.fake.Answers["stat -c '%f %u %g' /var/lib/basalt-lab-dac"] = runner.Result{Out: "41c0 0 0"}
+	rep, err := WhyUnit(context.Background(), te.Env, "basalt-lab-dac")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.DAC) != 1 || rep.DAC[0].Owner != "root:root" || !strings.Contains(rep.DAC[0].User, "nobody (uid 65534)") {
+		t.Fatalf("dac %+v", rep.DAC)
+	}
+	for _, q := range te.fake.Asked {
+		if strings.HasPrefix(q, "id ") || strings.HasPrefix(q, "getent ") || strings.Contains(q, "%U") {
+			t.Errorf("asked NSS: %s", q)
+		}
 	}
 }

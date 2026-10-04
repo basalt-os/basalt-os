@@ -257,6 +257,7 @@ type episodeRow struct {
 	Ops      []op               `json:"ops"`
 	Outcome  outcomeJSON        `json:"outcome"`
 	Dist     map[string]float64 `json:"distribution"`
+	Coverage map[string]float64 `json:"coverage"`
 }
 
 func episodes(t *testing.T, ix *knowledge.Index, path string, dec func(row episodeRow) Decider) (n, bad int) {
@@ -273,7 +274,11 @@ func episodes(t *testing.T, ix *knowledge.Index, path string, dec func(row episo
 		rt := NewRuntime(sc.Goal, sc.Subject, sc.View, row.Mode == "question", ix,
 			knowledge.Context{Fedora: sc.Ctx.Fedora, Packages: sc.Ctx.Packages}, sc.prober(t))
 		out := Run(rt, dec(row))
-		if compare(t, id, out, out.Distribution(true), row.Outcome, row.Dist, true) > 0 {
+		lam := 0.0
+		if sc.View == ViewConfined {
+			lam = row.Coverage[out.Question]
+		}
+		if compare(t, id, out, out.CalibratedDistribution(true, lam), row.Outcome, row.Dist, true) > 0 {
 			bad++
 		}
 		n++
@@ -307,6 +312,7 @@ type decideRow struct {
 	Guarded  bool               `json:"guarded"`
 	Hits     []hitJSON          `json:"hits"`
 	Dist     map[string]float64 `json:"distribution"`
+	Coverage map[string]float64 `json:"coverage"`
 }
 
 func questions(t *testing.T, ix *knowledge.Index, path string, dec func(row decideRow) Decider) (n, bad int) {
@@ -328,7 +334,11 @@ func questions(t *testing.T, ix *knowledge.Index, path string, dec func(row deci
 		if row.Hits == nil {
 			want.Hits = nil
 		}
-		if compare(t, row.Case+"/"+row.Q.ID, out, out.Distribution(true), want, row.Dist, false) > 0 {
+		lam := 0.0
+		if v, _ := row.Q.Facts["view"].(string); v == ViewConfined {
+			lam = row.Coverage[row.Q.ID]
+		}
+		if compare(t, row.Case+"/"+row.Q.ID, out, out.CalibratedDistribution(true, lam), want, row.Dist, false) > 0 {
 			bad++
 		}
 		n++

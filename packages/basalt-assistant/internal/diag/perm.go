@@ -110,37 +110,111 @@ func needName(need uint32, dir bool) string {
 	return "read"
 }
 
-// userCred resolves the unit's User= (and Group=) to ids, with `id` and
-// `getent` (read-only).
-func (e *Env) userCred(ctx context.Context, user, group string) (cred, bool) {
-	r := e.R.Read(ctx, "id", "-u", user)
-	uid, err := strconv.Atoi(strings.TrimSpace(r.Out))
-	if r.Err != nil || r.Code != 0 || err != nil {
-		return cred{}, false
+// Users and groups are read from /etc/passwd and /etc/group first: the
+// tools (id, getent, stat %U) go through NSS, whose systemd module reads
+// systemd-userdbd's runtime directory, which the confined domain may not
+// (a denial of its own each time). `id` and `getent` are asked only for a
+// user or group the files do not have (LDAP, a DynamicUser= unit is not
+// checked at all).
+type nssFiles struct {
+	users  map[string][2]int // name -> uid, gid
+	names  map[int]string    // uid -> name
+	groups map[string]int    // name -> gid
+	gnames map[int]string    // gid -> name
+	member map[string][]int  // user -> supplementary gids
+}
+
+func (e *Env) nss() nssFiles {
+	n := nssFiles{users: map[string][2]int{}, names: map[int]string{}, groups: map[string]int{},
+		gnames: map[int]string{}, member: map[string][]int{}}
+	if e.ReadFile == nil {
+		return n
 	}
-	c := cred{name: user, uid: uid, groups: map[int]bool{}}
-	for _, g := range strings.Fields(e.R.Read(ctx, "id", "-G", user).Out) {
-		if n, err := strconv.Atoi(g); err == nil {
-			c.groups[n] = true
+	if b, err := e.ReadFile("/etc/passwd"); err == nil {
+		for _, l := range strings.Split(string(b), "\n") {
+			f := strings.Split(l, ":")
+			if len(f) < 4 {
+				continue
+			}
+			uid, err1 := strconv.Atoi(f[2])
+			gid, err2 := strconv.Atoi(f[3])
+			if err1 == nil && err2 == nil && f[0] != "" {
+				n.users[f[0]] = [2]int{uid, gid}
+				if _, ok := n.names[uid]; !ok {
+					n.names[uid] = f[0]
+				}
+			}
+		}
+	}
+	if b, err := e.ReadFile("/etc/group"); err == nil {
+		for _, l := range strings.Split(string(b), "\n") {
+			f := strings.Split(l, ":")
+			if len(f) < 4 {
+				continue
+			}
+			gid, err := strconv.Atoi(f[2])
+			if err != nil || f[0] == "" {
+				continue
+			}
+			n.groups[f[0]] = gid
+			if _, ok := n.gnames[gid]; !ok {
+				n.gnames[gid] = f[0]
+			}
+			for _, m := range strings.Split(f[3], ",") {
+				if m = strings.TrimSpace(m); m != "" {
+					n.member[m] = append(n.member[m], gid)
+				}
+			}
+		}
+	}
+	return n
+}
+
+// userCred resolves the unit's User= (and Group=) to ids: the local files,
+// else `id` and `getent` (read-only).
+func (e *Env) userCred(ctx context.Context, user, group string) (cred, bool) {
+	n := e.nss()
+	c := cred{name: user, groups: map[int]bool{}}
+	if u, ok := n.users[user]; ok {
+		c.uid = u[0]
+		c.groups[u[1]] = true
+		for _, g := range n.member[user] {
+			c.groups[g] = true
+		}
+	} else {
+		r := e.R.Read(ctx, "id", "-u", user)
+		uid, err := strconv.Atoi(strings.TrimSpace(r.Out))
+		if r.Err != nil || r.Code != 0 || err != nil {
+			return cred{}, false
+		}
+		c.uid = uid
+		for _, g := range strings.Fields(e.R.Read(ctx, "id", "-G", user).Out) {
+			if n, err := strconv.Atoi(g); err == nil {
+				c.groups[n] = true
+			}
 		}
 	}
 	if group != "" {
-		if n, err := strconv.Atoi(group); err == nil {
-			c.groups[n] = true
+		if g, err := strconv.Atoi(group); err == nil {
+			c.groups[g] = true
+		} else if g, ok := n.groups[group]; ok {
+			c.groups[g] = true
 		} else if f := strings.Split(strings.TrimSpace(e.R.Read(ctx, "getent", "group", group).Out), ":"); len(f) >= 3 {
-			if n, err := strconv.Atoi(f[2]); err == nil {
-				c.groups[n] = true
+			if g, err := strconv.Atoi(f[2]); err == nil {
+				c.groups[g] = true
 			}
 		}
 	}
 	return c, true
 }
 
-// statMode reads a file's mode and owner with stat (%f is the raw mode in hex).
+// statMode reads a file's mode and owner with stat (%f is the raw mode in
+// hex); owner names come from the local files (numbers otherwise), not
+// from stat's %U %G (NSS, see nssFiles).
 func (e *Env) statMode(ctx context.Context, p string) (fileMode, bool) {
-	r := e.R.Read(ctx, "stat", "-c", "%f %u %g %U %G", p)
+	r := e.R.Read(ctx, "stat", "-c", "%f %u %g", p)
 	f := strings.Fields(r.Out)
-	if r.Err != nil || r.Code != 0 || len(f) != 5 {
+	if r.Err != nil || r.Code != 0 || len(f) != 3 {
 		return fileMode{}, false
 	}
 	raw, err := strconv.ParseUint(f[0], 16, 32)
@@ -152,7 +226,15 @@ func (e *Env) statMode(ctx context.Context, p string) (fileMode, bool) {
 	if err1 != nil || err2 != nil {
 		return fileMode{}, false
 	}
-	return fileMode{mode: uint32(raw), uid: uid, gid: gid, owner: f[3] + ":" + f[4], dir: raw&0o170000 == 0o040000}, true
+	n := e.nss()
+	un, gn := n.names[uid], n.gnames[gid]
+	if un == "" {
+		un = f[1]
+	}
+	if gn == "" {
+		gn = f[2]
+	}
+	return fileMode{mode: uint32(raw), uid: uid, gid: gid, owner: un + ":" + gn, dir: raw&0o170000 == 0o040000}, true
 }
 
 // dacCheck walks the components of p the way the kernel does for the unit's

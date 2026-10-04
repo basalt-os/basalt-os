@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.6.3
+Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -167,6 +167,28 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.7.0-1
+- VSM backend speaks DSL 3: the file-permission finding (dac_denied) has
+  its own code (dm), oom_killed is in the table; the audit of every
+  finding against the DSL is in internal/vsm (NotCodes).
+- Signed knowledge: the index is used only when manifest.json.sig is a
+  valid OpenPGP signature by the pinned OpenBasalt knowledge subkey of the
+  pinned release key (checked with the Go standard library: subkey
+  binding with its back signature, revocations, expiry, RSA PKCS#1 v1.5
+  over SHA-256/384/512) and the manifest addresses every file; anything
+  else falls back to the rules with the reason recorded ([vsm]
+  require_signature, knowledge_key, knowledge_signer).
+- Questions from the confined view carry that fact; the VSM backend
+  spreads part of an abstention's probability over the options there
+  (evidence-coverage calibration shipped with the planner), so its
+  confidence reflects what the daemon could not see.
+- basalt-eval knowledge-verify checks an index as the assistant does.
+- SELinux denials of its own domain removed: no label lookup (matchpathcon
+  stats the path) for paths under /proc and /sys, whose labels never come
+  from file contexts; users and groups for the file-permission check read
+  from /etc/passwd and /etc/group (id, getent and stat %U went through
+  NSS, whose systemd module reads systemd-userdbd's runtime directory).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.3-1
 - basalt NAME ... runs basalt-NAME for a NAME the command does not have,
   so basalt ledger works: only an executable regular file in

@@ -1,0 +1,5 @@
+Throwaway OpenPGP key for the knowledge signature tests ONLY (generated 2026-10-04 with gpg in a scratch home, secret part discarded).
+primary D986089B64B7311272ACA248EADD0248F2A7AA92 (certify)
+signing subkey 96B79DC85FD762B956BA11C4012C95042E303AFC (signs the manifests here)
+signing subkey EE5BD285241E21E52769DC623B944285AA68E0C1 (revoked in cert.asc, valid in cert-before-revoke.asc)
+openbasalt-release-key.asc: a copy of the public OpenBasalt release key (packages/basalt-release/RPM-GPG-KEY-basalt), for the binding test.

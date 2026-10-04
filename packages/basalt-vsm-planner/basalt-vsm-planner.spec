@@ -9,8 +9,8 @@
 # fetches them by path from the artifacts location and checks the SHA-256
 # and size in sources.manifest; the prep section checks the SHA-256 again.
 
-%global dsl 2
-%global planner_build 20261003
+%global dsl 3
+%global planner_build 20261004
 # Placeholder until the artifacts location is published; the build script
 # takes BASALT_ARTIFACTS_URL or a local mirror (BASALT_ARTIFACTS_DIR).
 %{!?basalt_artifacts_url:%global basalt_artifacts_url https://obpkg.org/artifacts}
@@ -25,6 +25,10 @@ Source0:        %{basalt_artifacts_url}/vsm-planner/dsl%{dsl}/%{planner_build}/w
 Source1:        %{basalt_artifacts_url}/vsm-planner/dsl%{dsl}/%{planner_build}/config.txt
 Source2:        sources.manifest
 Source3:        LICENSE
+# Evidence-coverage calibration fitted for these weights (DSL 3): how much
+# of an abstention's probability is spread over the options when a question
+# comes from the confined view, which skips probes.
+Source4:        %{basalt_artifacts_url}/vsm-planner/dsl%{dsl}/%{planner_build}/calibration.json
 BuildArch:      noarch
 BuildRequires:  coreutils
 Provides:       basalt-vsm-planner(dsl) = %{dsl}
@@ -44,7 +48,7 @@ Installed under /usr/share/basalt/vsm-planner. The assistant only reads it
 
 %prep
 # The build script checked these already; check again in the build root.
-for f in %{SOURCE0} %{SOURCE1}; do
+for f in %{SOURCE0} %{SOURCE1} %{SOURCE4}; do
   want=$(awk -v n="${f##*/}" '!/^#/ && $1 == n {print $2}' %{SOURCE2})
   [ -n "$want" ] || { echo "no checksum for $f"; exit 1; }
   echo "$want  $f" | sha256sum -c --quiet -
@@ -54,7 +58,7 @@ done
 
 %install
 install -d %{buildroot}%{_datadir}/basalt/vsm-planner
-install -pm 0644 %{SOURCE0} %{SOURCE1} %{buildroot}%{_datadir}/basalt/vsm-planner/
+install -pm 0644 %{SOURCE0} %{SOURCE1} %{SOURCE4} %{buildroot}%{_datadir}/basalt/vsm-planner/
 install -Dpm 0644 %{SOURCE3} licenses/LICENSE
 
 %files
@@ -63,5 +67,12 @@ install -Dpm 0644 %{SOURCE3} licenses/LICENSE
 %{_datadir}/basalt/vsm-planner/
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 3.20261004-1
+- Planner for DSL version 3 (code dm), trained on version 5 of its
+  training data (each version starts from the previous one: the corrected
+  and new unit families, question-mode transcripts with every code
+  renamed, families for the cases that had none), with its
+  evidence-coverage calibration (calibration.json).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 2.20261003-1
 - First planner for DSL version 2 (candidates shown in rank order).

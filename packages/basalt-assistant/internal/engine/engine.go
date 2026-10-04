@@ -434,7 +434,9 @@ func (g *Engine) handleAVCs(ctx context.Context, avcs []selinux.AVC) {
 			continue
 		}
 		f := g.Env.AnalyzeAVC(ctx, grp)
-		d := g.Decide.Ask(ctx, decide.AVCClass(grp.AVC.Key(), f.Features))
+		q := decide.AVCClass(grp.AVC.Key(), f.Features)
+		g.Env.MarkView(&q)
+		d := g.Decide.Ask(ctx, q)
 		p := report.FromSELinux("daemon", diag.SELinuxItem{Fix: f, Decision: d})
 		p.Seen = grp.Count
 		g.publish(ctx, p, map[string]bool{"avc": true, "enforcing": !grp.AVC.Permissive, "suspicious": d.Answer.Top == selinux.ClassSuspicious})

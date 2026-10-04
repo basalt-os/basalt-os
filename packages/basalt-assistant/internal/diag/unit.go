@@ -227,6 +227,7 @@ func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
 
 	q := decide.UnitCause(unit, rep.Features)
 	q.Facts = decide.JournalFacts(rep.Journal)
+	e.MarkView(&q)
 	d := e.ask(ctx, q)
 	rep.Decision = d
 	rep.Cause = d.Answer.Top
@@ -827,7 +828,9 @@ func (e *Env) unitPlan(rep *UnitReport) {
 		rep.Explanation = u + " was stopped by SELinux denials for its domain " + orDash(rep.Domain) + "."
 		var acts []action.Action
 		for _, f := range rep.AVCs {
-			d := e.ask(context.Background(), decide.AVCClass(f.Group.AVC.Key(), f.Features))
+			aq := decide.AVCClass(f.Group.AVC.Key(), f.Features)
+			e.MarkView(&aq)
+			d := e.ask(context.Background(), aq)
 			rep.AVCDecision = append(rep.AVCDecision, d)
 			// Act only on a confident answer that is the class the fix was
 			// built for: a backend may be confident that a denial is
@@ -910,4 +913,21 @@ func (e *Env) unitPlan(rep *UnitReport) {
 		// A running unit gets no change proposed.
 		rep.Actions = nil
 	}
+}
+
+// MarkView marks a question asked from the confined view (facts.view):
+// that view skips probes (config checkers, port owners, the inode search
+// for a denial's path, space per snapshot, package cache size), so a
+// backend may weigh evidence it could not see (VSM's coverage
+// calibration). The rules ignore it.
+func (e *Env) MarkView(q *decide.Question) {
+	if !e.Confined {
+		return
+	}
+	f := make(map[string]any, len(q.Facts)+1)
+	for k, v := range q.Facts {
+		f[k] = v
+	}
+	f["view"] = "confined"
+	q.Facts = f
 }

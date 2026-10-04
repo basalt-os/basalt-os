@@ -1,6 +1,7 @@
 package vsm
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,19 +25,36 @@ const (
 // serialized (one recurrent state); one takes well under a millisecond
 // of planner time.
 type Engine struct {
-	Index   *knowledge.Index
-	Model   *planner.Model
-	Ctx     knowledge.Context
-	Ext     bool // map the assistant's newer features (Extensions)
-	mu      sync.Mutex
-	st      *planner.State
-	Elapsed time.Duration // planner time of the last episode
+	Index *knowledge.Index
+	Model *planner.Model
+	Ctx   knowledge.Context
+	Ext   bool // map the assistant's newer features (Extensions)
+	// Coverage is the evidence-coverage calibration shipped with the
+	// planner (calibration.json, DSL 3): per question, the fraction of an
+	// abstention's mass spread over all options when the question comes
+	// from a view that skipped probes (the confined daemon).
+	Coverage map[string]float64
+	mu       sync.Mutex
+	st       *planner.State
+	Elapsed  time.Duration // planner time of the last episode
 }
 
 // Open loads the knowledge index and the planner and checks that they
 // speak the same DSL.
 func Open(knowledgeDir, plannerDir string, ctx knowledge.Context) (*Engine, error) {
-	ix, err := knowledge.Open(knowledgeDir)
+	return OpenVerified(knowledgeDir, plannerDir, ctx, nil)
+}
+
+// OpenVerified is Open with the knowledge signature checked by v (nil: not
+// checked, for tests and the evaluation tool).
+func OpenVerified(knowledgeDir, plannerDir string, ctx knowledge.Context, v *knowledge.Verifier) (*Engine, error) {
+	var ix *knowledge.Index
+	var err error
+	if v != nil {
+		ix, err = knowledge.OpenSigned(knowledgeDir, *v)
+	} else {
+		ix, err = knowledge.Open(knowledgeDir)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("knowledge %s: %v", knowledgeDir, err)
 	}
@@ -50,7 +68,39 @@ func Open(knowledgeDir, plannerDir string, ctx knowledge.Context) (*Engine, erro
 	if len(ix.ExtractErrors) > 0 {
 		return nil, fmt.Errorf("knowledge: extractors that do not compile: %s", strings.Join(ix.ExtractErrors, ", "))
 	}
-	return &Engine{Index: ix, Model: m, Ctx: ctx, Ext: true, st: m.NewState()}, nil
+	cov, err := loadCalibration(plannerDir)
+	if err != nil {
+		return nil, fmt.Errorf("planner %s: %v", plannerDir, err)
+	}
+	return &Engine{Index: ix, Model: m, Ctx: ctx, Ext: true, Coverage: cov, st: m.NewState()}, nil
+}
+
+// loadCalibration reads calibration.json of the planner package (absent:
+// no calibration). Lambdas must be in [0, 1) and for VSM's questions.
+func loadCalibration(dir string) (map[string]float64, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "calibration.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var c struct {
+		Schema   string             `json:"schema"`
+		Coverage map[string]float64 `json:"coverage"`
+	}
+	if err := json.Unmarshal(b, &c); err != nil {
+		return nil, fmt.Errorf("calibration.json: %v", err)
+	}
+	if c.Schema != "basalt-vsm-calibration/1" {
+		return nil, fmt.Errorf("calibration.json: schema %q", c.Schema)
+	}
+	for q, l := range c.Coverage {
+		if _, ok := GoalOfQuestion[q]; !ok || l < 0 || l >= 1 {
+			return nil, fmt.Errorf("calibration.json: coverage %s=%v", q, l)
+		}
+	}
+	return c.Coverage, nil
 }
 
 // KnowledgeDir is the index for a Fedora release under root.
@@ -130,7 +180,9 @@ func (e *Engine) Episode(goal, subject, view string, question bool, pr Prober) O
 type Result struct {
 	Outcome
 	Probabilities map[string]float64
-	Note          string // why the planner was not asked, if it was not
+	Note          string  // why the planner was not asked, if it was not
+	View          string  // "confined" when the question came from the confined view
+	Coverage      float64 // the coverage lambda applied (0: none)
 }
 
 // ErrQuestion: VSM does not answer this question.
@@ -157,7 +209,13 @@ func (e *Engine) Ask(qid, subject string, features map[string]bool, facts map[st
 	}
 	pr := QuestionProber(goal, subject, features, facts, e.Ext)
 	out := e.Episode(goal, subject, ViewRoot, true, pr)
-	return Result{Outcome: out, Probabilities: out.Distribution(true)}, nil
+	// The diagnosers mark a question asked from the confined view
+	// (facts["view"]); there the coverage calibration applies.
+	view, lam := ViewRoot, 0.0
+	if v, _ := facts["view"].(string); v == ViewConfined {
+		view, lam = ViewConfined, e.Coverage[qid]
+	}
+	return Result{Outcome: out, Probabilities: out.CalibratedDistribution(true, lam), View: view, Coverage: lam}, nil
 }
 
 // MapProber is a prober over recorded results (tests, question mode).

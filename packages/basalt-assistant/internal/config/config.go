@@ -12,6 +12,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/knowledge"
 )
 
 // DefaultPath of the configuration file.
@@ -35,6 +36,15 @@ type Config struct {
 	VSMKnowledgeRoot string // one directory per Fedora release
 	VSMKnowledge     string // one index directory (overrides the root)
 	VSMPlanner       string
+	// Knowledge signatures (DSL 3): the manifest of the index must carry a
+	// valid signature by the pinned key (default yes). VSMKeyFile: the
+	// OpenPGP certificate (default the OpenBasalt release key basalt-release
+	// installs); VSMSigner: "PRIMARY SUBKEY" fingerprints to trust (default
+	// the OpenBasalt knowledge subkey). With no, unsigned knowledge loads
+	// (development only; the audit log says so).
+	VSMRequireSignature bool
+	VSMKeyFile          string
+	VSMSigner           string
 
 	// Natural-language translator (`basalt ask`), off by default.
 	Translator         bool
@@ -84,7 +94,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		StateDir: "/var/lib/basalt-assistant", AuditPath: "/var/log/basalt-assistant/audit.jsonl",
-		Backend: "rules", DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
+		Backend: "rules", VSMRequireSignature: true, DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
 		TranslatorEndpoint: "unix:/run/basalt-llm/llm.sock", TranslatorPrompt: "auto",
 		HumanizeEndpoint: "unix:/run/basalt-llm/llm.sock", HumanizePrompt: "auto", HumanizeMaxChars: 600,
 		HumanizeTimeout: 30 * time.Second, HumanizeStream: true,
@@ -156,6 +166,15 @@ func (c *Config) set(sec, k, v string) error {
 		c.VSMKnowledge = v
 	case "vsm.planner":
 		c.VSMPlanner = v
+	case "vsm.require_signature":
+		c.VSMRequireSignature, err = yesNo(v)
+	case "vsm.knowledge_key":
+		c.VSMKeyFile = v
+	case "vsm.knowledge_signer":
+		if f := strings.Fields(v); len(f) != 2 || len(f[0]) != 40 || len(f[1]) != 40 {
+			return fmt.Errorf("knowledge_signer %q: two 40-digit fingerprints (primary, subkey)", v)
+		}
+		c.VSMSigner = v
 	case "decision.model":
 		c.Model = v
 	case "decision.allow_remote", "translator.allow_remote":
@@ -275,7 +294,24 @@ func (c *Config) set(sec, k, v string) error {
 func (c Config) DecideConfig() decide.Config {
 	return decide.Config{Backend: c.Backend, Endpoint: c.ModelEndpoint, Model: c.Model,
 		AllowRemote: c.AllowRemote, Calibration: c.Calibration,
-		VSMKnowledgeRoot: c.VSMKnowledgeRoot, VSMKnowledge: c.VSMKnowledge, VSMPlanner: c.VSMPlanner}
+		VSMKnowledgeRoot: c.VSMKnowledgeRoot, VSMKnowledge: c.VSMKnowledge, VSMPlanner: c.VSMPlanner,
+		VSMVerifier: c.KnowledgeVerifier()}
+}
+
+// KnowledgeVerifier is the signature check of the VSM knowledge (nil when
+// require_signature = no).
+func (c Config) KnowledgeVerifier() *knowledge.Verifier {
+	if !c.VSMRequireSignature {
+		return nil
+	}
+	v := &knowledge.Verifier{KeyFile: knowledge.DefaultKeyFile, Trust: knowledge.OpenBasaltKnowledge}
+	if c.VSMKeyFile != "" {
+		v.KeyFile = c.VSMKeyFile
+	}
+	if f := strings.Fields(c.VSMSigner); len(f) == 2 {
+		v.Trust = knowledge.TrustAnchor{Primary: f[0], Signer: f[1]}
+	}
+	return v
 }
 
 func yesNo(v string) (bool, error) {

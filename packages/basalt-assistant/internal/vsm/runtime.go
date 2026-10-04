@@ -288,6 +288,17 @@ func Run(rt *Runtime, st Decider) Outcome {
 // candidate the guard would refuse -> the cautious option, abstain -> the
 // cautious option; every option gets a floor of 0.001 before normalizing.
 func (o Outcome) Distribution(guard bool) map[string]float64 {
+	return o.CalibratedDistribution(guard, 0)
+}
+
+// CalibratedDistribution is Distribution with the evidence-coverage
+// calibration (DSL 3): lambda > 0 only for a question asked from a view
+// that skipped probes (the confined daemon). A fraction lambda of the mass
+// that went to the cautious option by abstention or by the guard is
+// spread evenly over all options, because there the abstention is partly
+// a visibility limit, not evidence for the cautious option. Same order of
+// operations as VSM's reference (domain.answer_distribution).
+func (o Outcome) CalibratedDistribution(guard bool, lambda float64) map[string]float64 {
 	const floor = 1e-3
 	opts := Options[o.Question]
 	p := make(map[string]float64, len(opts))
@@ -295,6 +306,7 @@ func (o Outcome) Distribution(guard bool) map[string]float64 {
 		p[x] = floor
 	}
 	cautious := Cautious[o.Question]
+	abst := 0.0
 	var pick *Trace
 	for i := range o.Trace {
 		if o.Trace[i].Phase == "pick" && o.Trace[i].P != nil {
@@ -304,6 +316,9 @@ func (o Outcome) Distribution(guard bool) map[string]float64 {
 	}
 	if pick == nil {
 		p[o.Answer] += 1.0
+		if o.Answer == cautious && o.Picked == nil {
+			abst += 1.0
+		}
 	} else {
 		pp := pick.P
 		z := 0.0
@@ -318,11 +333,22 @@ func (o Outcome) Distribution(guard bool) map[string]float64 {
 			ans := h.Case.Answers[o.Question]
 			if guard && !h.Full() {
 				p[cautious] += mass
+				abst += mass
 			} else if _, ok := p[ans]; ok {
 				p[ans] += mass
 			}
 		}
-		p[cautious] += pp[abstainChar] / z
+		m := pp[abstainChar] / z
+		p[cautious] += m
+		abst += m
+	}
+	if lambda > 0 && abst > 0 {
+		moved := lambda * abst
+		p[cautious] -= moved
+		share := moved / float64(len(opts))
+		for _, x := range opts {
+			p[x] += share
+		}
 	}
 	s := 0.0
 	for _, x := range opts {

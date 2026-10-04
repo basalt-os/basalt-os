@@ -19,7 +19,7 @@ import (
 // does not exist).
 func (z Analyzer) AnalyzePath(ctx context.Context, dom, p string, write bool, label func(string) string) (f Fix, found bool) {
 	p = path.Clean(p)
-	if !strings.HasPrefix(p, "/") || dom == "" || !ValidPath(p) || Unconfined(dom) {
+	if !strings.HasPrefix(p, "/") || dom == "" || !ValidPath(p) || Unconfined(dom) || PseudoPath(p) {
 		return Fix{}, false
 	}
 	z = z.begin()

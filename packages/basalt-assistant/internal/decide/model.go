@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/knowledge"
 	"math"
 	"sort"
 	"strconv"
@@ -101,11 +102,15 @@ func Prompt(q Question) string {
 	} else {
 		fmt.Fprintf(&b, "Findings: %s\n", strings.Join(on, ", "))
 	}
-	if len(q.Facts) > 0 {
-		keys := make([]string, 0, len(q.Facts))
-		for k := range q.Facts {
+	keys := make([]string, 0, len(q.Facts))
+	for k := range q.Facts {
+		// "view" marks a question from the confined view for VSM's
+		// coverage calibration; the model prompt stays as measured.
+		if k != "view" {
 			keys = append(keys, k)
 		}
+	}
+	if len(keys) > 0 {
 		sort.Strings(keys)
 		b.WriteString("Facts:\n")
 		for _, k := range keys {
@@ -233,6 +238,7 @@ type Config struct {
 	VSMKnowledgeRoot string
 	VSMKnowledge     string
 	VSMPlanner       string
+	VSMVerifier      *knowledge.Verifier // nil: knowledge signatures are not checked
 }
 
 // FromConfigFull is FromConfig with every model option.
@@ -248,7 +254,7 @@ func FromConfigFull(c Config, log Logger, thresholds map[string]float64, def flo
 		l.Backend = mb
 		l.Fallback = Rules{}
 	case "vsm":
-		l.Backend = NewVSMBackend(c.VSMKnowledgeRoot, c.VSMKnowledge, c.VSMPlanner)
+		l.Backend = NewVSMBackend(c.VSMKnowledgeRoot, c.VSMKnowledge, c.VSMPlanner, c.VSMVerifier)
 		l.Fallback = Rules{}
 	}
 	return l

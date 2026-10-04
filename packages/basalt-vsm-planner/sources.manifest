@@ -4,5 +4,6 @@
 # unless the SHA-256 and the size match.
 #
 # Columns: name  sha256  bytes  path
-weights.bin  41e8c37852375eaf70bf16230c9ded8a2d59f1371be37e6b932961ed2e6e6523  261880  vsm-planner/dsl2/20261003/weights.bin
-config.txt   0377aa2e5d047ddc97b36ddc345edc305702195e94d62702fd348519c50155ea  313     vsm-planner/dsl2/20261003/config.txt
+weights.bin       71351ce5144ed98e9b2c45fd6e7990116a315d0e8a7532e5e1acbb30dc0e5290  261880  vsm-planner/dsl3/20261004/weights.bin
+config.txt        86060318f9fd8dd270672acda42a9b27bb16d4832c6801e4519324ec8cc832b9  313     vsm-planner/dsl3/20261004/config.txt
+calibration.json  a67311a1eb5d29c4933debe6dc1d2b1128d0ab03976c7e6c09abfd5f7bc4411c  2659    vsm-planner/dsl3/20261004/calibration.json

@@ -479,37 +479,93 @@ small diagnosis engine that runs in process (Go, no model server):
 
 New problems arrive as knowledge cases (a data update with the system
 updates), not as a new model. Every decision it makes goes to the audit
-log with the picked case, the candidates, the evidence codes and the
-knowledge and planner versions. The knowledge index is checked when it is
-opened (the SHA-256 of its cases in its manifest, the table layout, the
-DSL version the planner speaks); if the packages are missing, damaged or
-for another DSL, or a question takes more than 2 s, the rules answer,
-marked `(fallback)`, with the reason in the decision record. Severity,
-notification and routing stay with the rules.
+log with the picked case, the candidates, the evidence codes, the view
+and the knowledge and planner versions. If the packages are missing,
+damaged, unsigned or for another DSL, or a question takes more than 2 s,
+the rules answer, marked `(fallback)`, with the reason in the decision
+record. Severity, notification and routing stay with the rules.
 
-On the evaluation suite (253 questions of 239 cases, knowledge of 37
-cases):
+The confined daemon skips probes the root command line runs (config
+checkers, the process owning a port, the inode search for a denial's
+path, the space each snapshot holds, the package cache size). Its
+questions say so (`view: confined` in the decision record), and when VSM
+abstains there, part of the probability goes to the other options
+instead of all of it to the cautious one: the answer's confidence then
+reflects that the cause may be one the daemon could not see. How much is
+fitted per question for each planner and shipped with it
+(`calibration.json` in `basalt-vsm-planner`).
+
+#### Signed knowledge
+
+The knowledge index is used only when it is signed. Its `manifest.json`
+holds the SHA-256 of the cases and of the index table, and
+`manifest.json.sig` is a detached OpenPGP signature of the manifest by
+the knowledge signing subkey of the OpenBasalt release key:
+
+- release key (primary): `3601 7348 42BD 4E48 2D19 DE4A E4EE D5EC A395 B302`
+- knowledge subkey: `85D6 1430 B704 3868 0F6E B955 E79E 4020 605A 659A`
+
+The assistant checks the signature itself with the Go standard library
+(no gpg, no helper program): the certificate
+(`/usr/share/basalt/knowledge/openbasalt-release-key.asc`, the same file
+as basalt-release's `RPM-GPG-KEY-basalt` and as
+https://obpkg.org/keys/openbasalt-release-key.asc) must contain both
+pinned fingerprints, the subkey must be bound to the primary key by a
+valid binding signature that allows signing and carries the subkey's own
+back signature, neither may be revoked, the data signature must be a
+version 4 RSA signature over SHA-256, SHA-384 or SHA-512 made while the
+subkey was valid, and the manifest must match every file. Anything else
+and the rules answer.
+
+Anyone can check the same link with standard tools:
+
+```sh
+gpg --show-keys --with-subkey-fingerprints /usr/share/basalt/knowledge/openbasalt-release-key.asc
+# compare with the fingerprints above and with the key published at https://obpkg.org/keys/
+gpgv --keyring <(gpg --dearmor </usr/share/basalt/knowledge/openbasalt-release-key.asc) \
+     /usr/share/basalt/knowledge/44/manifest.json.sig /usr/share/basalt/knowledge/44/manifest.json
+sha256sum /usr/share/basalt/knowledge/44/cases.jsonl /usr/share/basalt/knowledge/44/index.bin
+# the two sums are "sha256" and "index_sha256" in manifest.json
+```
+
+From a source checkout, `go run ./tools/basalt-eval knowledge-verify -dir
+DIR` (in `packages/basalt-assistant`) runs the assistant's own check on an
+index directory.
+
+A lab or a private knowledge build can trust another key in
+`/etc/basalt/assistant.conf` (`[vsm] knowledge_key`, `knowledge_signer`);
+`scripts/sign-knowledge.sh` signs an index with a subkey kept in a 0600
+file and checks the result with gpg and with the assistant's verifier.
+
+#### Results
+
+On the evaluation suite (253 questions of 239 cases, knowledge of 39
+cases, planner 3.20261004):
 
 | Backend | Accuracy | ECE | Brier | lab | lab-daemon | generated |
 |---|---|---|---|---|---|---|
 | rules/v1 | 96.8 % | 0.212 | 0.138 | 32/34 | 29/30 | 184/189 |
-| vsm | 97.6 % | 0.020 | 0.050 | 32/34 | 28/30 | 187/189 |
+| vsm | 98.0 % | 0.020 | 0.042 | 32/34 | 29/30 | 187/189 |
 
-On 35 faults injected on a lab machine (basalt-assistant 0.6.2, the same
-fault diagnosed by `basalt` as root and by the confined daemon):
+On faults injected on a lab machine (basalt-assistant 0.7.0, the same
+fault diagnosed by `basalt` as root and by the confined daemon; 35 faults
+from earlier runs and 15 new ones written before this release was
+measured; root misses include two package transactions, for which the
+command line has no root command):
 
-| Backend | root: answers | root: changes right | daemon: answers | daemon: changes right | unsafe proposals |
-|---|---|---|---|---|---|
-| rules/v1 | 33/35 | 34/35 | 31/35 | 31/35 | 0 |
-| vsm | 33/35 | 34/35 | 30/35 | 30/35 | 0 |
+| Backend | root: answers right | daemon: answers right | ECE root / daemon | unsafe proposals |
+|---|---|---|---|---|
+| rules/v1, earlier 35 | 33 | 31 | 0.27 / 0.19 | 0 |
+| vsm, earlier 35 | 33 | 31 | 0.01 / 0.13 | 0 |
+| rules/v1, new 15 | 14 | 12 | 0.23 / 0.17 | 0 |
+| vsm, new 15 | 14 | 12 | 0.06 / 0.11 | 0 |
 
-VSM is better calibrated everywhere and as accurate or more accurate
-overall, but one answer behind on the confined daemon's view in both
-measurements (a unit killed by a denial without a "Permission denied"
-line, which no case covers yet; a moved log directory whose evidence the
-daemon sees exactly like a file-permission error), so the rules stay the
-default. Its cost: about 1 ms per question, 0.4 MB of memory for the
-knowledge and the planner.
+The changes proposed were right exactly where the answers were. VSM
+answers as well as the rules in every view and on every set measured,
+and its probabilities match how often it is right far better. Its cost:
+about 4 ms per question, 0.4 MB of memory for the knowledge and the
+planner. The rules stay the default until the owner of the distribution
+switches it.
 
 Whatever the backend, a denial's fix is proposed only when the decision
 is confident in the class the fix was built for (never for a confident

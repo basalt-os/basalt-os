@@ -28,6 +28,9 @@ type VSMBackend struct {
 	PlannerDir   string
 	Fedora       int
 	Timeout      time.Duration // per question (default 2 s)
+	// Verifier checks the knowledge manifest's signature at load (nil: not
+	// checked). A missing or bad signature is a load error: the rules answer.
+	Verifier *knowledge.Verifier
 
 	mu      sync.Mutex
 	eng     *vsm.Engine
@@ -38,7 +41,7 @@ type VSMBackend struct {
 
 // NewVSMBackend builds the backend for the default package locations
 // (empty paths) or the given ones.
-func NewVSMBackend(knowledgeRoot, knowledgeDir, plannerDir string) *VSMBackend {
+func NewVSMBackend(knowledgeRoot, knowledgeDir, plannerDir string, v *knowledge.Verifier) *VSMBackend {
 	fed := vsm.FedoraRelease()
 	if knowledgeDir == "" {
 		knowledgeDir = vsm.KnowledgeDir(knowledgeRoot, fed)
@@ -46,7 +49,7 @@ func NewVSMBackend(knowledgeRoot, knowledgeDir, plannerDir string) *VSMBackend {
 	if plannerDir == "" {
 		plannerDir = vsm.DefaultPlannerDir
 	}
-	return &VSMBackend{KnowledgeDir: knowledgeDir, PlannerDir: plannerDir, Fedora: fed, Timeout: 2 * time.Second}
+	return &VSMBackend{KnowledgeDir: knowledgeDir, PlannerDir: plannerDir, Fedora: fed, Timeout: 2 * time.Second, Verifier: v}
 }
 
 // NewVSMBackendFromEngine wraps an engine that is already loaded (tests,
@@ -70,7 +73,9 @@ func (b *VSMBackend) Engine() (*vsm.Engine, error) {
 	}
 	open := b.open
 	if open == nil {
-		open = vsm.Open
+		open = func(k, p string, ctx knowledge.Context) (*vsm.Engine, error) {
+			return vsm.OpenVerified(k, p, ctx, b.Verifier)
+		}
 	}
 	b.lastTry = time.Now()
 	e, err := open(b.KnowledgeDir, b.PlannerDir, knowledge.Context{Fedora: b.Fedora})
@@ -114,7 +119,7 @@ func (b *VSMBackend) Answer(ctx context.Context, q Question) (Answer, error) {
 	}
 	a := finish(r.Probabilities, b.Name())
 	v := &VSMInfo{Knowledge: e.Version(), Abstained: r.Abstained, Guarded: r.Guarded, Evidence: r.Evidence,
-		Probes: r.Probes, Note: r.Note, Micros: took.Microseconds()}
+		Probes: r.Probes, Note: r.Note, Micros: took.Microseconds(), View: r.View, Coverage: r.Coverage}
 	if r.Picked != nil {
 		v.Case, v.Actionable = r.Picked.ID, r.Picked.Actionable()
 	}
@@ -142,5 +147,9 @@ type VSMInfo struct {
 	Probes     string   `json:"probes,omitempty"`
 	Knowledge  string   `json:"knowledge"`
 	Note       string   `json:"note,omitempty"`
-	Micros     int64    `json:"us"`
+	// View and Coverage: a question from the confined view, and the
+	// evidence-coverage calibration applied to its answer (DSL 3).
+	View     string  `json:"view,omitempty"`
+	Coverage float64 `json:"coverage,omitempty"`
+	Micros   int64   `json:"us"`
 }
