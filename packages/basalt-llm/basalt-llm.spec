@@ -103,7 +103,6 @@ for f in %{__cmake_builddir}/bin/lib*.so*; do
     cp -P "$f" %{buildroot}%{_libdir}/basalt-llm/
 done
 install -Dpm 0755 %{SOURCE2} %{buildroot}%{_libexecdir}/basalt-llm/basalt-llm-start
-%{_libexecdir}/basalt-llm/basalt-llm-select
 install -Dpm 0644 %{SOURCE10} %{buildroot}%{_libexecdir}/basalt-llm/basalt-llm-select
 install -Dpm 0755 %{SOURCE3} %{buildroot}%{_bindir}/basalt-llm-fetch
 install -Dpm 0644 %{SOURCE4} %{buildroot}%{_datadir}/basalt-llm/models.manifest
@@ -146,6 +145,7 @@ fi
 %{_libdir}/basalt-llm/
 %dir %{_libexecdir}/basalt-llm
 %{_libexecdir}/basalt-llm/basalt-llm-start
+%{_libexecdir}/basalt-llm/basalt-llm-select
 %{_bindir}/basalt-llm-fetch
 %{_datadir}/basalt-llm/
 %dir %{_sysconfdir}/basalt
