@@ -6,7 +6,7 @@
 > affiliated with or endorsed by the Fedora Project or Red Hat. Expect
 > breaking changes, rebuilt history and missing pieces.
 
-Basalt OS is a Linux distribution for servers, built as a Fedora remix: a
+Basalt OS is a Linux distribution for servers and desktops, built as a Fedora remix: a
 normal, package-based Fedora install that you update with `dnf`, with its
 own identity and secure defaults, and a btrfs snapshot before and after every
 package transaction so that any update can be rolled back, from the running
@@ -30,6 +30,15 @@ Defaults from the first boot:
 | Packages | minimal profile (no hardware firmware or microcode) on virtual machines, standard on bare metal, picked by the installer |
 | Shell | bash stays the default shell; `basalt-prompt` gives interactive shells a compact colored prompt (user@host over SSH and as root, directory, git branch and marks, failed exit status, jobs, agent session and container markers), `basalt-prompt off` turns it off for one user |
 | Other | auditd on; LLMNR and multicast DNS off; serial console first (GRUB and kernel) |
+
+The desktop edition (experimental) is the same system plus `basalt-desktop`:
+the [Basalt shell](https://github.com/basalt-os/basalt-shell) in a Sway
+session, on SwayFX 0.6 from the Basalt repository (rounded corners,
+shadows, blur and dimming, turned off on machines without a GPU), with the
+greetd login screen, portals, PipeWire and a few applications. niri is an
+optional session (`basalt-shell-niri`), not installed by default. A live
+image lets you try it without installing (see "The live desktop image" in
+[docs/installer.md](docs/installer.md)).
 
 How it works and why: [docs/design.md](docs/design.md),
 [docs/secure-boot.md](docs/secure-boot.md) and, for the system assistant

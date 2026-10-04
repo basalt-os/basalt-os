@@ -3,7 +3,7 @@
 # and a graphical frontend (Quickshell) in the -gui subpackage.
 
 Name:           basalt-installer
-Version:        0.1.2
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
@@ -103,6 +103,11 @@ done
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.3-1
+- The welcome text names the server and desktop editions, through a
+  translation catalog (gettext in the text installer, qsTr in the
+  graphical one).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.2-1
 - Installs basalt-prompt (the shell prompt) on both editions, as the
   kickstart does.

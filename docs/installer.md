@@ -272,6 +272,23 @@ Nothing is vendored into the repository.
   the lab ISO's debug shell (`tests/liveshell.py`): it must be enforcing
   with 0 AVC denials for the whole installation, or the test fails.
 
+## Translations
+
+User-facing text goes through a translation catalog; English is the
+reference language. The text installer looks strings up with `i18n.T`
+(`internal/i18n`: GNU gettext `.mo` catalogs, domain `basalt-installer`,
+in `/usr/share/locale/<lang>/LC_MESSAGES/`, language from `LANGUAGE`,
+`LC_ALL`, `LC_MESSAGES` or `LANG`); the graphical installer marks strings
+with `qsTr`. Each message is a whole sentence, never pieces joined
+together. Logs, the audit log and the plan format stay in English.
+
+Only the welcome text goes through the catalog so far. Still to do:
+every other string of both front ends, plural forms (`Plural-Forms`
+evaluation and an `NT` call), extraction into a `.pot` and compiled
+catalogs in the package, a `QTranslator` loaded by the graphical
+installer, and the engine's step titles and error messages that both
+front ends show.
+
 ## Complex storage
 
 RAID, multipath, iSCSI, several disks, existing partitions to keep or

@@ -18,6 +18,7 @@ import (
 	"github.com/tui-tools/tui-kit/ui"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/engine"
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/probe"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/session"
@@ -719,14 +720,15 @@ func (m *model) View() string {
 	var body string
 	switch m.scr {
 	case scWelcome:
-		lines := []string{t.Title.Render("Welcome"), "",
-			"This installs Basalt OS, a Fedora remix for servers: SELinux enforcing, btrfs",
-			"with snapshots before every update, LUKS2 disk encryption unlocked by the TPM,",
-			"and a local assistant that only proposes changes.", "",
+		lines := []string{t.Title.Render("Welcome"), ""}
+		// One translatable sentence, wrapped for the screen.
+		lines = append(lines, strings.Split(lipgloss.NewStyle().Width(min(78, max(w-4, 20))).Render(
+			i18n.T("This installs Basalt OS, a Fedora remix with server and desktop editions: SELinux enforcing, btrfs with snapshots before every update, LUKS2 disk encryption unlocked by the TPM, and a local assistant that only proposes changes.")), "\n")...)
+		lines = append(lines, "",
 			"You choose a disk and a few settings, then review the exact list of commands",
 			"before anything is written. Nothing changes until you type the disk name.", "",
 			t.Muted.Render("Needs the network for the Fedora packages. Logs: /var/log/basalt-installer."), "",
-			t.Key.Render("enter") + t.KeyDesc.Render(" start    ") + t.Key.Render("q") + t.KeyDesc.Render(" quit")}
+			t.Key.Render("enter")+t.KeyDesc.Render(" start    ")+t.Key.Render("q")+t.KeyDesc.Render(" quit"))
 		body = center(lines, w, bodyH)
 	case scDisk:
 		body = m.diskPicker.View(t, w, bodyH)
