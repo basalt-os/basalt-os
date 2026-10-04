@@ -6,7 +6,8 @@
 #
 # Fedora's whisper-cpp package was not used: it ships the library only (no
 # whisper-cli) and requires the ROCm runtime (gigabytes), against a light
-# desktop. Not built by CI (it compiles whisper.cpp): packages/basalt-voice/build.sh.
+# desktop. Built for basalt-testing by scripts/release/build-testing.sh
+# (packages/basalt-voice/build.sh); not by CI, it compiles whisper.cpp.
 
 %global whisper_version 1.9.4
 %global debug_package %{nil}
@@ -43,8 +44,9 @@ The desktop's voice service (basalt-voiced, in basalt-shell) runs it on
 each utterance, without network access.
 
 No model is included. basalt-voice-fetch downloads the speech models
-listed in the manifest (Whisper, Silero VAD, public-domain Piper voices,
-Kokoro) and verifies their SHA-256.
+listed in the manifest (Whisper, Silero VAD and the Piper voices trained
+on public-domain data only), each pinned to a publisher revision and
+verified against its SHA-256 before use.
 
 %prep
 %setup -q -n whisper.cpp-%{whisper_version}
@@ -83,6 +85,6 @@ LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basal
 
 %changelog
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
-- First version (voice spike): whisper.cpp 1.9.4 whisper-cli for the CPU,
-  model manifest (Whisper, Silero VAD, public-domain Piper voices,
-  Kokoro) and basalt-voice-fetch.
+- First version: whisper.cpp 1.9.4 whisper-cli for the CPU, model
+  manifest (Whisper, Silero VAD, public-domain Piper voices) and
+  basalt-voice-fetch.

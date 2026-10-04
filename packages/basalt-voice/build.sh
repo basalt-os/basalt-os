@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Build basalt-voice in a Fedora container: whisper.cpp from its release
 # archive, pinned by version and SHA-256 (the same pin as the spec), and
-# the files in this directory. Not part of `make rpms` or CI: compiling
-# whisper.cpp takes a few minutes.
+# the files in this directory, into OUT_DIR (default
+# $BUILD_DIR/rpms/<fedora>/testing/: basalt-voice ships in basalt-testing
+# while the desktop is pre-release). Built by the release script
+# scripts/release/build-testing.sh (and `make rpm-voice`), not by CI:
+# compiling whisper.cpp takes a few minutes. No model is downloaded here.
 #
-#   packages/basalt-voice/build.sh
+#   packages/basalt-voice/build.sh [OUT_DIR]
 source "$(dirname "$0")/../../scripts/lib.sh"
 pkg="$REPO_ROOT/packages/basalt-voice"
+out="${1:-$RPM_DIR/testing}"
 WHISPER_VERSION=1.9.4
 WHISPER_SHA256=57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae
 [[ "$(awk '/^%global whisper_version/ {print $3}' "$pkg/basalt-voice.spec")" == "$WHISPER_VERSION" ]] ||
@@ -29,7 +33,7 @@ in_fedora -v "$work:/rpmbuild" "$FEDORA_IMAGE" bash -euc '
   rpmbuild --define "_topdir /rpmbuild" -ba /rpmbuild/SPECS/basalt-voice.spec >/rpmbuild/build.log 2>&1 ||
     { tail -60 /rpmbuild/build.log; exit 1; }
 '
-mkdir -p "$RPM_DIR"
-sudo find "$work/RPMS" "$work/SRPMS" -name "basalt-voice*.rpm" -exec cp {} "$RPM_DIR/" \;
-sudo chown -R "$(id -u):$(id -g)" "$RPM_DIR"
-find "$RPM_DIR" -name "basalt-voice*.rpm" -printf "%P  %s bytes\n" | sort
+mkdir -p "$out"
+sudo find "$work/RPMS" "$work/SRPMS" -name "basalt-voice*.rpm" -exec cp {} "$out/" \;
+sudo chown -R "$(id -u):$(id -g)" "$out"
+find "$out" -name "basalt-voice*.rpm" -printf "%P  %s bytes\n" | sort

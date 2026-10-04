@@ -14,7 +14,6 @@
 #   fine-tuned from Kristin). Most other English Piper voices are
 #   fine-tuned from the "lessac" voice, whose dataset license (Blizzard
 #   2013) does not allow redistribution for commercial use: not listed.
-#   Kokoro-82M (ONNX export by kokoro-onnx): Apache-2.0.
 # A Piper voice is two entries: the model (.onnx) and its settings (.json).
 ggml-tiny.en            921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  77704715   MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en.bin
 ggml-base.en            a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002  147964211  MIT  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin
@@ -33,5 +32,3 @@ en_US-norman-medium     b9739443232a80a59c7d18810dd856899bf16a7964725f5ab81ea49b
 en_US-norman-medium.json  6c2db7f558a4a8deb9fe822583c1c5105f6c4e834dd0f9de8ad17a888ee9fe1d  4968  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/norman/medium/en_US-norman-medium.onnx.json
 en_US-john-medium       789c6c875726e627ddee93d51d8727859abe9c091c3d141591f4b83c2072e988  63531379   public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/john/medium/en_US-john-medium.onnx
 en_US-john-medium.json  af60f177b6b550f3d7a302720c0fb89e7f94a82b5dca464775ef63b1c69ba09a  4965  public-domain-data  https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/john/medium/en_US-john-medium.onnx.json
-kokoro-v1.0-int8        6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb  92361271   Apache-2.0  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx
-kokoro-voices-v1.0      bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  28214398   Apache-2.0  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin

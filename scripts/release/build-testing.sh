@@ -6,12 +6,16 @@
 #   scripts/release/build-testing.sh OUT_DIR
 #
 # Packages: basalt-shell (the desktop shell, from github.com/basalt-os/basalt-shell
-# at the commit pinned in packages/basalt-shell/source.conf).
+# at the commit pinned in packages/basalt-shell/source.conf) and basalt-voice
+# (whisper.cpp speech to text from its release archive, pinned by version and
+# SHA-256 in packages/basalt-voice/build.sh; no speech model is packaged:
+# basalt-voice-fetch downloads them on the person's machine, checked against
+# packages/basalt-voice/models.manifest).
 #
 # OUT_DIR receives the binary and source RPMs, BUILD-INFO.txt and
 # SHA256SUMS. Then, as for the basalt set but with OB_REPO=basalt-testing:
 #   OB_REPO=basalt-testing scripts/release/sign.sh --op OUT_DIR SIGNED_DIR
-#   OB_REPO=basalt-testing scripts/release/client-test.sh SIGNED_DIR KEY basalt-shell
+#   OB_REPO=basalt-testing scripts/release/client-test.sh SIGNED_DIR KEY basalt-shell basalt-voice
 #   scripts/release/upload.sh SIGNED_DIR
 # The tree is basalt-testing/<releasever>/<arch>/, which basalt-release's
 # [basalt-testing] repository (off by default) reads.
@@ -31,6 +35,7 @@ source "$REPO_ROOT/packages/basalt-shell/source.conf"
 stage="$BUILD_DIR/rpms/$FEDORA_RELEASE/testing"
 rm -rf "$stage"
 "$REPO_ROOT/packages/basalt-shell/build.sh" "$stage"
+"$REPO_ROOT/packages/basalt-voice/build.sh" "$stage"
 
 log "rpmlint on the built packages"
 in_fedora -v "$stage:/rpms:ro" -v "$REPO_ROOT/scripts/ci:/ci:ro" "$FEDORA_IMAGE" bash -euc '
@@ -49,6 +54,7 @@ fedora release: $FEDORA_RELEASE
 architecture:   $ARCH
 commit:         $commit
 basalt-shell:   $BASALT_SHELL_REPO_URL $BASALT_SHELL_COMMIT
+basalt-voice:   whisper.cpp $(awk '/^%global whisper_version/ {print $3}' "$REPO_ROOT/packages/basalt-voice/basalt-voice.spec")
 built:          $(date -u +%Y-%m-%dT%H:%M:%SZ)
 INFO
 (cd "$out" && find . -maxdepth 1 -type f -name '*.rpm' -printf '%P\n' | sort | xargs -d '\n' sha256sum >SHA256SUMS)

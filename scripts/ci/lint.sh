@@ -66,6 +66,10 @@ LC_ALL=C.UTF-8 packages/basalt-prompt/tests/prompt-test.sh || fail=1
 step "basalt-llm: model selection tests"
 packages/basalt-llm/tests/select-test.sh || fail=1
 
+step "basalt-voice: ShellCheck, speech model manifest (pinned, checksummed, public-domain Piper voices only)"
+shellcheck -x -S warning packages/basalt-voice/build.sh packages/basalt-voice/basalt-voice-fetch packages/basalt-voice/tests/manifest-test.sh || fail=1
+packages/basalt-voice/tests/manifest-test.sh || fail=1
+
 step "Python syntax: evaluation suite tools, ledger lab fixtures"
 python3 -m py_compile eval/tools/*.py && rm -rf eval/tools/__pycache__ || fail=1
 python3 -m py_compile packages/basalt-ledger/tests/*.py && rm -rf packages/basalt-ledger/tests/__pycache__ || fail=1

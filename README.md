@@ -84,6 +84,7 @@ packages/basalt-ledger/      the audit ledger: append-only hash chain, collector
 packages/basalt-llm/         optional local model service: llama.cpp server for the CPU, no network, own SELinux domain
 packages/swayfx/              SwayFX (sway with rounded corners, shadows, blur, dimming) for the desktop session, on Fedora's wlroots and scenefx
 packages/basalt-shell/       desktop shell build, from github.com/basalt-os/basalt-shell at a pinned commit (basalt-testing)
+packages/basalt-voice/       push to talk speech to text (whisper.cpp for the CPU) and the pinned speech model manifest (basalt-testing)
 eval/                        shared evaluation suite: labeled decision cases, translator test set, generators
 packages/lab/                test fixtures for the lab (never published)
 kickstart/basalt-server.ks   the installer profile

@@ -62,7 +62,9 @@ off by default (`[basalt-testing]`, `gpgcheck=1`, `repo_gpgcheck=1`, the
 same key; `dnf config-manager setopt basalt-testing.enabled=1` turns it
 on). Today it holds the desktop shell, built from
 [basalt-os/basalt-shell](https://github.com/basalt-os/basalt-shell) at the
-commit pinned in `packages/basalt-shell/source.conf`.
+commit pinned in `packages/basalt-shell/source.conf`, and `basalt-voice`
+(whisper.cpp speech to text for push to talk, see `docs/voice.md`; its
+speech models are downloaded on the machine, never published here).
 `scripts/release/build-testing.sh OUT_DIR` builds that set apart from the
 basalt set (it refuses a local source or commit override), then the usual
 steps with `OB_REPO=basalt-testing`:
@@ -70,7 +72,7 @@ steps with `OB_REPO=basalt-testing`:
 ```sh
 scripts/release/build-testing.sh /tmp/testing-in
 OB_REPO=basalt-testing scripts/release/sign.sh --op /tmp/testing-in /tmp/testing-out
-OB_REPO=basalt-testing CLIENT_TEST_DEPS_URL=https://obpkg.org/basalt scripts/release/client-test.sh /tmp/testing-out packages/basalt-release/RPM-GPG-KEY-basalt basalt-shell basalt-shell-selinux
+OB_REPO=basalt-testing CLIENT_TEST_DEPS_URL=https://obpkg.org/basalt scripts/release/client-test.sh /tmp/testing-out packages/basalt-release/RPM-GPG-KEY-basalt basalt-shell basalt-shell-selinux basalt-voice
 scripts/release/upload.sh /tmp/testing-out
 ```
 

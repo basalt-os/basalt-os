@@ -45,11 +45,11 @@ case "$mode" in
     done ;;
   verify)
     rc=0
-    awk '!/^#/ && NF >= 5 {print $1, $2, $5}' "$MANIFEST" | while read -r n sha url; do
+    while read -r n sha url; do
       f="$DIR/$(file_of "$url")"
       [[ -f "$f" ]] || continue
       if echo "$sha  $f" | sha256sum -c --quiet - 2>/dev/null; then echo "$n: ok"; else echo "$n: CHECKSUM MISMATCH ($f)"; rc=1; fi
-    done
+    done < <(awk '!/^#/ && NF >= 5 {print $1, $2, $5}' "$MANIFEST")
     exit $rc ;;
   fetch)
     ((${#names[@]})) || die "which model? (--list shows them, default fetches the default set)"
