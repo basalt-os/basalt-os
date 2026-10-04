@@ -44,6 +44,8 @@ func Packages(r Resolved) (install, exclude []string) {
 		"plymouth-theme-basalt", "basalt-snapshots", "basalt-security",
 		// Per-session default-deny egress and the audit ledger (docs/network.md, docs/ledger.md).
 		"basalt-resolver", "basalt-resolver-selinux", "basalt-ledger", "basalt-ledger-selinux",
+		// The shell prompt (interactive bash; server and desktop editions).
+		"basalt-prompt",
 		"btrfs-progs", "cryptsetup", "tpm2-tss", "tpm2-tools", "mokutil", "keyutils", "efibootmgr", "audit",
 		"policycoreutils-python-utils", "setools-console", "compsize", "glibc-langpack-en", "snapper",
 		"libdnf5-plugin-actions", "selinux-policy-targeted"}

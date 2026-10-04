@@ -8,7 +8,7 @@ SHELL := /bin/bash
 S := scripts
 L := scripts/lab
 
-.PHONY: help rpms rpms-lab repo repo-verify iso-fetch iso all lint clean \
+.PHONY: help rpms rpms-lab repo repo-verify iso-fetch iso all lint prompt-test clean \
         lab-tools lab-keys lab-net lab-repo lab-repo-down lab-install lab-start lab-stop \
         lab-ssh lab-console lab-measure lab-sb-test lab-snapshot-test lab-rollback-test \
         lab-destroy lab-sb-keys lab-tang lab-mok-test lab-sb-custom-test lab-tang-test lab-kernels-test
@@ -18,7 +18,7 @@ help: ## Show targets
 
 # --- packages, repository, ISO ------------------------------------------------------
 
-rpms: ## Build basalt-release, basalt-logos, basalt-snapshots, basalt-security (Fedora container)
+rpms: ## Build basalt-release, basalt-logos, basalt-snapshots, basalt-security, basalt-prompt (Fedora container)
 	$(S)/build-rpms.sh
 
 rpms-lab: ## Same, plus the lab canary package
@@ -47,6 +47,9 @@ lint: ## Shell and Python syntax checks (shellcheck when installed)
 	@if command -v shellcheck >/dev/null; then shellcheck -x -S warning $(S)/*.sh $(L)/*.sh packages/basalt-snapshots/basalt-snapshot-dnf packages/basalt-snapshots/basalt-snapshot-boot packages/basalt-snapshots/basalt-snapshots-setup packages/basalt-snapshots/basalt-rollback packages/basalt-security/basalt-tpm packages/basalt-security/basalt-secureboot; else echo "shellcheck not installed, syntax only"; fi
 	@if command -v ksvalidator >/dev/null; then ksvalidator -v F44 kickstart/basalt-server.ks; fi
 	@echo lint ok
+
+prompt-test: ## Tests of basalt-prompt (colors, NO_COLOR, root, SSH, non-interactive no-op, git states; zsh and fish when installed)
+	packages/basalt-prompt/tests/prompt-test.sh
 
 clean: ## Remove build outputs in this tree
 	rm -rf build

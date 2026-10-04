@@ -9,7 +9,7 @@
 # packages carry the OpenBasalt release key and https://obpkg.org.
 #
 # Packages: scripts/build-rpms.sh (basalt-release, -logos, -snapshots,
-# -security, -assistant, -agent, -resolver, -ledger, -installer),
+# -security, -prompt, -assistant, -agent, -resolver, -ledger, -installer),
 # basalt-llm, and the data packages basalt-knowledge and basalt-vsm-planner
 # (BASALT_ARTIFACTS_DIR or BASALT_ARTIFACTS_URL, see scripts/data-package.sh).
 #

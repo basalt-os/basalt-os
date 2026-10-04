@@ -124,7 +124,7 @@ func TestDefaultEncryptedTPM(t *testing.T) {
 		}
 	}
 	_, dnf := mustFind(t, list, "dnf --assumeyes --installroot=/mnt/sysroot")
-	for _, a := range []string{"--releasever=44", "--exclude=fedora-release", "--exclude=linux-firmware", "basalt-assistant", "basalt-assistant-selinux", "basalt-resolver-selinux", "basalt-ledger-selinux", "shim-x64", "@core"} {
+	for _, a := range []string{"--releasever=44", "--exclude=fedora-release", "--exclude=linux-firmware", "basalt-assistant", "basalt-assistant-selinux", "basalt-resolver-selinux", "basalt-ledger-selinux", "basalt-prompt", "shim-x64", "@core"} {
 		if !strings.Contains(dnf.Command(), a) {
 			t.Fatalf("dnf command lacks %s", a)
 		}

@@ -21,7 +21,7 @@ if [[ "${1:-}" == --container ]]; then
   in_fedora -v "$REPO_ROOT:/src:ro" -w /src \
     -e FEDORA_RELEASE="$FEDORA_RELEASE" -e ACTIONLINT_VERSION="$ACTIONLINT_VERSION" -e ACTIONLINT_SHA256="$ACTIONLINT_SHA256" \
     "$FEDORA_IMAGE" bash -euc '
-      dnf -q -y install make ShellCheck rpmlint pykickstart python3 tar gzip >/dev/null 2>&1 ||
+      dnf -q -y install make ShellCheck rpmlint pykickstart python3 tar gzip git zsh fish >/dev/null 2>&1 ||
         { echo "dnf install failed" >&2; exit 1; }
       tmp=$(mktemp -d)
       url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
@@ -54,6 +54,14 @@ for f in allowlist.go allowlist_test.go; do
   cmp -s "packages/basalt-agent/internal/allowlist/$f" "packages/basalt-resolver/internal/allowlist/$f" ||
     { echo "packages/basalt-resolver/internal/allowlist/$f differs from basalt-agent's copy" >&2; fail=1; }
 done
+
+step "basalt-prompt: ShellCheck and tests (bash, and zsh and fish when installed)"
+LC_ALL=C.UTF-8 shellcheck -x -S warning packages/basalt-prompt/basalt-prompt.bash packages/basalt-prompt/basalt-prompt.sh \
+  packages/basalt-prompt/basalt-prompt packages/basalt-prompt/tests/prompt-test.sh || fail=1
+bash -n packages/basalt-prompt/basalt-prompt.bash || fail=1
+if command -v zsh >/dev/null; then zsh -n packages/basalt-prompt/basalt-prompt.zsh || fail=1; fi
+if command -v fish >/dev/null; then fish --no-execute packages/basalt-prompt/basalt-prompt.fish || fail=1; fi
+LC_ALL=C.UTF-8 packages/basalt-prompt/tests/prompt-test.sh || fail=1
 
 step "basalt-llm: model selection tests"
 packages/basalt-llm/tests/select-test.sh || fail=1

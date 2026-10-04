@@ -45,7 +45,7 @@ func demoProber() probe.Prober {
 
 func demoDNF() []string {
 	pkgs := []string{"filesystem", "glibc", "systemd", "kernel-core", "selinux-policy-targeted", "shim-x64", "grub2-efi-x64",
-		"basalt-release", "basalt-logos", "basalt-snapshots", "basalt-security", "basalt-resolver", "basalt-ledger", "basalt-assistant", "snapper", "cryptsetup"}
+		"basalt-release", "basalt-logos", "basalt-snapshots", "basalt-security", "basalt-resolver", "basalt-ledger", "basalt-prompt", "basalt-assistant", "snapper", "cryptsetup"}
 	var out []string
 	for i, p := range pkgs {
 		out = append(out, fmt.Sprintf("[%2d/%d] %s 100%%", i+1, len(pkgs), p))

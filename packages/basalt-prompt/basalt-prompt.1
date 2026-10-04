@@ -1,0 +1,167 @@
+.TH BASALT-PROMPT 1 2026-10-04 "Basalt OS" "User Commands"
+.SH NAME
+basalt-prompt \- the Basalt OS shell prompt
+.SH SYNOPSIS
+.B basalt-prompt
+.RB { off | on | status | preview | bench
+.RI [ N ]
+.RB | zsh }
+.SH DESCRIPTION
+Basalt OS sets a compact, colored prompt for interactive
+.BR bash (1)
+shells, from
+.IR /etc/profile.d/basalt-prompt.sh .
+Scripts, non-interactive shells and
+.B bash -c
+are never changed. The prompt is plain bash, with no other program run
+except one time-boxed
+.B git status
+inside a git work tree.
+.PP
+From left to right, each part only when it applies:
+.TP
+.B \[u25C6] agent 0123ab
+the shell runs inside a basalt-agent session (its cgroup slice, its SELinux
+domain, or BASALT_AGENT_SESSION), white on terra roxa;
+.TP
+.B \[u2B22] name
+the shell runs in a container or toolbox (the name when known);
+.TP
+.B user@host
+over SSH, as root, in a container, and outside a local graphical session
+(a server console); root is shown in red with a
+.B #
+sign;
+.TP
+.B ~/\[u2026]/dir
+the working directory, its last components only when longer than
+.IR path_max ;
+.TP
+.B main+*?\(ua1\(da2
+the git branch (or
+.B @
+and the commit when detached), with
+.B |rebase
+or
+.B |merge
+during those, and marks:
+.B +
+staged,
+.B *
+modified,
+.B ?
+untracked (when enabled),
+.B \(ua
+and
+.B \(da
+commits ahead of and behind the upstream,
+.B ~
+not checked (the repository is on a network file system, or git took longer
+than the time box once in this shell);
+.TP
+.B \[u2717]130 INT
+the exit status of the last command when it failed, with the signal name;
+.TP
+.B &2
+background jobs.
+.PP
+The prompt sign follows:
+.B \[u276F]
+(or
+.B >
+in ASCII), red after a failure, and
+.B #
+for root.
+.SH COLORS AND SYMBOLS
+The colors are the Basalt OS palette. Truecolor when COLORTERM is truecolor or
+24bit (or the terminal is foot, kitty, Alacritty, WezTerm, Ghostty), 256
+colors when TERM names a 256-color terminal, 16 colors otherwise, none with
+TERM=dumb. A non-empty
+.B NO_COLOR
+turns colors off. Unicode symbols are used on UTF-8 locales; the Linux
+console, serial terminals and other locales get ASCII. Neither needs a
+special font.
+.SH CONFIGURATION
+.I /etc/basalt/prompt.conf
+holds the system defaults (all keys listed, commented out), and
+.I ~/.config/basalt/prompt.conf
+overrides them for one user, one
+.B key = value
+per line. A
+.BI BASALT_PROMPT_ KEY
+environment variable overrides both, e.g.
+.BR BASALT_PROMPT_LINES=2 .
+.TP
+.B enable
+yes, or no for the distribution's plain prompt.
+.B BASALT_PROMPT=off
+does the same for one shell.
+.TP
+.B glyphs
+auto, unicode or ascii.
+.TP
+.B color
+auto, truecolor, 256, 16 or none.
+.TP
+.B theme
+auto (tones readable on dark and light backgrounds, or the one COLORFGBG
+indicates), dark or light.
+.TP
+.B lines
+1, or 2 for the information on one line and the prompt sign below.
+.TP
+.B host
+auto, always or never.
+.TP
+.B path_max
+40; 0 shows the whole path.
+.TP
+.BR git ", " git_dirty ", " git_untracked ", " git_timeout_ms
+yes, yes, no, 200.
+.TP
+.BR show_status ", " show_jobs ", " show_agent ", " show_container
+yes.
+.PP
+A PS1 set after the prompt is loaded (in
+.IR ~/.bashrc ,
+for example) is kept: the prompt stops updating it.
+.SH COMMANDS
+.TP
+.B off
+Turn the prompt off for the current user (writes
+.B enable = no
+to
+.IR ~/.config/basalt/prompt.conf ).
+.B on
+turns it back on. Both apply to new shells.
+.TP
+.B status
+The effective settings and what was detected: colors, symbols, SSH,
+container, agent session, git.
+.TP
+.B preview
+Print the prompt for the current directory and a few sample states.
+.TP
+.BI bench " " \fR[\fIN\fR]
+Build the prompt N times (200) in the current directory and print the time
+per prompt.
+.TP
+.B zsh
+Add the zsh version of the prompt to
+.IR ~/.zshrc .
+fish uses it by itself (from fish's vendor configuration directory) unless
+the user has a prompt of their own.
+.SH FILES
+.I /etc/profile.d/basalt-prompt.sh
+.br
+.I /usr/share/basalt-prompt/basalt-prompt.bash
+.br
+.I /usr/share/basalt-prompt/basalt-prompt.zsh
+.br
+.I /usr/share/fish/vendor_conf.d/basalt-prompt.fish
+.br
+.I /etc/basalt/prompt.conf
+.br
+.I ~/.config/basalt/prompt.conf
+.SH SEE ALSO
+.BR bash (1)

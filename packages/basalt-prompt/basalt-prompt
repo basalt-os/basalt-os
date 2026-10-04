@@ -1,0 +1,101 @@
+#!/usr/bin/bash
+# basalt-prompt: turn the Basalt OS shell prompt on or off for the current
+# user, show what it detected, preview it and time it. See basalt-prompt(1).
+set -euo pipefail
+
+LIB=${BASALT_PROMPT_LIB:-/usr/share/basalt-prompt/basalt-prompt.bash}
+CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/basalt
+CONF=$CONF_DIR/prompt.conf
+
+usage() {
+  cat <<'EOF'
+Usage: basalt-prompt COMMAND
+
+  off           turn the prompt off for this user (enable = no in ~/.config/basalt/prompt.conf)
+  on            turn it back on
+  status        effective settings and what was detected (colors, symbols, SSH, container, agent)
+  preview       print the prompt for the current directory, then sample states
+  bench [N]     render the prompt N times (default 200) here and print the time per prompt
+  zsh           add the prompt to ~/.zshrc (zsh has no system drop-in directory)
+
+Changes apply to new shells.
+EOF
+}
+
+# set_enable yes|no: rewrite the enable line of the user's file, keep the rest.
+set_enable() {
+  mkdir -p "$CONF_DIR"
+  local tmp
+  tmp=$(mktemp "$CONF_DIR/.prompt.conf.XXXXXX")
+  if [[ -f $CONF ]]; then
+    grep -v -E '^[[:space:]]*enable[[:space:]]*=' "$CONF" >"$tmp" || :
+  fi
+  printf 'enable = %s\n' "$1" >>"$tmp"
+  mv -f "$tmp" "$CONF"
+  echo "basalt-prompt: enable = $1 in $CONF (new shells)"
+}
+
+# in_shell CODE: run CODE in an interactive bash with the prompt library
+# loaded, keeping this terminal's environment.
+in_shell() {
+  [[ -r $LIB ]] || { echo "basalt-prompt: $LIB not found" >&2; exit 1; }
+  BASALT_PROMPT='' bash --norc --noprofile -i -c '. "$1" || exit 1; shift; eval "$1"' _ "$LIB" "$1" 2>&1 |
+    grep -v -E '^bash: (cannot set terminal process group|no job control in this shell)' || :
+}
+
+case "${1:-}" in
+  off) set_enable no ;;
+  on) set_enable yes ;;
+  status)
+    in_shell '
+      _bp_init
+      if ((_bp_off)); then echo "enabled:    no (enable = no or BASALT_PROMPT=off)"; exit 0; fi
+      echo "enabled:    yes"
+      echo "colors:     $_bp_depth (TERM=${TERM-} COLORTERM=${COLORTERM-} NO_COLOR=${NO_COLOR-})"
+      echo "symbols:    $_bp_glyphs"
+      echo "theme:      ${_bp_cfg[theme]}"
+      echo "lines:      ${_bp_cfg[lines]}"
+      echo "ssh:        $([[ $_bp_ssh == 1 ]] && echo yes || echo no)"
+      echo "user@host:  $([[ $_bp_show_host == 1 ]] && echo shown || echo hidden) (host = ${_bp_cfg[host]})"
+      echo "container:  ${_bp_container:-none}"
+      echo "agent:      ${_bp_agent:-none}"
+      echo "git:        $([[ $_bp_have_git == 1 ]] && echo "yes, time box ${_bp_cfg[git_timeout_ms]} ms" || echo "branch only (no git command or git = no)")"
+      echo "files:      /etc/basalt/prompt.conf ${XDG_CONFIG_HOME:-$HOME/.config}/basalt/prompt.conf"'
+    ;;
+  preview)
+    in_shell '
+      show() { _basalt_prompt_cmd; printf "%s\n" "$_bp_ps1" | tr -d "\001\002"; }
+      echo "here:"; show
+      echo "after a failed command:"; (exit 1); show
+      echo "after Ctrl-C:"; (exit 130); show
+      echo "two lines:"; _bp_cfg[lines]=2; show'
+    ;;
+  bench)
+    n=${2:-200}
+    [[ $n =~ ^[0-9]+$ && $n -gt 0 ]] || { usage >&2; exit 2; }
+    in_shell '
+      n='"$n"'
+      _basalt_prompt_cmd
+      min=999999999 max=0 total=0
+      for ((i = 0; i < n; i++)); do
+        t0=${EPOCHREALTIME/[.,]/}
+        _basalt_prompt_cmd
+        t1=${EPOCHREALTIME/[.,]/}
+        d=$((t1 - t0)); total=$((total + d))
+        ((d < min)) && min=$d; ((d > max)) && max=$d
+      done
+      printf "%d prompts in %s: mean %d.%03d ms, min %d.%03d ms, max %d.%03d ms\n" "$n" "$PWD" \
+        $((total / n / 1000)) $((total / n % 1000)) $((min / 1000)) $((min % 1000)) $((max / 1000)) $((max % 1000))'
+    ;;
+  zsh)
+    line='[[ -r /usr/share/basalt-prompt/basalt-prompt.zsh ]] && source /usr/share/basalt-prompt/basalt-prompt.zsh'
+    if [[ -f $HOME/.zshrc ]] && grep -qF 'basalt-prompt.zsh' "$HOME/.zshrc"; then
+      echo "basalt-prompt: already in ~/.zshrc"
+    else
+      printf '%s\n' "$line" >>"$HOME/.zshrc"
+      echo "basalt-prompt: added to ~/.zshrc (new zsh shells)"
+    fi
+    ;;
+  -h | --help | help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

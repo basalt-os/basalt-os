@@ -209,6 +209,7 @@ basalt-resolver
 basalt-resolver-selinux
 basalt-ledger
 basalt-ledger-selinux
+basalt-prompt
 -fedora-release
 -fedora-release-common
 -fedora-release-identity-basic
