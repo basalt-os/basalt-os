@@ -139,10 +139,10 @@ case "$mode" in
     signer -v "$secret:/secret" "$SIGNER_IMAGE" bash -euc '
       gpg --batch --pinentry-mode loopback --passphrase-file /secret/passphrase \
         --quick-generate-key "Basalt OS dry run (THROWAWAY, never published) <dry-run@invalid>" rsa4096 cert 1d >/dev/null 2>&1
-      fpr=$(gpg --batch --with-colons --list-keys | awk -F: "/^fpr:/ {print \$10; exit}")
+      fpr=$(gpg --batch --with-colons --list-keys 2>/dev/null | awk -F: "/^fpr:/ {print \$10; exit}")
       gpg --batch --pinentry-mode loopback --passphrase-file /secret/passphrase \
         --quick-add-key "$fpr" rsa4096 sign 1d >/dev/null 2>&1
-      sub=$(gpg --batch --with-colons --list-keys | awk -F: "/^fpr:/ {n++} n==2 && /^fpr:/ {print \$10; exit}")
+      sub=$(gpg --batch --with-colons --list-keys 2>/dev/null | awk -F: "/^fpr:/ {n++} n==2 && /^fpr:/ {print \$10; exit}")
       gpg --batch --pinentry-mode loopback --passphrase-file /secret/passphrase --armor \
         --export-secret-subkeys "$sub!" >/secret/key.asc 2>/dev/null
       gpg --batch --armor --export "$fpr" >/secret/pub.asc 2>/dev/null
