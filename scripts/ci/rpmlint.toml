@@ -12,4 +12,6 @@ Filters = [
     # The assistant's audit log and state are root-only on purpose.
     'non-standard-dir-perm /var/log/basalt-assistant',
     'non-standard-dir-perm /var/lib/basalt-assistant',
+    # The root command line's policy answers: root-only, never shared with the daemon.
+    'non-standard-dir-perm /var/cache/basalt-assistant',
 ]
