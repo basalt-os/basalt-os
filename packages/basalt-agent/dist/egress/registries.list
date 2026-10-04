@@ -1,0 +1,12 @@
+# Package registries agents commonly need to install dependencies.
+# Read access for npm, PyPI, Go modules and crates. These hosts also accept
+# uploads (npm publish, twine): a credential inside the project could be
+# used to publish; see docs/agents.md, "Limits".
+registry.npmjs.org
+pypi.org
+files.pythonhosted.org
+proxy.golang.org
+sum.golang.org
+index.crates.io
+static.crates.io
+crates.io

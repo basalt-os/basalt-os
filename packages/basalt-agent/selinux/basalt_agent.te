@@ -1,0 +1,123 @@
+policy_module(basalt_agent, 0.1.0)
+
+# basalt-agent: AI coding agent command lines (Claude Code, Codex CLI,
+# Gemini CLI, Aider, ...) confined by SELinux. Two domains:
+#
+# basalt_agent_t, native mode. Entered from the user's own (unconfined)
+# launcher through the entry point basalt-agent-exec (basalt_agent_exec_t),
+# with the session's MCS level. It may:
+#   - read and change the project handed to it, and run what is there
+#     (builds, tests), at its own level only (mcs_constrained);
+#   - use its own home and temporary files; read and run system programs
+#     and its installed tools;
+#   - connect to the session proxy port, and nothing else on the network
+#     (no UDP, no DNS, no other TCP port; the proxy filters by name);
+#   - use its terminal (without TIOCSTI).
+# Everything else is denied and audited: the rest of the home (~/.ssh,
+# ~/.gnupg, keyrings, browser profiles, other projects), other users'
+# homes, the user's runtime sockets (session bus, keyring, the desktop
+# shell's control socket), the system assistant's state, other sessions,
+# signals or ptrace to processes outside the domain, setuid and
+# capabilities (the helper also sets no_new_privs).
+#
+# basalt_agent_proxy_t, the per-session egress proxy. The only part of a
+# session that resolves names and reaches the network, on HTTP(S) ports.
+
+gen_require(`
+	type unconfined_t;
+	role unconfined_r;
+	type basalt_agent_session_t, basalt_agent_proxy_port_t;
+')
+
+type basalt_agent_t;
+type basalt_agent_exec_t;
+application_domain(basalt_agent_t, basalt_agent_exec_t)
+unconfined_run_to(basalt_agent_t, basalt_agent_exec_t)
+mcs_constrained(basalt_agent_t)
+
+type basalt_agent_proxy_t;
+type basalt_agent_proxy_exec_t;
+application_domain(basalt_agent_proxy_t, basalt_agent_proxy_exec_t)
+unconfined_run_to(basalt_agent_proxy_t, basalt_agent_proxy_exec_t)
+
+########################################
+#
+# basalt_agent_t
+#
+
+basalt_agent_domain_type(basalt_agent_t)
+basalt_agent_exec_tools(basalt_agent_t)
+basalt_agent_allow_jit(basalt_agent_t)
+basalt_agent_manage_project(basalt_agent_t)
+basalt_agent_manage_home(basalt_agent_t)
+basalt_agent_use_terminals(basalt_agent_t)
+basalt_agent_connect_proxy(basalt_agent_t)
+
+# The launcher is the parent: inherited descriptors (pipes, the terminal)
+# and the exit signal, nothing more (no signals, no ptrace, no /proc).
+allow basalt_agent_t unconfined_t:fd use;
+allow basalt_agent_t unconfined_t:fifo_file rw_inherited_fifo_file_perms;
+allow basalt_agent_t unconfined_t:process sigchld;
+
+# The helper checks its own context before running the agent.
+allow basalt_agent_t self:process { getattr setexec };
+# Programs re-execute themselves (node spawns node).
+allow basalt_agent_t basalt_agent_exec_t:file read_file_perms;
+
+########################################
+#
+# basalt_agent_proxy_t
+#
+
+allow basalt_agent_proxy_t self:process { getsched signal_perms };
+allow basalt_agent_proxy_t self:fifo_file rw_fifo_file_perms;
+allow basalt_agent_proxy_t self:unix_stream_socket create_stream_socket_perms;
+allow basalt_agent_proxy_t self:unix_dgram_socket create_socket_perms;
+allow basalt_agent_proxy_t self:tcp_socket { create_stream_socket_perms listen accept };
+allow basalt_agent_proxy_t self:udp_socket create_socket_perms;
+allow basalt_agent_proxy_t unconfined_t:fd use;
+allow basalt_agent_proxy_t unconfined_t:fifo_file rw_inherited_fifo_file_perms;
+allow basalt_agent_proxy_t unconfined_t:process sigchld;
+userdom_use_user_terminals(basalt_agent_proxy_t)
+
+kernel_read_system_state(basalt_agent_proxy_t)
+kernel_read_net_sysctls(basalt_agent_proxy_t)
+kernel_read_kernel_sysctls(basalt_agent_proxy_t)
+dev_read_urand(basalt_agent_proxy_t)
+dev_read_sysfs(basalt_agent_proxy_t)
+fs_search_cgroup_dirs(basalt_agent_proxy_t)
+fs_read_cgroup_files(basalt_agent_proxy_t)
+files_read_etc_files(basalt_agent_proxy_t)
+miscfiles_read_localization(basalt_agent_proxy_t)
+
+# Listens on a loopback proxy port (native mode) or on a Unix socket in
+# the session directory (container mode).
+allow basalt_agent_proxy_t basalt_agent_proxy_port_t:tcp_socket name_bind;
+corenet_tcp_bind_generic_node(basalt_agent_proxy_t)
+userdom_search_user_tmp_dirs(basalt_agent_proxy_t)
+allow basalt_agent_proxy_t basalt_agent_session_t:dir rw_dir_perms;
+manage_sock_files_pattern(basalt_agent_proxy_t, basalt_agent_session_t, basalt_agent_session_t)
+
+# Resolves names and connects to HTTP(S) ports only.
+sysnet_dns_name_resolve(basalt_agent_proxy_t)
+corenet_tcp_connect_http_port(basalt_agent_proxy_t)
+
+########################################
+#
+# Container mode: a session container (container_t at the session's
+# level) reaches its proxy through the mounted Unix socket.
+#
+
+optional_policy(`
+	gen_require(`
+		type container_t;
+	')
+	allow container_t basalt_agent_proxy_t:unix_stream_socket connectto;
+')
+
+########################################
+#
+# The launcher (the user's unconfined session) prepares and labels.
+#
+
+basalt_agent_launcher(unconfined_t)

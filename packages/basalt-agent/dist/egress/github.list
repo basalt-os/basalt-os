@@ -1,0 +1,8 @@
+# GitHub, opt-in (include = github): cloning and fetching dependencies.
+# Allowing github.com also allows pushing to any repository the agent has
+# a token for, so it is not part of any shipped profile.
+github.com
+codeload.github.com
+objects.githubusercontent.com
+raw.githubusercontent.com
+api.github.com

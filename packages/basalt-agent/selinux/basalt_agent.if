@@ -1,0 +1,25 @@
+## <summary>basalt-agent: AI coding agents confined by SELinux (native mode domain and session proxy).</summary>
+
+########################################
+## <summary>
+##	Execute basalt-agent-exec in the basalt_agent_t domain (start a
+##	native-mode agent session).
+## </summary>
+## <param name="domain">
+##	<summary>Domain allowed to transition.</summary>
+## </param>
+## <param name="role">
+##	<summary>Role allowed basalt_agent_t.</summary>
+## </param>
+#
+interface(`basalt_agent_run',`
+	gen_require(`
+		type basalt_agent_t, basalt_agent_exec_t;
+		type basalt_agent_proxy_t, basalt_agent_proxy_exec_t;
+	')
+
+	domtrans_pattern($1, basalt_agent_exec_t, basalt_agent_t)
+	domtrans_pattern($1, basalt_agent_proxy_exec_t, basalt_agent_proxy_t)
+	role $2 types { basalt_agent_t basalt_agent_proxy_t };
+	basalt_agent_launcher($1)
+')

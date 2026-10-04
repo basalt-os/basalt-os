@@ -86,5 +86,7 @@ fi
 sudo chown -R "$(id -u):$(id -g)" "$RPM_DIR"
 find "$RPM_DIR" -name "*.rpm" -printf "%P  %s bytes\n" | sort
 
-# basalt-assistant (Go and an SELinux module) builds in its own container run.
+# basalt-assistant and basalt-agent (Go and SELinux modules) build in
+# their own container runs.
 "$REPO_ROOT/packages/basalt-assistant/build.sh"
+"$REPO_ROOT/packages/basalt-agent/build.sh"

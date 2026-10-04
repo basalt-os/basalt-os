@@ -1,0 +1,2 @@
+/usr/libexec/basalt-agent/basalt-agent-exec	--	gen_context(system_u:object_r:basalt_agent_exec_t,s0)
+/usr/libexec/basalt-agent/basalt-agent-proxy	--	gen_context(system_u:object_r:basalt_agent_proxy_exec_t,s0)

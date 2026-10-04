@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Basalt OS</vendor>
+  <vendor_url>https://basalt-os.org</vendor_url>
+
+  <!-- basalt-agent grant: widen a running agent session (one more allowed
+       host, one more directory). Always administrator authentication; the
+       authorization is kept for a few minutes (auth_admin_keep). Agents
+       cannot reach this: no_new_privs and SELinux keep pkexec and the
+       system bus out of their sessions. -->
+  <action id="org.basalt-os.agent.grant">
+    <description>Widen a confined AI agent session</description>
+    <message>Authentication is required to give an AI agent session more access</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/basalt-agent/basalt-agent-grant</annotate>
+  </action>
+</policyconfig>

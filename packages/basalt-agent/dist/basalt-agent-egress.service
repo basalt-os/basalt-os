@@ -1,0 +1,14 @@
+[Unit]
+Description=basalt-agent: session proxy ports reachable on loopback only
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/agents.md
+After=nftables.service firewalld.service
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /usr/share/basalt-agent/basalt-agent.nft
+ExecStop=/usr/sbin/nft delete table inet basalt_agent
+
+[Install]
+WantedBy=multi-user.target

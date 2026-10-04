@@ -1,0 +1,15 @@
+# basalt-agent: the session proxy ports (tcp 47100-47163, SELinux type
+# basalt_agent_proxy_port_t) are the only TCP ports a native-mode agent may
+# connect to. This table makes sure such a connection can only reach the
+# local proxy: the same ports on any other host are dropped and audited
+# (an AUDIT NETFILTER_PKT record naming table basalt_agent; "log level
+# audit" takes no prefix).
+table inet basalt_agent
+delete table inet basalt_agent
+
+table inet basalt_agent {
+	chain output {
+		type filter hook output priority filter; policy accept;
+		oifname != "lo" tcp dport 47100-47163 counter log level audit drop
+	}
+}

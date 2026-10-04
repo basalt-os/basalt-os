@@ -1,0 +1,238 @@
+## <summary>Basalt agent family: shared types and rules for AI agent domains.</summary>
+## <desc>
+##	<p>
+##	Every AI agent domain on Basalt OS (basalt-agent's basalt_agent_t,
+##	the desktop shell's AI client, later ones) calls
+##	basalt_agent_domain_type() and then adds only the access its role needs
+##	from the interfaces below. Agent domains may request, never confirm:
+##	none of these interfaces grants access to credentials, other
+##	projects, the user's runtime sockets or privilege escalation, and the
+##	base module's neverallow rules keep it that way.
+##	</p>
+## </desc>
+
+########################################
+## <summary>
+##	Make a type an agent domain: the family attribute plus the baseline
+##	every agent needs (process basics, reading the system, its own
+##	temporary files). No network, no home, no terminals.
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_domain_type',`
+	gen_require(`
+		attribute basalt_agent_domain;
+		type basalt_agent_tmp_t, basalt_agent_tmpfs_t, passwd_file_t;
+	')
+
+	typeattribute $1 basalt_agent_domain;
+
+	allow $1 self:process { fork sigchld sigkill sigstop signull signal getsched setsched getpgid setpgid getcap getattr setrlimit getsession };
+	allow $1 self:fifo_file rw_fifo_file_perms;
+	allow $1 self:unix_stream_socket { create_stream_socket_perms connectto };
+	allow $1 self:unix_dgram_socket { create_socket_perms sendto };
+	allow $1 self:sem create_sem_perms;
+	allow $1 self:shm create_shm_perms;
+
+	kernel_read_system_state($1)
+	kernel_read_kernel_sysctls($1)
+	dev_read_sysfs($1)
+	dev_read_urand($1)
+	dev_read_rand($1)
+	dev_rw_null($1)
+	dev_rw_zero($1)
+	fs_getattr_xattr_fs($1)
+	fs_getattr_tmpfs($1)
+	fs_search_cgroup_dirs($1)
+	fs_read_cgroup_files($1)
+
+	files_read_etc_files($1)
+	files_read_etc_runtime_files($1)
+	files_read_usr_files($1)
+	files_read_usr_symlinks($1)
+	files_search_var($1)
+	files_search_var_lib($1)
+	libs_use_ld_so($1)
+	libs_use_shared_libs($1)
+	miscfiles_read_localization($1)
+	miscfiles_read_generic_certs($1)
+	allow $1 passwd_file_t:file read_file_perms;
+
+	manage_dirs_pattern($1, basalt_agent_tmp_t, basalt_agent_tmp_t)
+	manage_files_pattern($1, basalt_agent_tmp_t, basalt_agent_tmp_t)
+	manage_lnk_files_pattern($1, basalt_agent_tmp_t, basalt_agent_tmp_t)
+	manage_sock_files_pattern($1, basalt_agent_tmp_t, basalt_agent_tmp_t)
+	manage_fifo_files_pattern($1, basalt_agent_tmp_t, basalt_agent_tmp_t)
+	allow $1 basalt_agent_tmp_t:file { map execute execute_no_trans };
+	files_tmp_filetrans($1, basalt_agent_tmp_t, { dir file lnk_file sock_file fifo_file })
+	files_search_tmp($1)
+
+	manage_dirs_pattern($1, basalt_agent_tmpfs_t, basalt_agent_tmpfs_t)
+	manage_files_pattern($1, basalt_agent_tmpfs_t, basalt_agent_tmpfs_t)
+	allow $1 basalt_agent_tmpfs_t:file map;
+	fs_tmpfs_filetrans($1, basalt_agent_tmpfs_t, { dir file })
+')
+
+########################################
+## <summary>
+##	Execute system programs and shells inside the agent domain (no
+##	domain transitions): what a coding agent needs to run builds and
+##	tests.
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_exec_tools',`
+	gen_require(`
+		type basalt_agent_tool_t;
+	')
+
+	corecmd_exec_bin($1)
+	corecmd_exec_shell($1)
+	corecmd_read_bin_symlinks($1)
+	files_exec_usr_files($1)
+	libs_exec_lib_files($1)
+	libs_exec_ld_so($1)
+
+	# Native-mode agent programs: read and run, never change.
+	list_dirs_pattern($1, basalt_agent_tool_t, basalt_agent_tool_t)
+	read_files_pattern($1, basalt_agent_tool_t, basalt_agent_tool_t)
+	read_lnk_files_pattern($1, basalt_agent_tool_t, basalt_agent_tool_t)
+	allow $1 basalt_agent_tool_t:file { map execute execute_no_trans };
+')
+
+########################################
+## <summary>
+##	Allow the JIT compilers of language runtimes (Node.js, the JVM):
+##	anonymous executable memory.
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_allow_jit',`
+	allow $1 self:process execmem;
+')
+
+########################################
+## <summary>
+##	Read, change and run files of the project directories handed to the
+##	session (the MCS level of the session limits which ones), read the
+##	read-only parts of a project, and traverse the home directory to
+##	reach them.
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_manage_project',`
+	gen_require(`
+		type basalt_agent_project_t, basalt_agent_project_ro_t;
+	')
+
+	userdom_search_user_home_dirs($1)
+	userdom_search_user_home_content($1)
+
+	manage_dirs_pattern($1, basalt_agent_project_t, basalt_agent_project_t)
+	manage_files_pattern($1, basalt_agent_project_t, basalt_agent_project_t)
+	manage_lnk_files_pattern($1, basalt_agent_project_t, basalt_agent_project_t)
+	manage_fifo_files_pattern($1, basalt_agent_project_t, basalt_agent_project_t)
+	manage_sock_files_pattern($1, basalt_agent_project_t, basalt_agent_project_t)
+	allow $1 basalt_agent_project_t:file { map execute execute_no_trans };
+	allow $1 basalt_agent_project_t:dir { watch watch_reads };
+
+	list_dirs_pattern($1, basalt_agent_project_ro_t, basalt_agent_project_ro_t)
+	read_files_pattern($1, basalt_agent_project_ro_t, basalt_agent_project_ro_t)
+	read_lnk_files_pattern($1, basalt_agent_project_ro_t, basalt_agent_project_ro_t)
+')
+
+########################################
+## <summary>
+##	Manage the agent's own home (~/.local/share/basalt-agent/home/PROFILE).
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_manage_home',`
+	gen_require(`
+		type basalt_agent_home_t, config_home_t, data_home_t;
+	')
+
+	userdom_search_user_home_dirs($1)
+	# Path to ~/.local/share/basalt-agent/home: traverse only.
+	userdom_search_user_home_content($1)
+	allow $1 data_home_t:dir search_dir_perms;
+	allow $1 config_home_t:dir search_dir_perms;
+
+	manage_dirs_pattern($1, basalt_agent_home_t, basalt_agent_home_t)
+	manage_files_pattern($1, basalt_agent_home_t, basalt_agent_home_t)
+	manage_lnk_files_pattern($1, basalt_agent_home_t, basalt_agent_home_t)
+	manage_sock_files_pattern($1, basalt_agent_home_t, basalt_agent_home_t)
+	manage_fifo_files_pattern($1, basalt_agent_home_t, basalt_agent_home_t)
+	allow $1 basalt_agent_home_t:file { map execute execute_no_trans };
+')
+
+########################################
+## <summary>
+##	Use the terminal the agent was started from (no TIOCSTI: input
+##	cannot be injected into the terminal).
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_use_terminals',`
+	gen_require(`
+		type user_devpts_t, user_tty_device_t;
+	')
+
+	userdom_use_user_terminals($1)
+	term_use_controlling_term($1)
+	allow $1 user_devpts_t:chr_file ioctl;
+	allowxperm $1 { user_devpts_t user_tty_device_t }:chr_file ioctl ~{ 0x5412 };
+')
+
+########################################
+## <summary>
+##	Connect to the session egress proxies (TCP ports of type
+##	basalt_agent_proxy_port_t). This is the only network access an
+##	agent domain gets; the proxy enforces the per-session allowlist.
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_connect_proxy',`
+	gen_require(`
+		type basalt_agent_proxy_port_t;
+	')
+
+	allow $1 self:tcp_socket create_stream_socket_perms;
+	allow $1 basalt_agent_proxy_port_t:tcp_socket name_connect;
+')
+
+########################################
+## <summary>
+##	For launchers: relabel files to and from the agent file types and
+##	manage session runtime directories.
+## </summary>
+## <param name="domain">
+##	<summary>Domain type.</summary>
+## </param>
+#
+interface(`basalt_agent_launcher',`
+	gen_require(`
+		type basalt_agent_project_t, basalt_agent_project_ro_t, basalt_agent_home_t;
+		type basalt_agent_tool_t, basalt_agent_session_t;
+	')
+
+	relabel_dirs_pattern($1, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t }, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t })
+	relabel_files_pattern($1, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t }, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t })
+	manage_dirs_pattern($1, basalt_agent_session_t, basalt_agent_session_t)
+	manage_files_pattern($1, basalt_agent_session_t, basalt_agent_session_t)
+	manage_sock_files_pattern($1, basalt_agent_session_t, basalt_agent_session_t)
+')

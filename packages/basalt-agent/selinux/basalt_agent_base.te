@@ -1,0 +1,80 @@
+policy_module(basalt_agent_base, 0.1.0)
+
+# Basalt agent family: what every AI agent domain on Basalt OS shares
+# (basalt-agent's command line agents, the desktop shell's AI client and
+# any later one). It declares the attribute that marks an agent domain,
+# the file and port types agents work with, and the rules no agent domain
+# may ever be given (neverallow; checked when the policy is built with
+# expand-check, and by every module compiled against this one).
+#
+# Model: an agent can read and change only what it was handed (a project,
+# its own home), can request changes elsewhere, and a person confirms.
+# Agents never confirm, never escalate, never read credentials.
+#
+# Other modules use the interfaces in basalt_agent_base.if; see
+# docs/agents.md, "SELinux types".
+
+attribute basalt_agent_domain;
+
+# A project directory handed to an agent session. The launcher relabels it
+# with the session's MCS level, so one session cannot open another's.
+type basalt_agent_project_t;
+userdom_user_home_content(basalt_agent_project_t)
+
+# Paths inside a project that run later with the user's full rights
+# (.git/hooks, .git/config): agents may read them, never change them.
+type basalt_agent_project_ro_t;
+userdom_user_home_content(basalt_agent_project_ro_t)
+
+# An agent's own home (configuration, logins, caches),
+# ~/.local/share/basalt-agent/home/PROFILE.
+type basalt_agent_home_t;
+userdom_user_home_content(basalt_agent_home_t)
+
+# Agent programs installed for native mode,
+# ~/.local/share/basalt-agent/tools/PROFILE: read and execute only.
+type basalt_agent_tool_t;
+userdom_user_home_content(basalt_agent_tool_t)
+
+# Temporary files of agents (/tmp, /var/tmp, /dev/shm).
+type basalt_agent_tmp_t;
+userdom_user_tmp_content(basalt_agent_tmp_t)
+type basalt_agent_tmpfs_t;
+files_tmpfs_file(basalt_agent_tmpfs_t)
+
+# A session's runtime directory ($XDG_RUNTIME_DIR/basalt-agent/ID): proxy
+# and control sockets, the container secrets file. Never agent-readable.
+type basalt_agent_session_t;
+userdom_user_tmp_content(basalt_agent_session_t)
+
+# Loopback ports of the session egress proxies (tcp 47100-47163, set by
+# the basalt_agent_ports module). Agent domains connect to these and to
+# nothing else on the network.
+type basalt_agent_proxy_port_t;
+corenet_port(basalt_agent_proxy_port_t)
+
+########################################
+#
+# Never, for any agent domain
+#
+
+gen_require(`
+	type ssh_home_t, gpg_secret_t, home_cert_t, user_home_t, user_tmp_t;
+	type sudo_exec_t, shadow_t, security_t;
+')
+
+# Credentials: SSH keys, GnuPG keys, user certificates, the password database.
+neverallow basalt_agent_domain { ssh_home_t gpg_secret_t home_cert_t }:file { open read map execute };
+neverallow basalt_agent_domain shadow_t:file { open read };
+# The rest of the home and the user's runtime sockets (session bus,
+# keyring, the shell's control socket): the launcher hands over paths by
+# relabeling them, nothing else.
+neverallow basalt_agent_domain { user_home_t user_tmp_t }:file { open read write append };
+neverallow basalt_agent_domain user_tmp_t:sock_file write;
+neverallow basalt_agent_domain self:capability { setuid setgid sys_admin sys_ptrace dac_override dac_read_search fowner chown };
+neverallow basalt_agent_domain sudo_exec_t:file execute;
+neverallow basalt_agent_domain security_t:security { load_policy setenforce setbool };
+# Agents never change their own tools or the session runtime.
+neverallow basalt_agent_domain basalt_agent_tool_t:file { write append };
+neverallow basalt_agent_domain basalt_agent_session_t:file { open read write };
+neverallow basalt_agent_domain basalt_agent_project_ro_t:file { write append };

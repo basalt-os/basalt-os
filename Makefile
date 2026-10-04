@@ -131,13 +131,22 @@ ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwa
 
 # --- system assistant (packages/basalt-assistant) -----------------------------------
 
-.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-llm llm-test eval-rules eval-check lab-eval-capture
+.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-agent agent-test lab-agent-test rpm-llm llm-test eval-rules eval-check lab-eval-capture
 
 rpm-assistant: ## Build only basalt-assistant (+ -selinux, source) into the RPM directory
 	packages/basalt-assistant/build.sh
 
 assistant-test: ## go vet + go test of basalt-assistant in a Fedora container
 	packages/basalt-assistant/build.sh test
+
+rpm-agent: ## Build only basalt-agent (+ -selinux, source) into the RPM directory
+	packages/basalt-agent/build.sh
+
+agent-test: ## go vet + go test of basalt-agent in a Fedora container
+	packages/basalt-agent/build.sh test
+
+lab-agent-test: ## basalt-agent on a lab VM: profiles, container+native modes, escape-test matrix, 0 AVC during allowed work (scripts/lab/agent-test.sh)
+	$(L)/agent-test.sh
 
 lab-assistant-test: ## Assistant on a lab VM: events, proposals, confirmed applies, rollback, confinement (scripts/lab/assistant-test.sh)
 	$(L)/assistant-test.sh

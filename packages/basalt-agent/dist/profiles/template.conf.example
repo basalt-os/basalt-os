@@ -1,0 +1,38 @@
+# Template for a new basalt-agent profile. Copy it to
+# ~/.config/basalt-agent/profiles/NAME.conf (user) or
+# /etc/basalt-agent/profiles/NAME.conf (system), set name = NAME, and keep
+# the egress list as short as the agent allows.
+
+[agent]
+name = myagent
+description = What the agent is
+# Program looked up in PATH: the tool directory (native mode) or the image.
+command = myagent
+# Arguments always passed before the ones given on the command line.
+#args =
+
+[install]
+# npm: npm install of package; pip: a virtual environment with package;
+# none: the program is already in the image or on the system.
+method = npm
+package = example-agent-cli
+# dnf packages for the container image and for native mode.
+packages = nodejs npm git
+
+[env]
+# Plain settings. HOME, PATH, the proxy variables and loader variables are
+# set by basalt-agent and cannot be changed here.
+#EXAMPLE_TELEMETRY = off
+
+[secrets]
+# Variables read from ~/.config/basalt-agent/secrets/NAME.env (mode 0600)
+# or the keyring, and given to one session only.
+env = EXAMPLE_API_KEY
+
+[egress]
+# Names the agent may reach through the session proxy (allowlist format:
+# name, *.suffix, optional :ports, default 443). Everything else is
+# refused and audited.
+allow = api.example.com
+# Shared lists from /usr/share/basalt-agent/egress (registries, github).
+#include = registries

@@ -1,0 +1,3 @@
+; basalt-agent: loopback ports of the session egress proxies (native mode).
+; The type is declared by the basalt_agent_base module.
+(portcon tcp (47100 47163) (system_u object_r basalt_agent_proxy_port_t ((s0) (s0))))
