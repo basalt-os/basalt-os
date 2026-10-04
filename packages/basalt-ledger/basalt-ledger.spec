@@ -37,8 +37,8 @@ English (basalt-ledger, basalt-ledger summary) with filters by agent,
 project, app, severity and time; administrators read everything; signed
 exports serve incident reports, signed with a key the host's TPM holds
 (a software key when there is no TPM). Sealed files are kept for a year
-by default; each removal is recorded in the chain first. A JSON API on the same socket serves the
-desktop shell's timeline.
+by default; each removal is recorded in the chain first. A JSON API on
+the same socket serves the desktop shell's timeline.
 
 %package selinux
 Summary:        SELinux policy for basalt-ledger
