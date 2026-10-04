@@ -240,6 +240,12 @@ func (g *gen) all() error {
 	if a := p.Assistant; a == nil || *a {
 		svcs = append(svcs, assistantServices...)
 	}
+	target := "multi-user.target"
+	if p.Edition == "desktop" {
+		target = "graphical.target"
+	}
+	g.chroot("Boot to "+target+" (the "+p.Edition+" edition)", "systemctl", "set-default", target).Note =
+		"systemd's own default is graphical.target; Anaconda sets multi-user.target for a server (skipx), and so does this"
 	g.chroot("Enable the Basalt services", append([]string{"systemctl", "enable"}, svcs...)...).Note =
 		"the assistant's daemon only diagnoses and proposes; applying a change always needs a confirmation"
 

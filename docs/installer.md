@@ -110,7 +110,9 @@ lists them all. In order:
    and the Basalt repository metadata are signature checked.
 6. System: SELinux enforcing, accounts and SSH keys, the SSH and network
    drop-ins, the `basalt-tools` and tui-tools repositories, the Basalt
-   boot splash, the same services the kickstart enables.
+   boot splash, `multi-user.target` as the default target (what Anaconda
+   sets for a server; systemd's own default is graphical), the same
+   services the kickstart enables.
 7. Boot loader: the ESP stub that points Fedora's signed GRUB at `/boot`,
    `grub2-mkconfig`, a firmware boot entry (the removable-media fallback
    path also holds Fedora's shim).

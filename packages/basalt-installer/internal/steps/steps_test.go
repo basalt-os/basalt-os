@@ -129,6 +129,7 @@ func TestDefaultEncryptedTPM(t *testing.T) {
 			t.Fatalf("dnf command lacks %s", a)
 		}
 	}
+	mustFind(t, list, "systemctl set-default multi-user.target")
 	_, svc := mustFind(t, list, "systemctl enable")
 	for _, u := range []string{"basalt-assistantd", "basalt-initial-snapshot", "sshd", "firewalld", "basalt-audit-rotate.timer"} {
 		if !strings.Contains(svc.Command(), u) {
