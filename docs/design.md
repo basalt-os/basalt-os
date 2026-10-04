@@ -123,7 +123,8 @@ release key; no build host signs them.
 (`createrepo_c`) and signs `repomd.xml` (detached, armored). The OpenBasalt
 release key was created offline ([key-ceremony.md](key-ceremony.md)) and is
 kept out of build hosts. Lab builds use a development key that never leaves
-the lab host.
+the lab host. Publishing to obpkg.org (build, sign, upload) is described
+in [publishing.md](publishing.md).
 
 ## Installer
 
