@@ -162,6 +162,10 @@
         color: var(--muted);
         white-space: nowrap;
       }
+      .live {
+        color: var(--accent-ink);
+        white-space: nowrap;
+      }
       ul {
         padding-left: 1.2rem;
         margin: 0 0 0.85rem;
@@ -225,8 +229,8 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
       <section aria-labelledby="repos">
         <h2 id="repos">Repositories</h2>
         <p>
-          No repository is published yet. Each one will appear at its path below, and this page will carry the setup
-          instructions once it is live.
+          The Basalt OS repository is live. The others will appear at their paths below, and this page will carry their
+          setup instructions once they are live.
         </p>
         <div class="table-wrap">
           <table>
@@ -240,8 +244,11 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
             <tbody>
               <tr>
                 <td><code>/basalt/</code></td>
-                <td>Basalt OS packages. Required, enabled by default.</td>
-                <td class="soon">Coming soon</td>
+                <td>
+                  Basalt OS packages. Required, enabled by default.
+                  Release 44: <code>/basalt/44/x86_64/</code> and <code>/basalt/44/source/</code>.
+                </td>
+                <td class="live">Available</td>
               </tr>
               <tr>
                 <td><code>/basalt-tools/</code></td>
@@ -261,6 +268,36 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section aria-labelledby="use">
+        <h2 id="use">Use it</h2>
+        <p>
+          Basalt OS installs come with the repository preconfigured by the <code>basalt-release</code> package, along
+          with the release key, so there is nothing to set up there.
+        </p>
+        <p>
+          The <code>[basalt]</code> section of <code>/etc/yum.repos.d/basalt.repo</code> as <code>basalt-release</code>
+          ships it:
+        </p>
+        <pre><code>[basalt]
+name=Basalt OS $releasever - $basearch
+baseurl=$basalt_repo_url/$releasever/$basearch/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-basalt
+metadata_expire=6h</code></pre>
+        <p>
+          <code>$basalt_repo_url</code> is a dnf variable read from <code>/etc/dnf/vars/basalt_repo_url</code>, which
+          contains <code>https://obpkg.org/basalt</code>. <code>/etc/pki/rpm-gpg/RPM-GPG-KEY-basalt</code> is the
+          release key above. The same file also defines <code>[basalt-testing]</code>, off by default.
+        </p>
+        <p>
+          Packages are signed by the packages subkey of the release key, with fingerprint
+          <code>3024 61D2 6520 E077 D07F FCA9 AA27 C62C 36CC FC4B</code>. Repository metadata is signed too, in a
+          detached <code>repomd.xml.asc</code> next to each <code>repomd.xml</code>.
+        </p>
       </section>
 
       <section aria-labelledby="mirrors">
