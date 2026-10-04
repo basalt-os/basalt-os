@@ -277,6 +277,22 @@ func writeKey(path, key string) error {
 	return os.WriteFile(path, []byte(key+"\n"), 0o400)
 }
 
+// parseInterspersed parses flags given before or after the positional
+// arguments (`plan validate FILE --offline`, as the usage shows them); the
+// standard flag package stops at the first positional argument.
+func parseInterspersed(fs *flag.FlagSet, args []string) {
+	var pos []string
+	for {
+		_ = fs.Parse(args)
+		if fs.NArg() == 0 {
+			break
+		}
+		pos = append(pos, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+	_ = fs.Parse(pos)
+}
+
 func cmdPlan(args []string) error {
 	if len(args) < 1 {
 		return errors.New("plan template|validate|preview")
@@ -291,7 +307,7 @@ func cmdPlan(args []string) error {
 	case "validate":
 		fs := flag.NewFlagSet("validate", flag.ExitOnError)
 		offline := fs.Bool("offline", false, "do not check against this machine")
-		_ = fs.Parse(args[1:])
+		parseInterspersed(fs, args[1:])
 		if fs.NArg() != 1 {
 			return errors.New("plan validate FILE")
 		}
@@ -320,7 +336,7 @@ func cmdPlan(args []string) error {
 		fs := flag.NewFlagSet("preview", flag.ExitOnError)
 		factsFile := fs.String("facts", "", "machine facts (JSON from `basalt-installer facts`) instead of probing this machine")
 		asJSON := fs.Bool("json", false, "the steps as JSON")
-		_ = fs.Parse(args[1:])
+		parseInterspersed(fs, args[1:])
 		if fs.NArg() != 1 {
 			return errors.New("plan preview FILE")
 		}
@@ -391,6 +407,8 @@ func cmdLog(args []string) error {
 }
 
 func template(disk string) string {
+	// Pad the disk so its comment lines up with the others (column 26).
+	diskField := disk + strings.Repeat(" ", max(18-len(disk), 2))
 	return `# Basalt OS install plan (basalt-install-plan/v1).
 # Every field below shows its default; delete what you do not change.
 # Check it:    basalt-installer plan validate plan.yaml
@@ -399,7 +417,7 @@ func template(disk string) string {
 apiVersion: basalt-install-plan/v1
 edition: server
 target:
-  disk: ` + disk + `        # the whole disk is erased
+  disk: ` + diskField + `# the whole disk is erased
   wipe: true              # must be true
 layout:
   mode: automatic         # automatic | manual (manual: esp_mib, boot_mib, root_gib, subvolumes)

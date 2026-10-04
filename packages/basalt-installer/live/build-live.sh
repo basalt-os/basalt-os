@@ -91,7 +91,7 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
     efisrc="$tree/boot/efi/EFI"
     [ -f "$efisrc/BOOT/BOOTX64.EFI" ] && [ -f "$efisrc/fedora/grubx64.efi" ] || { echo "signed shim/GRUB not found in the tree" >&2; exit 1; }
     # enforcing=1: a live system that cannot load the policy does not boot.
-    cmdline="root=live:CDLABEL=$LABEL rd.live.image rd.live.ram=1 rd.live.overlay.overlayfs=1 enforcing=1 systemd.firstboot=off systemd.getty_auto=0 console=tty0 console=ttyS0,115200n8 $CMDLINE_EXTRA"
+    cmdline="root=live:CDLABEL=$LABEL quiet rd.live.image rd.live.ram=1 rd.live.overlay.overlayfs=1 enforcing=1 systemd.firstboot=off systemd.getty_auto=0 console=tty0 console=ttyS0,115200n8 $CMDLINE_EXTRA"
     sed -e "s|@LABEL@|$LABEL|" -e "s|@VERSION@|$VERSION|g" -e "s|@CMDLINE@|$cmdline|g" -e "s|@TIMEOUT@|$TIMEOUT|" /live/grub.cfg.in >/tmp/grub.cfg
     img="$iso/images/efiboot.img"
     mkfs.vfat -C -n BASALTEFI "$img" 8192 >/dev/null

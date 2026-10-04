@@ -548,6 +548,10 @@ func Bar(f float64, width int, ascii bool) string {
 	return strings.Repeat(full, fill) + strings.Repeat(empty, width-fill)
 }
 
+// progressMinTail is how many output lines the progress view keeps visible
+// even when the command is long.
+const progressMinTail = 4
+
 // View renders the panel filling the area.
 func (p *Progress) View(t theme.Theme, width, height int, ascii bool) string {
 	content := max(width-4, 20)
@@ -558,7 +562,18 @@ func (p *Progress) View(t theme.Theme, width, height int, ascii bool) string {
 		lines = append(lines, styled(ui.Wrap(p.Step, content), t.Base)...)
 	}
 	if p.Command != "" {
-		lines = append(lines, styled(ui.WrapBody("$ "+p.Command, content), t.Command)...)
+		cmd := ui.WrapBody("$ "+p.Command, content)
+		// A long command (the package transaction) must not push the
+		// output and the status off a 24 line console: keep room for a
+		// few output lines and shorten the command to fit.
+		if limit := height - len(lines) - 4 - progressMinTail; len(cmd) > limit && limit >= 1 {
+			last := []rune(cmd[limit-1])
+			if len(last)+2 > content {
+				last = last[:max(content-2, 0)]
+			}
+			cmd = append(cmd[:limit-1:limit-1], string(last)+" …")
+		}
+		lines = append(lines, styled(cmd, t.Command)...)
 	}
 	lines = append(lines, "")
 	room := max(height-len(lines)-3, 1)
