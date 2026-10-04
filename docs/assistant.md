@@ -528,8 +528,11 @@ Anyone can check the same link with standard tools:
 ```sh
 gpg --show-keys --with-subkey-fingerprints /usr/share/basalt/knowledge/openbasalt-release-key.asc
 # compare with the fingerprints above and with the key published at https://obpkg.org/keys/
-gpgv --keyring <(gpg --dearmor </usr/share/basalt/knowledge/openbasalt-release-key.asc) \
+# gpgv needs the key as a binary keyring file (a pipe does not work)
+gpg --dearmor </usr/share/basalt/knowledge/openbasalt-release-key.asc >openbasalt-release-key.gpg
+gpgv --keyring ./openbasalt-release-key.gpg \
      /usr/share/basalt/knowledge/44/manifest.json.sig /usr/share/basalt/knowledge/44/manifest.json
+# must print: Good signature from "OpenBasalt release key <openbasalt@openbasalt.org>"
 sha256sum /usr/share/basalt/knowledge/44/cases.jsonl /usr/share/basalt/knowledge/44/index.bin
 # the two sums are "sha256" and "index_sha256" in manifest.json
 ```
