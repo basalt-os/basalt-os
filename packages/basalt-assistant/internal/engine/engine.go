@@ -84,7 +84,7 @@ func (g *Engine) logf(format string, args ...any) {
 
 // Run starts the watchers and blocks until ctx ends.
 func (g *Engine) Run(ctx context.Context) error {
-	g.logf("basalt-assistantd: watching the journal, disk usage every %s, snapshots every minute (rules backend %s)",
+	g.logf("basalt-assistantd: watching the journal, disk usage every %s, snapshots every minute (decision backend %s)",
 		g.Cfg.DiskInterval, g.Decide.Backend.Name())
 	g.initialScan(ctx)
 

@@ -25,7 +25,7 @@ func TestLoad(t *testing.T) {
 	if _, err := Load(p); err == nil {
 		t.Error("unknown backend accepted")
 	}
-	if c, err := Load(p + ".missing"); err != nil || c.Backend != "rules" {
+	if c, err := Load(p + ".missing"); err != nil || c.Backend != "vsm" {
 		t.Error("missing file must give defaults")
 	}
 }
@@ -35,7 +35,7 @@ func TestShippedConfigLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Backend != "rules" || c.Translator || c.TranslatorEndpoint != "unix:/run/basalt-llm/llm.sock" || c.AllowRemote ||
+	if c.Backend != "vsm" || !c.VSMRequireSignature || c.Translator || c.TranslatorEndpoint != "unix:/run/basalt-llm/llm.sock" || c.AllowRemote ||
 		c.TranslatorPrompt != "auto" || c.WebhookURL != "" || c.NotifyDesktop != "auto" || c.AuditRotateSize != 32<<20 {
 		t.Fatalf("shipped defaults changed: %+v", c)
 	}

@@ -17,7 +17,7 @@
 
 Name:           basalt-vsm-planner
 Version:        %{dsl}.%{planner_build}
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Planner weights of the Basalt OS assistant's VSM decision backend
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -43,8 +43,8 @@ evidence the assistant's diagnosers found. A deterministic guard outside
 the model refuses any pick the evidence does not fully support.
 
 Installed under /usr/share/basalt/vsm-planner. The assistant only reads it
-(SELinux type basalt_knowledge_t); the VSM backend is used only when
-/etc/basalt/assistant.conf selects it.
+(SELinux type basalt_knowledge_t). The VSM backend is the assistant's
+default decision backend.
 
 %prep
 # The build script checked these already; check again in the build root.
@@ -67,6 +67,10 @@ install -Dpm 0644 %{SOURCE3} licenses/LICENSE
 %{_datadir}/basalt/vsm-planner/
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 3.20261004-2
+- Same weights and calibration; the VSM backend is now the assistant's
+  default decision backend (basalt-assistant 0.8.0).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 3.20261004-1
 - Planner for DSL version 3 (code dm), trained on version 5 of its
   training data (each version starts from the previous one: the corrected

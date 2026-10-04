@@ -2,7 +2,9 @@
 
 Status: pre-alpha, milestone 2c. The assistant diagnoses the system and
 proposes fixes without any language model, and explains them in plain,
-friendly English (see How it explains). An optional local model (package
+friendly English (see How it explains). Its decision layer answers with
+VSM, a small diagnosis engine with a signed knowledge index, and falls
+back to deterministic rules (see Decision layer). An optional local model (package
 `basalt-llm`, [local-model.md](local-model.md)) can translate requests in
 natural language into the commands below (`basalt ask`), can answer the
 decision layer's questions, and can write the explanation of a finding in
@@ -430,7 +432,11 @@ application, not the backend, decides what to do.
 | `disk.cause` | choice | snapshots, journal, package_cache, other_data |
 | `route.bigger_model` | boolean | true, false (always false until a model backend exists; logged so the routing seam is visible) |
 
-The first backend, `rules/v1`, is deterministic: each question has a prior
+The default backend is `vsm` (see The VSM backend below); `rules/v1`
+answers the questions VSM does not (severity, notification, routing) and
+every question whenever VSM cannot.
+
+The rules backend, `rules/v1`, is deterministic: each question has a prior
 over its options and rules that multiply options when the diagnosers found
 a feature (for example "the config checker failed" multiplies config_error
 by 30); the product is normalized. The factors are set by hand from lab
@@ -450,13 +456,13 @@ an optional per-question temperature (`[calibration]`). It answers only
 the questions the shared evaluation suite measures (`unit.cause`,
 `avc.class`, `dnf.next`, `disk.cause`); severity, notification and
 routing stay with the rules, and the rules answer, marked `(fallback)`,
-whenever the model fails. The rules stay the default: on the evaluation
-suite they are more accurate than the small models
+whenever the model fails. It is not the default: on the evaluation suite
+the rules are more accurate than the small models
 ([milestone-2b-report.md](milestone-2b-report.md)).
 
-### The VSM backend (optional)
+### The VSM backend (default)
 
-A third backend, `vsm`, answers the same four questions with VSM, a
+The default backend, `vsm`, answers the same four questions with VSM, a
 small diagnosis engine that runs in process (Go, no model server):
 
 - a knowledge index (package `basalt-knowledge`, one per Fedora release,
@@ -564,18 +570,26 @@ The changes proposed were right exactly where the answers were. VSM
 answers as well as the rules in every view and on every set measured,
 and its probabilities match how often it is right far better. Its cost:
 about 4 ms per question, 0.4 MB of memory for the knowledge and the
-planner. The rules stay the default until the owner of the distribution
-switches it.
+planner. On these numbers it became the default backend in
+basalt-assistant 0.8.0, with the knowledge signed by the OpenBasalt
+knowledge subkey.
 
 Whatever the backend, a denial's fix is proposed only when the decision
 is confident in the class the fix was built for (never for a confident
 "unknown"), and a case VSM knows without a verified fix (a port another
 service's type owns) never takes the automatic path.
 
+`basalt-assistant` recommends `basalt-knowledge` and
+`basalt-vsm-planner` (weak dependencies), so a default install has them.
+Without them, or for a Fedora release with no index yet, the rules answer
+and each decision record says why (`fallback_reason`); the daemon's
+start record names the knowledge it loaded (`vsm`) or the reason it could
+not (`vsm_error`). To use the rules only:
+
 ```ini
 # /etc/basalt/assistant.conf
 [decision]
-backend = vsm
+backend = rules
 ```
 
 ## MCP tools

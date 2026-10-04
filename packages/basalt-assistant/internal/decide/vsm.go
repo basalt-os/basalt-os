@@ -16,9 +16,9 @@ import (
 // judges (accept, pick another, abstain), and a deterministic guard
 // outside the model turns a pick the evidence does not fully support into
 // the cautious option. Severity, notification and routing stay with the
-// rules. It is opt-in (decision.backend = vsm); the rules stay the default
-// and answer, marked "(fallback)", whenever the knowledge or the planner
-// cannot be loaded or a question takes too long.
+// rules. It is the default (decision.backend = vsm); the rules answer,
+// marked "(fallback)", whenever the knowledge or the planner cannot be
+// loaded (missing, damaged, unsigned) or a question takes too long.
 //
 // The knowledge (package basalt-knowledge) and the planner weights
 // (package basalt-vsm-planner) are data; they are loaded on the first

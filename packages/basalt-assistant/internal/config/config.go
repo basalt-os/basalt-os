@@ -24,7 +24,7 @@ type Config struct {
 	AuditPath string
 
 	// Decision layer.
-	Backend       string // rules (default) or openai-compatible (a local model; falls back to rules)
+	Backend       string // vsm (default), rules or openai-compatible (a local model); vsm and the model fall back to rules
 	ModelEndpoint string
 	Model         string
 	AllowRemote   bool               // a non-local model endpoint is refused unless set
@@ -94,7 +94,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		StateDir: "/var/lib/basalt-assistant", AuditPath: "/var/log/basalt-assistant/audit.jsonl",
-		Backend: "rules", VSMRequireSignature: true, DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
+		Backend: "vsm", VSMRequireSignature: true, DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
 		TranslatorEndpoint: "unix:/run/basalt-llm/llm.sock", TranslatorPrompt: "auto",
 		HumanizeEndpoint: "unix:/run/basalt-llm/llm.sock", HumanizePrompt: "auto", HumanizeMaxChars: 600,
 		HumanizeTimeout: 30 * time.Second, HumanizeStream: true,

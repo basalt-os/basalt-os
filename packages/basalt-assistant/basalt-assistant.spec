@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.7.0
+Version:        0.8.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -40,9 +40,10 @@ Requires:       diffutils
 Requires:       findutils
 Requires:       coreutils
 Requires:       (%{name}-selinux = %{version}-%{release} if selinux-policy-%{selinuxtype})
-# Data of the optional VSM decision backend (decision.backend = vsm).
-Suggests:       basalt-knowledge
-Suggests:       basalt-vsm-planner
+# Data of the VSM decision backend, the default (decision.backend = vsm).
+# Weak dependencies: without them the rules answer (marked fallback).
+Recommends:     basalt-knowledge
+Recommends:     basalt-vsm-planner
 %{?systemd_requires}
 
 %description
@@ -63,9 +64,12 @@ signed with HMAC-SHA256 (off by default); the journal always has them.
 The audit log is sealed and rotated daily once it is large enough, and its
 hash chain is verified across the rotated files.
 
-With the optional local model service (basalt-llm), `basalt ask` accepts
-requests in English or Portuguese and the decision layer can use the model
-as a backend; neither is enabled by default.
+The decision layer answers its cause and class questions with VSM by
+default: a signed knowledge index (basalt-knowledge) and a small planner
+(basalt-vsm-planner), in process, with deterministic rules as the
+fallback. With the optional local model service (basalt-llm), `basalt ask`
+accepts requests in English or Portuguese and the decision layer can use
+the model as a backend; neither is enabled by default.
 
 %package selinux
 Summary:        SELinux policy module for the Basalt OS system assistant
@@ -167,6 +171,18 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.8.0-1
+- The VSM backend is the default decision backend ([decision] backend =
+  vsm in the shipped assistant.conf and the built-in default). The rules
+  stay the fallback: they answer, marked "(fallback)" with the reason in
+  the decision record, when basalt-knowledge or basalt-vsm-planner is
+  missing or damaged, the knowledge manifest is not signed by the
+  OpenBasalt knowledge subkey, or a question takes more than 2 s.
+  backend = rules keeps the previous behaviour. A modified assistant.conf
+  is kept on upgrade (the new one is saved as assistant.conf.rpmnew).
+- basalt-knowledge and basalt-vsm-planner are weak dependencies
+  (Recommends) instead of suggestions, so a default install has them.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.7.0-1
 - VSM backend speaks DSL 3: the file-permission finding (dac_denied) has
   its own code (dm), oom_killed is in the table; the audit of every

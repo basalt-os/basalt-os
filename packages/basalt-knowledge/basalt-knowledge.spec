@@ -24,7 +24,7 @@
 
 Name:           basalt-knowledge
 Version:        %{fedora_release}.%{knowledge_date}
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Knowledge index of the Basalt OS assistant (VSM backend, Fedora %{fedora_release})
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -52,8 +52,9 @@ from the assistant's closed action set, the checks that confirm the fix,
 the versions where it applies, its provenance and license.
 
 Installed under /usr/share/basalt/knowledge/%{fedora_release}. The
-assistant only reads it (SELinux type basalt_knowledge_t); the VSM backend
-is used only when /etc/basalt/assistant.conf selects it.
+assistant only reads it (SELinux type basalt_knowledge_t). The VSM backend
+is the assistant's default decision backend; it uses this index only when
+the manifest's signature by the OpenBasalt knowledge subkey verifies.
 
 %prep
 # The build script checked these already; check again in the build root.
@@ -79,6 +80,14 @@ install -Dpm 0644 %{SOURCE4} licenses/LICENSE
 %{_datadir}/basalt/knowledge/openbasalt-release-key.asc
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44.20261004-2
+- The same index (ed3e96f5, 39 cases), signed with the OpenBasalt
+  knowledge subkey 85D6 1430 B704 3868 0F6E B955 E79E 4020 605A 659A
+  (manifest.json.sig, 566 bytes); release 1 was only ever built with a
+  lab signature.
+- The VSM backend is now the assistant's default decision backend
+  (basalt-assistant 0.8.0).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44.20261004-1
 - DSL version 3 (code dm: a file-permission error found by the path
   check). 39 cases: kb-unit-dac (mode and owner deny a path: unknown, not
