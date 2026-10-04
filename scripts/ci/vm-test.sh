@@ -323,7 +323,7 @@ st="$(vm 'printf "%s %s %s" "$(systemctl is-enabled basalt-assistantd)" "$(syste
   result FAIL "assistant daemon enabled" "basalt-assistantd / timer: $st"
 dom="$(vm 'ps -eo label,comm | awk "/basalt-assistan/ {print \$1}"' || true)"
 [[ "$dom" == *:basalt_assistant_t:* ]] && result PASS "assistant daemon confined" "$dom" || result FAIL "assistant daemon confined" "${dom:-not running}"
-nt="$(vm 'printf "%s %s" "$(systemctl is-enabled basalt-notify)" "$(systemctl show -p Result --value basalt-notify)"; journalctl -b -u basalt-notify -o cat | tail -1' || true)"
+nt="$(vm 'printf "%s %s" "$(systemctl is-enabled basalt-notify)" "$(systemctl show -p Result --value basalt-notify)"; echo; journalctl -b -u basalt-notify -o cat | grep -m1 "^basalt-notify:"' || true)"
 [[ "$nt" == "enabled success"*"nothing to deliver"* ]] && result PASS "notifications on a server" "basalt-notify enabled, nothing to deliver (no desktop, no webhook)" ||
   result FAIL "notifications on a server" "$nt"
 if vm 'basalt status' >"$LOGS/basalt-status.txt" 2>&1 && grep -q '^SELinux: *Enforcing' "$LOGS/basalt-status.txt"; then
