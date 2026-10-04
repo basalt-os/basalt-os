@@ -6,7 +6,7 @@
     <title>obpkg.org: OpenBasalt packages</title>
     <meta
       name="description"
-      content="obpkg.org is the download domain for OpenBasalt packages: Basalt OS repositories, Samba Conductor packages and the OpenBasalt release key."
+      content="obpkg.org is the download domain for OpenBasalt packages: Basalt OS repositories, OpenBasalt tools and the OpenBasalt release key."
     />
     <link rel="canonical" href="https://obpkg.org/" />
     <meta name="theme-color" content="#14171b" />
@@ -199,7 +199,7 @@
         <h1>obpkg.org</h1>
       </div>
       <p class="lede">
-        The download domain for OpenBasalt packages: the Basalt OS package repositories, Samba Conductor packages
+        The download domain for OpenBasalt packages: the Basalt OS package repositories, OpenBasalt tools
         and the OpenBasalt release key. Everything published here is signed with that key.
       </p>
     </header>
@@ -253,7 +253,8 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
               <tr>
                 <td><code>/basalt-tools/</code></td>
                 <td>
-                  Official OpenBasalt tools for Basalt OS, today Samba Conductor.
+                  Official OpenBasalt tools for Basalt OS and other Fedora-based systems where they apply.
+                  Currently: Samba Conductor.
                   Release 44: <code>/basalt-tools/44/x86_64/</code>.
                 </td>
                 <td class="live">Available</td>
@@ -265,7 +266,7 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
               </tr>
               <tr>
                 <td><code>/apt/</code></td>
-                <td>Samba Conductor packages for Debian and Ubuntu.</td>
+                <td>OpenBasalt packages for Debian and Ubuntu.</td>
                 <td class="soon">Coming soon</td>
               </tr>
             </tbody>
@@ -306,12 +307,16 @@ metadata_expire=6h</code></pre>
       <section aria-labelledby="tools">
         <h2 id="tools">Basalt tools</h2>
         <p>
-          <code>/basalt-tools/</code> carries the official OpenBasalt tools. Today that is
+          <code>/basalt-tools/</code> carries the official OpenBasalt tools for Basalt OS, and for other Fedora-based
+          systems where they apply. More tools will be added over time. Packages are signed by the same packages
+          subkey as <code>/basalt/</code>. There is no source repository; each tool's source lives in its own project.
+        </p>
+        <p>
+          Currently:
           <a href="https://github.com/openbasalt/samba-conductor">Samba Conductor</a>
-          (<a href="https://github.com/openbasalt/samba-conductor-docs">docs</a>): the packages
-          <code>conductor</code>, <code>conductor-idp</code>, <code>conductor-sync</code>,
-          <code>conductor-backup</code> and <code>conductor-files</code>, each with its <code>-selinux</code> policy
-          package. They are signed by the same packages subkey as <code>/basalt/</code>. There is no source repository.
+          (<a href="https://github.com/openbasalt/samba-conductor-docs">docs</a>), as <code>conductor</code>,
+          <code>conductor-idp</code>, <code>conductor-sync</code>, <code>conductor-backup</code> and
+          <code>conductor-files</code>, each with its <code>-selinux</code> policy package.
         </p>
         <p>
           An upcoming <code>basalt-release</code> will enable this repository by default on Basalt OS. Until then, set
@@ -325,7 +330,7 @@ gpgcheck=1
 repo_gpgcheck=1
 gpgkey=https://obpkg.org/keys/openbasalt-release-key.asc
 metadata_expire=6h</code></pre>
-        <p>Then install Samba Conductor:</p>
+        <p>Then install a tool, for example:</p>
         <pre><code>sudo dnf install conductor</code></pre>
         <p>
           Once <code>basalt-release</code> ships the repository, you can turn it off with
