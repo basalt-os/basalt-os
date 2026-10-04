@@ -14,4 +14,8 @@ Filters = [
     'non-standard-dir-perm /var/lib/basalt-assistant',
     # The root command line's policy answers: root-only, never shared with the daemon.
     'non-standard-dir-perm /var/cache/basalt-assistant',
+    # basalt-shell's UI launcher is a PIE with an interpreter but no shared
+    # library (it uses only the Go runtime and syscalls), which rpmlint reads
+    # as static.
+    'statically-linked-binary /usr/libexec/basalt-shell/basalt-shell-ui-launch',
 ]
