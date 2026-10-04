@@ -1,11 +1,13 @@
 # The Basalt OS system assistant
 
-Status: pre-alpha, milestone 2b. The assistant diagnoses the system and
-proposes fixes without any language model. An optional local model
-(package `basalt-llm`, [local-model.md](local-model.md)) can translate
-requests in natural language into the commands below (`basalt ask`) and
-can answer the decision layer's questions; both are off by default and
-nothing below depends on them.
+Status: pre-alpha, milestone 2c. The assistant diagnoses the system and
+proposes fixes without any language model, and explains them in plain,
+friendly English (see How it explains). An optional local model (package
+`basalt-llm`, [local-model.md](local-model.md)) can translate requests in
+natural language into the commands below (`basalt ask`), can answer the
+decision layer's questions, and can write the explanation of a finding in
+its own words (humanize); all three are off by default and nothing below
+depends on them. The assistant's text is in English only for now.
 
 Package: `basalt-assistant` (and `basalt-assistant-selinux`), source in
 `packages/basalt-assistant/` (Go, no third-party modules). The installer
@@ -36,6 +38,93 @@ SELinux policy, snapshots, statfs -> (shared by CLI,   ->  (typed questions,  ->
   desktop notifications and an optional webhook (see Notifications).
 - Only `basalt apply`, run by an administrator, changes anything.
 
+## How it explains
+
+Every finding is written from its structured facts (the cause and the
+values the diagnosers found: unit, file and line, snapshot, port, sizes)
+by fixed templates, in the same order:
+
+```
+[p-1a2b3c] nginx.service stopped: configuration error
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  nginx.service is not running because of a mistake in /etc/nginx/nginx.conf
+  (line 47). The configuration check nginx -t says: unknown directive
+  "bogus_directive" in /etc/nginx/nginx.conf:47. If you apply it, the
+  assistant will put back the copy of /etc/nginx/nginx.conf from snapshot 27
+  and then restart nginx.service.
+
+What will run (exactly these commands, as root, in this order)
+  $ cp --preserve=mode,ownership,timestamps /.snapshots/27/snapshot/etc/nginx/nginx.conf /etc/nginx/nginx.conf
+  $ restorecon -v /etc/nginx/nginx.conf
+  $ systemctl restart nginx.service
+
+Risk: medium (replaces the current /etc/nginx/nginx.conf).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm 3c140f0a)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - ...
+```
+
+- One paragraph says what is wrong, the main evidence, and what applying
+  will do. Commands, paths and values are never reworded: the commands
+  are rebuilt from the typed actions into their own block.
+- Risk is the highest level of the planned actions (low: a relabel to the
+  policy default, a restart, a package cache clean; medium: a lasting
+  SELinux rule, label or boolean, a restored configuration file, a journal
+  vacuum; high: a rollback, deleting a snapshot), with the reason.
+- Undo says what the snapshots taken by `basalt apply` give back and what
+  they do not: files on the data subvolumes (`/srv`, `/home`, `/var/log`
+  and the others), a deleted snapshot, vacuumed journal files.
+- Length follows severity: a running unit or a disk below its thresholds
+  is two lines; a report without a change has no command block; evidence
+  is capped at 8 lines for warnings and 25 for failures (`--verbose`
+  shows all of it and the decisions behind the proposal, which are also
+  shown when a proposal needs review).
+- `basalt status`, `basalt disk`, `basalt snapshots`, `basalt pending` and
+  the apply flow use the same plain wording; `--json` is unchanged.
+
+The templates live in `internal/explain` (wording, risk, undo) and
+`internal/report` (layout); golden files in
+`internal/report/testdata/golden` and `internal/cli/testdata/golden` pin
+every kind of finding (`go test ./internal/report -update` rewrites
+them after a deliberate change).
+
+### Humanize (optional)
+
+With `[humanize] enabled = yes` a language model writes the explanation
+paragraph in its own words, and only that paragraph. The model receives
+the facts and the planned actions as JSON (never command lines); the
+template keeps the title, the command block, the risk, the undo, the
+apply line and the evidence. The model's text is kept only if it passes a
+faithfulness check, otherwise the template's paragraph is shown with a
+note:
+
+- every number (in digits or words), path, file name, unit name, SELinux
+  type or boolean, and proposal id must appear in the facts;
+- no command word (`systemctl`, `semanage`, `dnf`, `rm`, `sudo` and the
+  others) unless the facts hold it, no shell or markup characters, no
+  address or URL, no advice the assistant never gives (disabling SELinux,
+  permissive mode, `audit2allow`);
+- it must name the unit it is about, use Latin script, and stay under
+  `max_chars` (600 by default).
+
+On a terminal, accepted sentences are shown as they arrive: each sentence
+is checked before it is printed, and the first one that fails stops the
+model. `basalt apply` always shows the template, and so do `--json`,
+`--plain`, the daemon's journal and the MCP server. Each humanized text is
+recorded in the audit log (`humanize`: accepted or not, the problems found,
+the time taken). The endpoint may be the local model service, a bigger
+local server or, by explicit opt-in, a remote provider; see
+[local-model.md](local-model.md).
+
 ## Commands
 
 Read-only, no confirmation:
@@ -52,6 +141,10 @@ Read-only, no confirmation:
 | `basalt audit [N]`, `basalt audit verify` | the audit log and its hash chain, checked across rotated files |
 | `basalt ask "REQUEST"` | (optional, needs the local model) the request translated into one of the commands above, which then runs; a change (apply, rollback) is only printed, see [local-model.md](local-model.md) |
 
+Options: `--json` (machine-readable output), `--verbose` (all evidence and
+the decisions), `--plain` (the template text even with humanize on),
+`--config FILE`.
+
 Changes (root):
 
 | Command | Change |
@@ -62,7 +155,6 @@ Changes (root):
 | `basalt snapshots rollback N` or `--before ID` | proposes and runs `basalt-rollback N`; `--before` uses the snapshot `basalt apply` took before proposal ID |
 | `basalt why UNIT --apply`, `basalt fix selinux --apply`, `basalt disk --apply` | store the proposal and go straight to the confirmation |
 
-`--json` gives machine-readable output for every read command.
 
 ## Proposals are typed actions
 
@@ -174,7 +266,8 @@ that same argv, no shell) and is adapted from tui-kit's runner (MIT).
 
 `/var/log/basalt-assistant/audit.jsonl`, one JSON record per line:
 sequence number, time, type (`decision`, `finding`, `proposal`, `confirm`,
-`decline`, `refuse`, `apply`, `ignore`, `suppress`, `start`, `stop`, `ask`), actor
+`decline`, `refuse`, `apply`, `ignore`, `suppress`, `start`, `stop`, `ask`,
+`humanize`), actor
 (program, uid, login uid, sudo user), text, data, the previous record's
 hash and its own SHA-256. Editing, removing or reordering a record breaks
 the chain (`basalt audit verify`). The file is root-owned, mode 0600, and
@@ -329,8 +422,9 @@ suite they are more accurate than the small models
 | `basalt_status`, `basalt_why_unit`, `basalt_selinux_denials`, `basalt_disk`, `basalt_snapshots`, `basalt_snapshot_diff`, `basalt_pending`, `basalt_proposal`, `basalt_audit_tail` | read (annotated read-only) |
 | `basalt_propose_unit_fix`, `basalt_propose_selinux_fix`, `basalt_propose_rollback`, `basalt_propose_disk_cleanup`, `basalt_propose_action` | store a proposal and return its id and commands |
 
-No tool executes a change. The confirmation code is not returned to the
-client: the person reads it from `basalt show ID` or `basalt apply ID`.
+No tool executes a change. The confirmation code is never returned to the
+client, by any tool (`basalt_proposal` included): the person reads it from
+`basalt show ID` or `basalt apply ID`.
 `basalt_propose_action` lets a client propose any action of the closed set;
 it is always marked for review. The MCP server runs in the confined
 domain: a file restore or a rollback it is asked for is stored as a hint
@@ -370,7 +464,9 @@ as a second, independent fence.
 ## Configuration
 
 `/etc/basalt/assistant.conf` (INI): decision backend, thresholds and
-calibration, the translator (`[translator]`: enabled, endpoint, prompt), disk
+calibration, the translator (`[translator]`: enabled, endpoint, prompt), the
+humanize layer (`[humanize]`: enabled, endpoint, model, allow_remote,
+api_key_file, prompt, max_chars, timeout, stream), disk
 thresholds (warn 85 %, critical 95 %, what counts as large), event timings
 (dedup window, hourly limit, disk interval, settle times), the audit log
 rotation size (`[audit]`) and notifications (`[notify]`). Restart the

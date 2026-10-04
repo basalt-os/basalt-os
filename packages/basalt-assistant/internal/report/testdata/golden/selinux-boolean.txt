@@ -1,0 +1,24 @@
+[p-1a2b3c] SELinux blocked httpd_t (name_connect) on tcp port 8080: a boolean is off
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  SELinux blocked httpd_t because the boolean httpd_can_network_relay that
+  allows this is off. SELinux denied httpd_t the name_connect permission on
+  tcp port 8080 (labeled http_port_t), 6 times. If you apply it, the assistant
+  will turn the SELinux boolean httpd_can_network_relay on.
+
+What will run (exactly these commands, as root, in this order)
+  $ setsebool -P httpd_can_network_relay on
+
+Risk: medium (changes what the SELinux policy allows, for every program the
+boolean covers).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm 8f861434)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - raw: avc:  denied  { name_connect } for comm="nginx" scontext=system_u:system_r:httpd_t:s0

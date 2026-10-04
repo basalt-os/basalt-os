@@ -1,19 +1,24 @@
 # The optional local language model
 
-Status: pre-alpha, milestone 2b, off by default. Measurements and the
-reasoning behind the defaults: [milestone-2b-report.md](milestone-2b-report.md).
+Status: pre-alpha, milestone 2c, off by default. Measurements and the
+reasoning behind the defaults: [milestone-2b-report.md](milestone-2b-report.md)
+(translator, decision backend) and [milestone-2c-report.md](milestone-2c-report.md)
+(humanize).
 
 The system assistant ([assistant.md](assistant.md)) works without any
 language model. A small model, running on the machine's CPU with no
-network access, can be added for two things:
+network access, can be added for three things:
 
-1. `basalt ask "..."`: a request in natural language (English, Brazilian
-   Portuguese, or a mix) is translated into one `basalt` command;
+1. `basalt ask "..."`: a request in natural language is translated into
+   one `basalt` command (the assistant answers in English; the translator
+   was also trained on Brazilian Portuguese requests);
 2. a model backend for the decision layer (`[decision] backend =
    openai-compatible`): the model answers the bounded questions the rules
-   answer today, with a probability per option.
+   answer today, with a probability per option;
+3. humanize (`[humanize] enabled = yes`): the model writes the explanation
+   of a finding in its own words, from the finding's facts only (below).
 
-Neither gives the model any power. It returns text constrained by a schema,
+None gives the model any power. It returns text constrained by a schema,
 the assistant validates and checks it, and every change still goes
 through `basalt apply` with its preview, confirmation, snapshots and audit
 record.
@@ -40,7 +45,7 @@ basalt-llm-fetch --list                   # also says what MODEL=auto picks here
 sudo basalt-llm-fetch auto                # downloads it, verifies the SHA-256
 sudo systemctl enable --now basalt-llm
 sudoedit /etc/basalt/assistant.conf       # [translator] enabled = yes
-basalt ask "por que o nginx caiu?"
+basalt ask "why did nginx stop?"
 ```
 
 Until the fine-tuned translators are published (below), `basalt-llm-fetch
@@ -133,14 +138,14 @@ A file installed by hand has no checksum to verify against;
 ## basalt ask
 
 ```
-$ basalt ask "por que o nginx caiu?"
+$ basalt ask "why did nginx stop?"
 Understood as: basalt why nginx
 (the normal report of `basalt why nginx` follows)
 
-$ basalt ask "aplica a p-97dfa5"
+$ basalt ask "apply p-97dfa5"
 Understood as: basalt apply p-97dfa5
-This changes the system, so it is not run from a request in natural language.
-Run it yourself to see the exact commands and confirm them:
+That would change the system, so I don't run it from a request in your own words.
+Run it yourself: you will see the exact commands and confirm them.
   sudo basalt apply p-97dfa5
 ```
 
@@ -195,6 +200,90 @@ The rules remain the default: on the shared evaluation suite they were
 more accurate than every untuned model measured, and a model answer costs
 seconds where the rules cost microseconds. The backend is there to
 measure and compare models (yours included) with `basalt-eval decide`.
+
+## Humanize: the model writes the explanation
+
+```ini
+[humanize]
+enabled = yes
+endpoint = unix:/run/basalt-llm/llm.sock   # the default
+#model =
+#prompt = auto        # compact for basalt-render-* models, full instructions otherwise
+#max_chars = 600
+#timeout = 30s
+#stream = yes
+```
+
+The model gets one finding as JSON: its kind and cause, the values the
+diagnosers found (unit, file, line, snapshot, port, sizes) and the planned
+changes as typed actions with their parameters. It writes only the
+explanation paragraph; the template keeps everything that can be acted on
+(commands, risk, undo, the apply line). Its text is kept only if every
+number, path, file name, unit, SELinux type or boolean and proposal id in
+it is in the facts, it has no command word, markup, address or forbidden
+advice, it names the unit, and it stays under `max_chars`; otherwise the
+template's paragraph is shown ([assistant.md](assistant.md#humanize-optional)).
+Code quotes and bold around names are removed before the check; the names
+inside are still checked. The same rules apply to every model, local or
+remote, small or large.
+
+The local model service serves one model at a time: the translator and
+humanize share it. For both at once, run humanize against a second server
+(below) or keep the translator off.
+
+### Bigger or remote models
+
+Any OpenAI-compatible endpoint works:
+
+| Endpoint | Example | Notes |
+|---|---|---|
+| the local service | `unix:/run/basalt-llm/llm.sock` | default; no network |
+| a bigger local server | `http://127.0.0.1:8080/v1` (llama.cpp, Ollama, vLLM) | loopback only, no key |
+| a remote provider | a hosted API or a self-hosted server on another machine | opt-in, below |
+
+A remote endpoint is refused unless the person opts in:
+
+```ini
+[humanize]
+enabled = yes
+endpoint = https://api.example.com/v1
+model = their-model-name                   # required for a remote endpoint
+allow_remote = yes
+api_key_file = /etc/basalt/humanize.key    # root-only; sent only to that endpoint
+```
+
+For a remote endpoint:
+
+- secrets, tokens, keys (key=value secrets, bearer tokens, private key
+  blocks, long random strings), e-mail addresses, IP addresses and user
+  names in home directory paths are replaced by `[redacted]` in the facts
+  before they are sent; unit names, system paths, SELinux types, numbers
+  and package names stay, because they are what the text is about;
+- the full request body is printed before it leaves the machine (the key
+  travels in an `Authorization` header and is never printed or logged);
+- a text that repeats a redacted marker is rejected;
+- llama.cpp-only request options are left out (hosted APIs refuse unknown
+  parameters);
+- the audit record of each humanized text says that the endpoint was
+  remote and how many values were redacted.
+
+Without `allow_remote = yes`, or without a model name, the assistant
+prints the template with a note on stderr; nothing is sent.
+`internal/explain` has a test that runs the whole path against a mock
+OpenAI-compatible server under a remote name: redaction, the request
+shown, the key in the header only, streaming, and the fallback.
+
+### A model trained for it
+
+`basalt-render-0.6b-q8_0` and `basalt-render-1.7b-q8_0` are Qwen 3 models
+fine-tuned (LoRA) on fact and prose pairs made by `basalt-eval
+render-data`: facts sampled from fixed pools, prose from the assistant's
+own templates with random equivalent phrasings (no third-party text).
+Training: `eval/tools/train-render-lora.py`. Like the fine-tuned
+translators they are not published yet; in a lab, install a GGUF you
+built as shown above and set `MODEL` to its path. Measurements and the
+recommendation (templates stay the default):
+[milestone-2c-report.md](milestone-2c-report.md).
 
 ## Confinement
 

@@ -20,6 +20,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/explain"
 )
 
 // Statuses.
@@ -36,15 +37,19 @@ const DefaultDir = "/var/lib/basalt-assistant/proposals"
 
 // Proposal is one finding with its proposed change.
 type Proposal struct {
-	ID       string          `json:"id"`
-	Created  time.Time       `json:"created"`
-	Updated  time.Time       `json:"updated"`
-	Source   string          `json:"source"` // daemon, cli, mcp
-	Kind     string          `json:"kind"`   // unit, selinux, disk, dnf, snapshot
-	Subject  string          `json:"subject"`
-	Key      string          `json:"key"` // dedup key
-	Title    string          `json:"title"`
-	Report   string          `json:"report"`
+	ID      string    `json:"id"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	Source  string    `json:"source"` // daemon, cli, mcp
+	Kind    string    `json:"kind"`   // unit, selinux, disk, dnf, snapshot
+	Subject string    `json:"subject"`
+	Key     string    `json:"key"` // dedup key
+	Title   string    `json:"title"`
+	Report  string    `json:"report"`
+	// Facts are the structured facts the text is written from (package
+	// explain); proposals stored before they existed have none and show
+	// Report instead.
+	Facts    *explain.Facts  `json:"facts,omitempty"`
 	Evidence []string        `json:"evidence,omitempty"`
 	Actions  []action.Action `json:"actions,omitempty"`
 	// Hints are changes the confined view may not propose (a file restore

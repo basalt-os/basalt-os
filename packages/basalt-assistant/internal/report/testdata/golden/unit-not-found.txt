@@ -1,0 +1,16 @@
+[p-1a2b3c] ngnix.service stopped: no such unit
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  There is no unit called ngnix.service on this system.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Check the name; systemctl list-units shows the units that exist.
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+
+How sure the assistant is
+  - unit.cause: unknown, 0.90 (threshold 0.75, rules/v1)

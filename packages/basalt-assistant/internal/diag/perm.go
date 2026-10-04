@@ -328,6 +328,10 @@ func (e *Env) unitOOM(ctx context.Context, rep *UnitReport, window time.Time) {
 }
 
 // memValue renders a byte count from systemctl show in binary units.
+// MemValue renders a systemd memory property (bytes) in binary units;
+// other values (infinity) are returned as they are.
+func MemValue(v string) string { return memValue(v) }
+
 func memValue(v string) string {
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n < 0 {

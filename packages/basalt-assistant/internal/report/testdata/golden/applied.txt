@@ -1,0 +1,19 @@
+[p-1a2b3c] worker.service stopped: crashed
+Applied, found by basalt on 2026-10-04 10:15 UTC
+
+  worker.service crashed. systemd recorded the result exit-code. If you apply
+  it, the assistant will restart worker.service.
+
+The commands of this proposal
+  $ systemctl restart worker.service
+
+Next step
+  A restart is proposed to bring it back, but the crash itself still needs a
+  look.
+  Undo it:    sudo basalt snapshots rollback --before p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+
+How sure the assistant is
+  - unit.cause: crashed, 0.90 (threshold 0.75, rules/v1)

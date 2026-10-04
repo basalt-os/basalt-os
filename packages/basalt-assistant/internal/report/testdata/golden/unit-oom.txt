@@ -1,0 +1,22 @@
+[p-1a2b3c] worker.service stopped: out of memory
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  worker.service ran out of memory and was stopped by the kernel. It reached
+  its memory limit (MemoryMax=256.0 MiB).
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  A plain restart would most likely end the same way, so none is proposed.
+  Check how much memory it uses and its limits; raise the limit if it is too
+  low, otherwise find out why it needs so much.
+  Commands you may run yourself:
+    $ systemctl show worker.service -p MemoryMax,MemoryHigh,MemorySwapMax,MemoryPeak
+    $ sudo systemctl set-property worker.service MemoryMax=SIZE
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+
+How sure the assistant is
+  - unit.cause: crashed, 0.90 (threshold 0.75, rules/v1)

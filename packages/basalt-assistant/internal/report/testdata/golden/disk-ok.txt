@@ -1,0 +1,6 @@
+[p-1a2b3c] root file system 42 % full
+
+  The root file system is 42 % full.
+
+Next step
+  Nothing to do.

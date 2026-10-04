@@ -3,6 +3,7 @@ package diag
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,7 +50,7 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 	s := Status{Pending: pending, OS: e.osRelease()}
 	s.SELinux = strings.TrimSpace(e.R.Read(ctx, "getenforce").Out)
 	if s.SELinux != "Enforcing" {
-		s.Problems = append(s.Problems, "SELinux is "+orDash(s.SELinux)+", not Enforcing")
+		s.Problems = append(s.Problems, "SELinux is "+orDash(s.SELinux)+", not Enforcing, so it is not protecting the system")
 	}
 	res := e.R.Read(ctx, "systemctl", "list-units", "--failed", "--plain", "--no-legend", "--no-pager")
 	for _, l := range strings.Split(res.Out, "\n") {
@@ -58,29 +59,31 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 		}
 	}
 	if len(s.FailedUnits) > 0 {
-		s.Problems = append(s.Problems, fmt.Sprintf("%d failed unit(s): %s (basalt why <unit>)", len(s.FailedUnits), strings.Join(s.FailedUnits, " ")))
+		for _, u := range s.FailedUnits {
+			s.Problems = append(s.Problems, u+" has failed. See why: basalt why "+u)
+		}
 	}
 	s.Denials24h = len(e.CollectAVCs(ctx, e.now().Add(-24*time.Hour)))
 	if s.Denials24h > 0 {
-		s.Problems = append(s.Problems, fmt.Sprintf("%d SELinux denial(s) in 24 h (basalt fix selinux)", s.Denials24h))
+		s.Problems = append(s.Problems, fmt.Sprintf("SELinux blocked something %s in the last 24 hours. See what: basalt fix selinux --since 24h", times(s.Denials24h)))
 	}
 	if st, err := e.Statfs("/"); err == nil {
 		s.Disk, s.DiskPct = st, st.UsedPct()
 		if s.DiskPct >= DefaultDiskThresholds.WarnPct {
-			s.Problems = append(s.Problems, fmt.Sprintf("root file system %.0f %% full (basalt disk)", s.DiskPct))
+			s.Problems = append(s.Problems, fmt.Sprintf("The root file system is %.0f %% full. See what uses it: basalt disk", s.DiskPct))
 		}
 	}
 	snaps := e.Snapshots(ctx)
 	s.Snapshots = len(snaps)
 	if len(snaps) > 0 {
 		last := snaps[len(snaps)-1]
-		s.LastSnapshot = fmt.Sprintf("%d %s %s %q", last.Number, last.Type, last.Date, last.Description)
+		s.LastSnapshot = fmt.Sprintf("%d (%s, %s, %q)", last.Number, last.Date, last.Type, last.Description)
 	}
 	for _, o := range OrphanPre(snaps, e.now(), 10*time.Minute) {
 		s.OrphanPre = append(s.OrphanPre, o.Number)
 	}
 	if len(s.OrphanPre) > 0 {
-		s.Problems = append(s.Problems, fmt.Sprintf("unfinished package transaction(s) after pre snapshot %v", s.OrphanPre))
+		s.Problems = append(s.Problems, fmt.Sprintf("A package transaction did not finish (snapshot %s has no matching post snapshot). See: basalt snapshots", joinInts(s.OrphanPre)))
 	}
 	s.RollbackState = "none"
 	if !e.Confined {
@@ -88,12 +91,34 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 		root := strings.TrimSpace(e.R.Read(ctx, "btrfs", "inspect-internal", "rootid", "/").Out)
 		if f := strings.Fields(def); len(f) >= 2 && root != "" && f[1] != root {
 			s.RollbackState = "pending: reboot to use the rolled-back root"
-			s.Problems = append(s.Problems, "a rollback is pending until the next boot")
+			s.Problems = append(s.Problems, "A rollback is waiting: it takes effect at the next boot")
 		}
 	}
 	s.Daemon = strings.TrimSpace(e.R.Read(ctx, "systemctl", "is-active", "basalt-assistantd.service").Out)
 	if pending > 0 {
-		s.Problems = append(s.Problems, fmt.Sprintf("%d pending proposal(s) (basalt pending)", pending))
+		s.Problems = append(s.Problems, fmt.Sprintf("%s waiting for your decision. See: basalt pending", plural(pending, "proposal is", "proposals are")))
 	}
 	return s
+}
+
+func times(n int) string {
+	if n == 1 {
+		return "once"
+	}
+	return fmt.Sprintf("%d times", n)
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+func joinInts(ns []int) string {
+	var ss []string
+	for _, n := range ns {
+		ss = append(ss, strconv.Itoa(n))
+	}
+	return strings.Join(ss, ", ")
 }

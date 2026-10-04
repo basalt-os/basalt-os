@@ -1,0 +1,27 @@
+[p-1a2b3c] SELinux blocked httpd_t (write) on /srv/app/logs: no label rule for this place
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  SELinux blocked httpd_t from using /srv/app/logs because no rule labels that
+  place for it. SELinux denied httpd_t the write permission on /srv/app/logs
+  (labeled var_t), 4 times. It is labeled var_t, a type httpd_t may not use;
+  httpd_log_t is a type it may use. If you apply it, the assistant will add a
+  rule that labels /srv/app/logs and everything below it as httpd_log_t
+  (relabeling the files already there).
+
+What will run (exactly these commands, as root, in this order)
+  $ semanage fcontext -a -t httpd_log_t '/srv/app/logs(/.*)?'
+  $ restorecon -Rv /srv/app/logs
+
+Risk: medium (adds a lasting SELinux rule for /srv/app/logs).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot. Note: the labels
+of files under /srv are on a separate volume and stay as they are.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm f381c3f8)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - raw: avc:  denied  { write } for comm="nginx" scontext=system_u:system_r:httpd_t:s0

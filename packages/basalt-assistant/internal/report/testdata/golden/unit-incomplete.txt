@@ -1,0 +1,20 @@
+[p-1a2b3c] nginx.service stopped: blocked by SELinux
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  nginx.service is not running because SELinux blocked something it needs.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  The diagnosis is incomplete (sesearch: policy busy after 10 attempts), so
+  nothing is proposed. Run it again in a moment.
+  Commands you may run yourself:
+    $ basalt why nginx.service
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - error: sesearch: policy busy after 10 attempts
+
+How sure the assistant is
+  - unit.cause: selinux_denial, 0.95 (threshold 0.75, rules/v1)

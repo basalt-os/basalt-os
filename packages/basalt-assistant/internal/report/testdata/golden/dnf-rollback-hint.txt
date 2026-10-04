@@ -1,0 +1,24 @@
+[p-1a2b3c] package transaction failed: dnf install basalt-lab-postfail
+Waiting for confirmation as root, found by the background service on 2026-10-04 10:15 UTC
+
+  The package transaction "dnf install basalt-lab-postfail" failed after it
+  had already changed packages. Snapshot 41 was taken just before it. The
+  package that failed is basalt-lab-postfail-1-1.noarch. Once confirmed,
+  applying it would make snapshot 41 the root from the next boot.
+
+Suggested change (a hint, not yet a proposal you can apply)
+  Why: snapshot 41 was taken just before the failed transaction.
+  $ basalt-rollback --yes 41
+
+Next step
+  The background service cannot compare the packages inside snapshots, so
+  confirm it as root first: the assistant then shows exactly what a rollback
+  changes.
+  Confirm it as root: sudo basalt confirm p-1a2b3c
+  (the assistant checks the snapshot and turns the hint into a proposal you can apply)
+
+Evidence
+  - dnf5.log: 2026-10-04T09:12:03-0300 [rpm] WARNING scriptlet failed, exit status 1
+
+How sure the assistant is
+  - dnf.next: rollback, 0.90 (threshold 0.75, rules/v1)

@@ -1,0 +1,21 @@
+[p-1a2b3c] basalt-lab-noconf.service stopped: missing file
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  basalt-lab-noconf.service failed because a file it needs does not exist. Its
+  log says: cat: /etc/basalt-lab/missing.conf: No such file or directory.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Create or restore the missing file, then start basalt-lab-noconf.service
+  again.
+  Commands you may run yourself:
+    $ sudo systemctl restart basalt-lab-noconf.service
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - journal: 19:05:49 cat: /etc/basalt-lab/missing.conf: No such file or directory
+
+How sure the assistant is
+  - unit.cause: missing_file, 0.88 (threshold 0.75, rules/v1)

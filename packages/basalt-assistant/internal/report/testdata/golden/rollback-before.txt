@@ -1,0 +1,25 @@
+[p-1a2b3c] roll back to snapshot 52 (2026-10-04 10:40:12, "basalt apply p-9f8e7d")
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  This undoes p-9f8e7d: it returns the system to snapshot 52, taken just
+  before p-9f8e7d was applied. Compared with now, the packages are the same; 3
+  files differ. If you apply it, the assistant will make snapshot 52 the root
+  from the next boot.
+
+What will run (exactly these commands, as root, in this order)
+  $ basalt-rollback --yes 52
+
+Risk: high (the whole system, but not your data, goes back to an earlier state
+at the next boot).
+Undo: your current system stays as a snapshot, so you can return to it the
+same way (basalt snapshots lists them).
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm a57b8922)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - packages after rollback: 0 added, 0 removed, 0 changed (relative to now)
+  - files that differ: 3
+      c..... /etc/nginx/nginx.conf

@@ -1,0 +1,23 @@
+[p-1a2b3c] basalt-lab-appconf.service stopped: configuration error
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  basalt-lab-appconf.service is not running because of a mistake in its
+  configuration. The service log says: config error: invalid value maybe for
+  option debug in /etc/basalt-lab/app.conf line 3.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  No snapshot has a working copy of the file, so fix it by hand and then
+  restart basalt-lab-appconf.service.
+  Commands you may run yourself:
+    $ sudo systemctl restart basalt-lab-appconf.service
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - journal: 19:05:37 config error: invalid value maybe for option debug in /etc/basalt-lab/app.conf line 3
+  - journal: 19:05:37 basalt-lab-appconf.service: Failed with result 'exit-code'.
+
+How sure the assistant is
+  - unit.cause: config_error, 0.90 (threshold 0.75, rules/v1)

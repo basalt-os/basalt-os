@@ -1,0 +1,21 @@
+[p-1a2b3c] basalt-lab-dac.service stopped: file permissions
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  basalt-lab-dac.service cannot use a file it needs because of the file
+  permissions. /srv/lab/data has mode 0700 and belongs to root, but the
+  service runs as nobody (uid 65534), which may not search it.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Fix the owner or mode of that path, or the User= and Group= of the unit.
+  Nothing is changed automatically.
+  Commands you may run yourself:
+    $ sudo systemctl restart basalt-lab-dac.service
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+
+How sure the assistant is
+  - unit.cause: unknown, 0.50 (threshold 0.75, rules/v1)

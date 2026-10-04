@@ -1,0 +1,10 @@
+    #  date (UTC)           kind    what it was taken for
+    1  2026-10-01 12:00:00  single  first root filesystem
+   30  2026-10-04 09:11:58  before  dnf install htop
+   31  2026-10-04 09:12:00  after   dnf install htop (pairs with 30)
+   32  2026-10-04 09:40:00  before  basalt apply p-1a2b3c  [proposal p-1a2b3c]
+   41  2026-10-04 10:00:00  before  dnf install basalt-lab-broken
+
+A package transaction did not finish: snapshot 41 has no matching "after" snapshot.
+
+Compare one with now: basalt snapshots diff N.   Go back to one: sudo basalt snapshots rollback N

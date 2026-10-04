@@ -1,0 +1,21 @@
+[p-1a2b3c] root file system 88 % full: large journal
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  The root file system is 88 % full. The system journal uses 1.6 GiB. At the
+  current rate it will be full in about 3 days. If you apply it, the assistant
+  will shrink the archived journal files to 200M.
+
+What will run (exactly these commands, as root, in this order)
+  $ journalctl --vacuum-size=200M
+
+Risk: medium (old log entries are deleted).
+Undo: deleted journal files cannot be brought back.
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm e0702bdb)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - / is 96 % full
+  - snapshot 12 (2026-09-30 08:00:01 "before upgrade") holds 2.8 GiB exclusively

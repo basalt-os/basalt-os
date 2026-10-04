@@ -1,0 +1,18 @@
+[p-1a2b3c] SELinux blocked httpd_t (read) on /etc/shadow: looks deliberate
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  SELinux stopped httpd_t from touching /etc/shadow, which is security
+  sensitive. This looks like the policy doing its job. SELinux denied httpd_t
+  the read permission on /etc/shadow (labeled shadow_t).
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Do not loosen the policy. Find out why the program tried this.
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - raw: avc:  denied  { read } for comm="nginx" scontext=system_u:system_r:httpd_t:s0
+
+How sure the assistant is
+  - avc.class: suspicious, 0.92 (threshold 0.75, rules/v1)

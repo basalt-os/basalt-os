@@ -1,0 +1,25 @@
+[p-1a2b3c] SELinux blocked httpd_t (read) on /usr/share/nginx/html/index.html: wrong file label
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  SELinux blocked httpd_t from using /usr/share/nginx/html/index.html because
+  it has the wrong label. SELinux denied httpd_t the read permission on
+  /usr/share/nginx/html/index.html (labeled admin_home_t). The policy default
+  there is httpd_sys_content_t; the file was probably moved or created with
+  the wrong label. If you apply it, the assistant will reset the SELinux label
+  of /usr/share/nginx/html/index.html to the policy default.
+
+What will run (exactly these commands, as root, in this order)
+  $ restorecon -v /usr/share/nginx/html/index.html
+
+Risk: low (only puts back the label the policy expects).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm eb8859af)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - raw: avc:  denied  { read } for comm="nginx" scontext=system_u:system_r:httpd_t:s0

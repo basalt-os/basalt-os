@@ -1,0 +1,18 @@
+[p-1a2b3c] package transaction failed: dnf install basalt-lab-broken
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  The package transaction "dnf install basalt-lab-broken" failed, but no
+  package was changed. The package that failed is
+  basalt-lab-broken-1-1.noarch.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Nothing needs undoing. Read the log lines, fix the cause and try again.
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - dnf5.log: error: %prein(basalt-lab-broken-1-1.noarch) scriptlet failed, exit status 1
+
+How sure the assistant is
+  - dnf.next: investigate, 0.85 (threshold 0.75, rules/v1)

@@ -13,6 +13,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -33,6 +34,9 @@ type Client struct {
 	AllowRemote bool // remote endpoints are an explicit opt-in (ADR: offline by default)
 	Timeout     time.Duration
 	APIKey      string // only sent to remote endpoints, never logged
+	// Transport replaces the HTTP transport (tests reach a mock server
+	// under a remote name through it); nil uses the default.
+	Transport http.RoundTripper
 
 	hc   *http.Client
 	base string
@@ -115,7 +119,11 @@ func (c *Client) init() error {
 	default:
 		return fmt.Errorf("endpoint %q: use unix:/path or http(s)://host/v1", ep)
 	}
-	c.hc = &http.Client{Transport: tr, Timeout: c.Timeout}
+	var rt http.RoundTripper = tr
+	if c.Transport != nil {
+		rt = c.Transport
+	}
+	c.hc = &http.Client{Transport: rt, Timeout: c.Timeout}
 	return nil
 }
 
@@ -142,46 +150,9 @@ func (c *Client) Complete(ctx context.Context, r Request) (Response, error) {
 	if err := c.init(); err != nil {
 		return Response{}, err
 	}
-	body := map[string]any{
-		"model":       c.Model,
-		"messages":    r.Messages,
-		"temperature": 0,
-		"top_p":       1,
-		"stream":      false,
-		// Qwen 3 is a hybrid reasoning model: answer directly.
-		"chat_template_kwargs": map[string]any{"enable_thinking": false},
-	}
-	if c.Model == "" {
-		body["model"] = "default"
-	}
-	if r.MaxTokens > 0 {
-		body["max_tokens"] = r.MaxTokens
-	}
-	if r.Schema != nil {
-		body["response_format"] = map[string]any{"type": "json_schema",
-			"json_schema": map[string]any{"name": "answer", "strict": true, "schema": r.Schema}}
-	}
-	if r.Grammar != "" {
-		body["grammar"] = r.Grammar
-	}
-	if r.Logprobs {
-		body["logprobs"] = true
-		body["top_logprobs"] = r.TopLogprobs
-	}
-	if r.Seed != 0 {
-		body["seed"] = r.Seed
-	}
-	buf, err := json.Marshal(body)
+	req, err := c.newRequest(ctx, r, false)
 	if err != nil {
 		return Response{}, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/chat/completions", bytes.NewReader(buf))
-	if err != nil {
-		return Response{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.APIKey != "" && c.Remote() {
-		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 	t0 := time.Now()
 	resp, err := c.hc.Do(req)
@@ -225,6 +196,136 @@ func (c *Client) Complete(ctx context.Context, r Request) (Response, error) {
 		PromptMS: out.Timings.PromptMS, PredictedMS: out.Timings.PredictedMS}
 	if lp := out.Choices[0].Logprobs; lp != nil {
 		res.Logprobs = lp.Content
+	}
+	return res, nil
+}
+
+// Body is the request body sent for r, exactly as it leaves the process
+// (the API key travels in a header and is not part of it).
+func (c *Client) Body(r Request, stream bool) map[string]any {
+	body := map[string]any{
+		"model":       c.Model,
+		"messages":    r.Messages,
+		"temperature": 0,
+		"stream":      stream,
+	}
+	if c.Model == "" {
+		body["model"] = "default"
+	}
+	if !c.Remote() {
+		// llama.cpp options; hosted providers refuse parameters they do not
+		// know. Qwen 3 is a hybrid reasoning model: answer directly.
+		body["top_p"] = 1
+		body["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
+		if r.Grammar != "" {
+			body["grammar"] = r.Grammar
+		}
+	}
+	if r.MaxTokens > 0 {
+		body["max_tokens"] = r.MaxTokens
+	}
+	if r.Schema != nil {
+		body["response_format"] = map[string]any{"type": "json_schema",
+			"json_schema": map[string]any{"name": "answer", "strict": true, "schema": r.Schema}}
+	}
+	if r.Logprobs {
+		body["logprobs"] = true
+		body["top_logprobs"] = r.TopLogprobs
+	}
+	if r.Seed != 0 {
+		body["seed"] = r.Seed
+	}
+	return body
+}
+
+func (c *Client) newRequest(ctx context.Context, r Request, stream bool) (*http.Request, error) {
+	buf, err := json.Marshal(c.Body(r, stream))
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/chat/completions", bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if stream {
+		req.Header.Set("Accept", "text/event-stream")
+	}
+	if c.APIKey != "" && c.Remote() {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	return req, nil
+}
+
+// Stream sends one chat completion request with "stream": true and calls
+// onDelta with each piece of text as it arrives (server-sent events, as
+// llama-server, vLLM, Ollama and the hosted APIs send them). An error from
+// onDelta stops the request and is returned. The full text is in the
+// response.
+func (c *Client) Stream(ctx context.Context, r Request, onDelta func(string) error) (Response, error) {
+	if err := c.init(); err != nil {
+		return Response{}, err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := c.newRequest(ctx, r, true)
+	if err != nil {
+		return Response{}, err
+	}
+	t0 := time.Now()
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return Response{}, fmt.Errorf("model endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return Response{}, fmt.Errorf("model endpoint: HTTP %d: %s", resp.StatusCode, firstLine(string(raw)))
+	}
+	var text strings.Builder
+	res := Response{}
+	sc := bufio.NewScanner(io.LimitReader(resp.Body, 4<<20))
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		var ev struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+				FinishReason *string `json:"finish_reason"`
+			} `json:"choices"`
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			return res, fmt.Errorf("model endpoint: bad stream event: %v", err)
+		}
+		if ev.Usage != nil {
+			res.PromptTokens, res.CompletionTokens = ev.Usage.PromptTokens, ev.Usage.CompletionTokens
+		}
+		if len(ev.Choices) == 0 || ev.Choices[0].Delta.Content == "" {
+			continue
+		}
+		d := ev.Choices[0].Delta.Content
+		text.WriteString(d)
+		if err := onDelta(d); err != nil {
+			res.Text, res.Elapsed = text.String(), time.Since(t0)
+			return res, err
+		}
+	}
+	res.Text, res.Elapsed = text.String(), time.Since(t0)
+	if err := sc.Err(); err != nil {
+		return res, fmt.Errorf("model endpoint: %w", err)
 	}
 	return res, nil
 }

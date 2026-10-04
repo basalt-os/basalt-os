@@ -1,0 +1,18 @@
+[p-1a2b3c] strange.service stopped: cause unknown
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  strange.service failed, and the assistant could not find out why. The last
+  relevant log line is: strange: giving up after 3 attempts.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Read the log lines in the evidence below.
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - journal: 11:00:01 strange: giving up after 3 attempts
+
+How sure the assistant is
+  - unit.cause: unknown, 0.40 (threshold 0.75, rules/v1)

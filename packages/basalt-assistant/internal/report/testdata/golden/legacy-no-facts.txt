@@ -1,0 +1,23 @@
+[p-1a2b3c] old.service stopped: crashed
+Waiting for your decision, please review, found by basalt on 2026-10-04 10:15 UTC
+
+  old.service was killed (signal); a restart is proposed.
+
+What will run (exactly these commands, as root, in this order)
+  $ systemctl restart old.service
+
+Risk: low (old.service is briefly unavailable while it restarts).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm 9415eb17)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+
+How sure the assistant is
+  - unit.cause: crashed, 0.90 (threshold 0.75, rules/v1)

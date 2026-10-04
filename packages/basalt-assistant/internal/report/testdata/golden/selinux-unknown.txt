@@ -1,0 +1,18 @@
+[p-1a2b3c] SELinux blocked myapp_t (getattr) on kcore: no known fix
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  SELinux blocked myapp_t from using kcore, and there is no known safe fix.
+  SELinux denied myapp_t the getattr permission on kcore (labeled proc_t).
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Please have someone review it before changing the policy. The assistant
+  never writes policy modules on its own.
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - raw: avc:  denied  { getattr } for comm="nginx" scontext=system_u:system_r:myapp_t:s0
+
+How sure the assistant is
+  - avc.class: unknown, 0.60 (threshold 0.75, rules/v1)

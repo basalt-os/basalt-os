@@ -1,0 +1,23 @@
+[p-1a2b3c] SELinux blocked httpd_t (name_bind) on tcp port 8085: port not labeled for it
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  SELinux blocked httpd_t from using tcp port 8085 because the port is not
+  labeled for it. SELinux denied httpd_t the name_bind permission on tcp port
+  8085 (labeled unreserved_port_t), 2 times. If you apply it, the assistant
+  will label tcp port 8085 as http_port_t.
+
+What will run (exactly these commands, as root, in this order)
+  $ semanage port -a -t http_port_t -p tcp 8085
+
+Risk: medium (adds a lasting SELinux label for tcp port 8085).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm e26848a3)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - raw: avc:  denied  { name_bind } for comm="nginx" scontext=system_u:system_r:httpd_t:s0

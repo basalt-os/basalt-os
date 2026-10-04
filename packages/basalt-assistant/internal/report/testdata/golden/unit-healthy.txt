@@ -1,0 +1,6 @@
+[p-1a2b3c] nginx.service is running
+
+  nginx.service is running normally.
+
+Next step
+  Nothing to do.

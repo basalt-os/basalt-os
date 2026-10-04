@@ -1,0 +1,31 @@
+[p-1a2b3c] nginx.service stopped: configuration error
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  nginx.service is not running because of a mistake in /etc/nginx/nginx.conf
+  (line 47). The configuration check nginx -t says: unknown directive
+  "bogus_directive" in /etc/nginx/nginx.conf:47. If you apply it, the
+  assistant will put back the copy of /etc/nginx/nginx.conf from snapshot 27
+  and then restart nginx.service.
+
+What will run (exactly these commands, as root, in this order)
+  $ cp --preserve=mode,ownership,timestamps /.snapshots/27/snapshot/etc/nginx/nginx.conf /etc/nginx/nginx.conf
+  $ restorecon -v /etc/nginx/nginx.conf
+  $ systemctl restart nginx.service
+
+Risk: medium (replaces the current /etc/nginx/nginx.conf).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm 3c140f0a)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - journal: 10:02:11 nginx: [emerg] unknown directive "bogus_directive" in /etc/nginx/nginx.conf:47
+  - journal: 10:02:11 nginx.service: Failed with result 'exit-code'.
+  - config check `nginx -t`: FAILED
+      nginx: [emerg] unknown directive "bogus_directive" in /etc/nginx/nginx.conf:47
+      nginx: configuration file /etc/nginx/nginx.conf test failed

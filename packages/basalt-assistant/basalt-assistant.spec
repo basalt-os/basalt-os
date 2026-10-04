@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.4.0
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -159,6 +159,19 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.5.0-1
+- Plain, friendly English everywhere: each finding says what is wrong,
+  why, what applying will do, the risk, how to undo it and the next step;
+  the exact commands stay in their own block; length follows severity.
+- Proposals carry the structured facts their text is written from.
+- Optional humanize layer (off by default): a local or, by opt-in, remote
+  OpenAI-compatible model writes the explanation from the facts only; a
+  faithfulness check rejects any text naming a value outside the facts,
+  and the template is shown instead. Remote requests are redacted and
+  shown before they leave the machine.
+- MCP clients never receive the confirmation code (basalt_proposal too).
+- basalt-eval render-data and humanize replace the render experiment.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.0-1
 - Fixes from a live run on a lab VM. SELinux policy queries retry with a
   jittered backoff when another process holds /sys/fs/selinux/policy

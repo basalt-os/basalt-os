@@ -36,7 +36,7 @@ type Applier struct {
 }
 
 // ErrCancelled is returned when the person declines.
-var ErrCancelled = errors.New("cancelled: nothing was changed")
+var ErrCancelled = errors.New("cancelled, nothing was changed")
 
 // Options of one apply.
 type Options struct {
@@ -79,15 +79,15 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	fp, _ := p.Fingerprint()
 
 	a.printf("%s\n", report.Render(p))
-	snapNote := ", with a snapshot before and after"
+	snapNote := "a snapshot is taken before and after"
 	if rollbackAction(p.Actions) {
-		snapNote = " (no extra snapshot: the action works on snapshots)"
+		snapNote = "no extra snapshot: the rollback works on snapshots itself"
 	}
-	a.printf("These %d command(s) will run as root, in this order%s:\n", len(cmds), snapNote)
-	for _, c := range cmds {
-		a.printf("  $ %s\n", c.String())
+	what := "the command shown above"
+	if len(cmds) > 1 {
+		what = fmt.Sprintf("the %d commands shown above, in that order", len(cmds))
 	}
-	a.printf("\n")
+	a.printf("Applying runs %s, as root (%s).\n", what, snapNote)
 
 	switch {
 	case o.Yes:
@@ -98,7 +98,7 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	case !a.Interactive:
 		return fmt.Errorf("not a terminal: confirm with --yes --confirm %s", fp)
 	default:
-		a.printf("Type yes to apply, anything else cancels: ")
+		a.printf("Type yes to apply it, or anything else to cancel: ")
 		line, _ := bufio.NewReader(a.In).ReadString('\n')
 		if strings.TrimSpace(line) != "yes" {
 			a.audit("decline", "declined "+p.ID, map[string]any{"proposal": p.ID, "fingerprint": fp})
@@ -114,9 +114,9 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	if snap {
 		if n, err := a.snapper(ctx, "pre", 0, desc, p.ID); err == nil {
 			res.PreSnapshot = n
-			a.printf("pre snapshot %d\n", n)
+			a.printf("Snapshot %d taken (before the change).\n", n)
 		} else {
-			a.printf("warning: no pre snapshot: %v\n", err)
+			a.printf("Warning: no snapshot could be taken before the change: %v\n", err)
 		}
 	}
 
@@ -134,7 +134,7 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 		res.Steps = append(res.Steps, step)
 		if !r.OK() {
 			ok = false
-			a.printf("failed (exit %d); the remaining commands are skipped\n", r.Code)
+			a.printf("That command failed (exit code %d), so the remaining ones were not run.\n", r.Code)
 			break
 		}
 	}
@@ -142,7 +142,7 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	if snap && res.PreSnapshot > 0 {
 		if n, err := a.snapper(ctx, "post", res.PreSnapshot, desc, p.ID); err == nil {
 			res.PostSnapshot = n
-			a.printf("post snapshot %d\n", n)
+			a.printf("Snapshot %d taken (after the change).\n", n)
 		}
 	}
 
@@ -150,7 +150,7 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 		if a.Settle > 0 {
 			time.Sleep(a.Settle)
 		}
-		a.printf("\nVerification\n")
+		a.printf("\nChecking that it worked\n")
 		for _, act := range p.Actions {
 			for _, chk := range act.Verify(start) {
 				good, detail := chk.Run(ctx, a.Exec)
@@ -173,11 +173,15 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 		"proposal": p.ID, "title": p.Title, "actions": p.Actions, "result": res})
 	res.AuditSeq = rec.Seq
 	if err := a.Store.Save(p); err != nil {
-		a.printf("warning: could not update the proposal: %v\n", err)
+		a.printf("Warning: could not update the proposal: %v\n", err)
 	}
-	a.printf("\n%s: %s (audit record #%d)\n", p.ID, p.Status, rec.Seq)
+	if ok {
+		a.printf("\nDone: %s is applied and every check passed (audit record #%d).\n", p.ID, rec.Seq)
+	} else {
+		a.printf("\n%s did not work as expected: see the failed step or check above (audit record #%d).\n", p.ID, rec.Seq)
+	}
 	if res.PreSnapshot > 0 {
-		a.printf("Undo with: sudo basalt snapshots rollback --before %s   (snapshot %d)\n", p.ID, res.PreSnapshot)
+		a.printf("To undo it: sudo basalt snapshots rollback --before %s   (back to snapshot %d, at the next boot)\n", p.ID, res.PreSnapshot)
 	}
 	if !ok {
 		return fmt.Errorf("%s did not verify", p.ID)

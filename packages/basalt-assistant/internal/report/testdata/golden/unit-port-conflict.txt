@@ -1,0 +1,19 @@
+[p-1a2b3c] nginx.service stopped: port already in use
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  nginx.service cannot start because another program is already using its
+  port. Port 80 is held by httpd (pid 812).
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Stop the other program or give nginx.service a different port. Nothing is
+  changed automatically.
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - port 80: httpd (pid 812)
+
+How sure the assistant is
+  - unit.cause: port_conflict, 0.96 (threshold 0.75, rules/v1)

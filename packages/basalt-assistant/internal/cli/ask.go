@@ -23,12 +23,12 @@ func (a *app) ask(ctx context.Context) error {
 		return errors.New(`usage: basalt ask "REQUEST"`)
 	}
 	if !a.cfg.Translator {
-		return errors.New("the translator is off: install basalt-llm, fetch a model, start basalt-llm.service and set [translator] enabled = yes in /etc/basalt/assistant.conf")
+		return errors.New("asking in your own words is off. To turn it on: install basalt-llm, fetch a model (basalt-llm-fetch), start basalt-llm.service and set [translator] enabled = yes in /etc/basalt/assistant.conf")
 	}
 	c := &llm.Client{Endpoint: a.cfg.TranslatorEndpoint, Model: a.cfg.TranslatorModel,
 		AllowRemote: a.cfg.AllowRemote, Timeout: 60 * time.Second}
 	if c.Remote() {
-		fmt.Fprintf(a.out, "Note: the request is sent to %s (remote model, allow_remote = yes).\n", c.Endpoint)
+		fmt.Fprintf(a.out, "Note: your request is sent to %s (a remote model, allow_remote = yes).\n", c.Endpoint)
 	}
 	tr := &translate.Translator{C: c, Prompt: a.cfg.TranslatorPrompt}
 	res, err := tr.Translate(ctx, text)
@@ -47,23 +47,23 @@ func (a *app) ask(ctx context.Context) error {
 	}
 	switch in.Intent {
 	case translate.Clarify:
-		fmt.Fprintln(a.out, "I am not sure what to do with that. Please name the service, the proposal id or the snapshot number, for example:")
+		fmt.Fprintln(a.out, "I'm not sure what you mean. Could you name the service, the proposal id or the snapshot number? For example:")
 		fmt.Fprintln(a.out, `  basalt ask "why did nginx fail?"     basalt ask "show p-1a2b3c"     basalt ask "list snapshots"`)
 		if res.Grounding != "" {
 			fmt.Fprintf(a.out, "(%s)\n", res.Grounding)
 		}
 		return nil
 	case translate.None:
-		fmt.Fprintln(a.out, "That is outside what the assistant does. It diagnoses and proposes fixes: status, why UNIT,")
-		fmt.Fprintln(a.out, "fix selinux, snapshots, disk, pending proposals. See `basalt help`.")
+		fmt.Fprintln(a.out, "That is not something I can do. I look at the system and propose fixes: its status, why a service")
+		fmt.Fprintln(a.out, "is down, SELinux denials, snapshots, disk space and pending proposals. See: basalt help")
 		return nil
 	}
 	args := in.Args()
 	cmd := "basalt " + strings.Join(args, " ")
 	if in.Changes() {
 		fmt.Fprintf(a.out, "Understood as: %s\n", cmd)
-		fmt.Fprintln(a.out, "This changes the system, so it is not run from a request in natural language.")
-		fmt.Fprintf(a.out, "Run it yourself to see the exact commands and confirm them:\n  sudo %s\n", cmd)
+		fmt.Fprintln(a.out, "That would change the system, so I don't run it from a request in your own words.")
+		fmt.Fprintf(a.out, "Run it yourself: you will see the exact commands and confirm them.\n  sudo %s\n", cmd)
 		return nil
 	}
 	fmt.Fprintf(a.out, "Understood as: %s\n\n", cmd)

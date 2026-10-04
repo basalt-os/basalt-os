@@ -1,0 +1,8 @@
+Disk usage of /
+  31.0 GiB used of 32.0 GiB (96.9 %), 1.0 GiB free
+  system journal 1.6 GiB, cached packages 920.0 MiB
+  snapshots hold 3.0 GiB that nothing else uses; the largest:
+      12  2.8 GiB    2026-09-30 08:00:01  before upgrade
+      30  12.0 MiB   2026-10-04 09:11:58  dnf install htop
+  forecast: at the current rate, full in about 3 days (12 samples over 6.0 hours)
+

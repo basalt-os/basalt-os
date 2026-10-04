@@ -1,0 +1,11 @@
+Everything looks fine.
+
+  System      Basalt OS 44 (Server)
+  SELinux     Enforcing (protecting the system)
+  Services    none failed
+  Denials     none in the last 24 hours
+  Disk /      34.4 % used, 21.0 GiB free
+  Snapshots   14, newest 31 (2026-10-04 09:12:00, post, "dnf install htop")
+  Rollback    none waiting
+  Assistant   background service active, 0 proposals waiting
+  Audit log   212 records, chain intact

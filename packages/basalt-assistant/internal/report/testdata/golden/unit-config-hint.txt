@@ -1,0 +1,30 @@
+[p-1a2b3c] nginx.service stopped: configuration error
+Waiting for confirmation as root, found by the background service on 2026-10-04 10:15 UTC
+
+  nginx.service is not running because of a mistake in /etc/nginx/nginx.conf
+  (line 47). The service log says: unknown directive "bogus_directive" in
+  /etc/nginx/nginx.conf:47. Once confirmed, applying it would put back the
+  copy of /etc/nginx/nginx.conf from snapshot 27 and then restart
+  nginx.service.
+
+Suggested change (a hint, not yet a proposal you can apply)
+  Why: snapshot 27 holds a different copy of /etc/nginx/nginx.conf
+  (size/mtime).
+  $ cp --preserve=mode,ownership,timestamps /.snapshots/27/snapshot/etc/nginx/nginx.conf /etc/nginx/nginx.conf
+  $ restorecon -v /etc/nginx/nginx.conf
+  $ systemctl restart nginx.service
+
+Next step
+  The background service cannot look inside snapshots, so confirm it as root:
+  the assistant then tests the snapshot copy with the configuration check
+  before proposing it.
+  Confirm it as root: sudo basalt confirm p-1a2b3c
+  (the assistant checks the snapshot and turns the hint into a proposal you can apply)
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - journal: 10:02:11 nginx: [emerg] unknown directive "bogus_directive" in /etc/nginx/nginx.conf:47
+  - not checked here: config checker (needs root)
+
+How sure the assistant is
+  - unit.cause: config_error, 0.97 (threshold 0.75, rules/v1)

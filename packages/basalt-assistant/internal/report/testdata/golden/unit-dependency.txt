@@ -1,0 +1,20 @@
+[p-1a2b3c] app.service stopped: a unit it needs failed
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  app.service did not start because a unit it depends on failed.
+  postgresql.service has failed.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Fix postgresql.service first; app.service can start once it runs.
+  Commands you may run yourself:
+    $ basalt why postgresql.service
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - dependency postgresql.service: failed (exit-code, load loaded)
+
+How sure the assistant is
+  - unit.cause: dependency_failed, 0.93 (threshold 0.75, rules/v1)

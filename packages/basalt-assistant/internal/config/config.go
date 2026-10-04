@@ -37,6 +37,19 @@ type Config struct {
 	DefaultThreshold   float64
 	Thresholds         map[string]float64
 
+	// Humanize (off by default): a model writes the prose of a finding in
+	// its own words; commands, risk and undo stay the template's, and text
+	// that fails the faithfulness check falls back to the template.
+	Humanize            bool
+	HumanizeEndpoint    string
+	HumanizeModel       string
+	HumanizeAllowRemote bool   // a remote endpoint (another machine, a hosted API) needs this
+	HumanizeAPIKeyFile  string // sent only to a remote endpoint
+	HumanizePrompt      string // auto (default), full or compact
+	HumanizeMaxChars    int
+	HumanizeTimeout     time.Duration
+	HumanizeStream      bool // stream accepted sentences to a terminal (default yes)
+
 	Disk diag.DiskThresholds
 
 	// Audit log: `basalt audit rotate` (daily timer) seals and rotates it
@@ -66,6 +79,8 @@ func Defaults() Config {
 		StateDir: "/var/lib/basalt-assistant", AuditPath: "/var/log/basalt-assistant/audit.jsonl",
 		Backend: "rules", DefaultThreshold: 0.75, Thresholds: map[string]float64{}, Calibration: map[string]float64{},
 		TranslatorEndpoint: "unix:/run/basalt-llm/llm.sock", TranslatorPrompt: "auto",
+		HumanizeEndpoint: "unix:/run/basalt-llm/llm.sock", HumanizePrompt: "auto", HumanizeMaxChars: 600,
+		HumanizeTimeout: 30 * time.Second, HumanizeStream: true,
 		Disk:            diag.DefaultDiskThresholds,
 		AuditRotateSize: 32 << 20,
 		NotifyDesktop:   "auto", WebhookSecretFile: "/etc/basalt/webhook.key", WebhookEvents: "notify",
@@ -145,6 +160,32 @@ func (c *Config) set(sec, k, v string) error {
 		default:
 			err = fmt.Errorf("prompt %q (auto, examples or compact)", v)
 		}
+	case "humanize.enabled":
+		c.Humanize, err = yesNo(v)
+	case "humanize.endpoint":
+		c.HumanizeEndpoint = v
+	case "humanize.model":
+		c.HumanizeModel = v
+	case "humanize.allow_remote":
+		c.HumanizeAllowRemote, err = yesNo(v)
+	case "humanize.api_key_file":
+		c.HumanizeAPIKeyFile = v
+	case "humanize.prompt":
+		switch v {
+		case "auto", "full", "compact":
+			c.HumanizePrompt = v
+		default:
+			err = fmt.Errorf("prompt %q (auto, full or compact)", v)
+		}
+	case "humanize.max_chars":
+		c.HumanizeMaxChars, err = strconv.Atoi(v)
+		if err == nil && (c.HumanizeMaxChars < 100 || c.HumanizeMaxChars > 4000) {
+			err = fmt.Errorf("max_chars %d outside [100, 4000]", c.HumanizeMaxChars)
+		}
+	case "humanize.timeout":
+		c.HumanizeTimeout, err = du()
+	case "humanize.stream":
+		c.HumanizeStream, err = yesNo(v)
 	case "decision.default_threshold":
 		c.DefaultThreshold, err = fl()
 	case "disk.warn_pct":

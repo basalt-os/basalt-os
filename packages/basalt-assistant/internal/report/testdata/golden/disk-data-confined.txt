@@ -1,0 +1,21 @@
+[p-1a2b3c] root file system 91 % full: data
+For your information, found by the background service on 2026-10-04 10:15 UTC
+
+  The root file system is 91 % full. Most of the space is data, not snapshots,
+  logs or cached packages.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Nothing is deleted automatically. Look for large files you no longer need.
+  Run the disk report as root to measure the space each snapshot holds.
+  Commands you may run yourself:
+    $ sudo basalt disk
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - / is 96 % full
+  - not checked here: space per snapshot (btrfs ioctls need root)
+
+How sure the assistant is
+  - disk.cause: other_data, 0.90 (threshold 0.75, rules/v1)

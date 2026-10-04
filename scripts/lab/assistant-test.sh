@@ -151,7 +151,7 @@ step_config() {
   mark
   log "config: a broken nginx.conf"
   vm 'sed -i "s/^\(\s*\)server_name .*;/&\n\1bogus_directive on;/" /etc/nginx/nginx.conf; systemctl restart nginx || true'
-  local hint id; hint="$(wait_proposal unit 'config error')"
+  local hint id; hint="$(wait_proposal unit 'configuration error')"
   vm "basalt show $hint" | grep -q 'basalt confirm' || die "$hint: the daemon proposed a restore instead of a hint"
   id="$(confirm_hint "$hint")"
   apply_proposal "$id"
@@ -182,7 +182,7 @@ step_selinux() {
       sed -i "s#access_log  /var/log/nginx/access.log  main;#access_log  /srv/nginx-logs/access.log  main;#" /etc/nginx/nginx.conf
       systemctl restart nginx || true'
   log "AVC records for it: $(denials_since "$t") (a dontaudit rule hides the denial)"
-  local id; id="$(wait_proposal unit 'selinux denial')"
+  local id; id="$(wait_proposal unit 'blocked by SELinux')"
   apply_proposal "$id"
   vm 'ls -dZ /srv/nginx-logs; systemctl is-active nginx; tail -1 /srv/nginx-logs/access.log 2>/dev/null; curl -s -o /dev/null http://localhost/; ls -Z /srv/nginx-logs'
   restore_nginx
@@ -192,7 +192,7 @@ step_port() {
   mark
   log "port: nginx on tcp 8085 (unreserved_port_t)"
   vm 'seinfo --portcon=8085 | grep "tcp 8085" || echo "8085 has no own label"; sed -i "s/listen       80;/listen       8085;/" /etc/nginx/nginx.conf; systemctl restart nginx || true'
-  local id; id="$(wait_proposal unit 'selinux denial')"
+  local id; id="$(wait_proposal unit 'blocked by SELinux')"
   apply_proposal "$id"
   vm 'systemctl restart nginx && curl -s -o /dev/null -w "nginx on 8085: HTTP %{http_code}\n" http://localhost:8085/; semanage port -l -C'
   restore_nginx

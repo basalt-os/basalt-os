@@ -1,0 +1,20 @@
+[p-1a2b3c] postgresql.service stopped: disk full
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  postgresql.service failed while the disk was full. /var/lib/pgsql is 100 %
+  full.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  Free some space first; the disk report shows what is using it.
+  Commands you may run yourself:
+    $ basalt disk
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+  - /var/lib/pgsql is 100 % full
+
+How sure the assistant is
+  - unit.cause: disk_full, 0.90 (threshold 0.75, rules/v1)

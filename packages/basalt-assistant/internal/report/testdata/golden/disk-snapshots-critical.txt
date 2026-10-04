@@ -1,0 +1,22 @@
+[p-1a2b3c] root file system 96 % full: snapshots hold the space
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC, urgent
+
+  The root file system is 96 % full, which is critical. Snapshot 12
+  (2026-09-30 08:00:01, "before upgrade") alone holds 2.8 GiB. At the current
+  rate it will be full in about 3 days. If you apply it, the assistant will
+  delete snapshot 12, which frees the space only it holds.
+
+What will run (exactly these commands, as root, in this order)
+  $ snapper -c root delete 12
+
+Risk: high (snapshot 12 is gone for good and can no longer be rolled back to).
+Undo: deleting snapshot 12 cannot be undone.
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm b7b0019e)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - / is 96 % full
+  - snapshot 12 (2026-09-30 08:00:01 "before upgrade") holds 2.8 GiB exclusively

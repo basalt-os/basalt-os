@@ -1,0 +1,23 @@
+[p-1a2b3c] worker.service stopped: crashed
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  worker.service crashed. systemd recorded the result core-dump. If you apply
+  it, the assistant will restart worker.service.
+
+What will run (exactly these commands, as root, in this order)
+  $ systemctl restart worker.service
+
+Risk: low (worker.service is briefly unavailable while it restarts).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  A restart is proposed to bring it back, but the crash itself still needs a
+  look.
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm 8364eac6)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0

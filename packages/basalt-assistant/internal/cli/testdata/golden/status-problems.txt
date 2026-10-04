@@ -1,0 +1,16 @@
+5 things need your attention:
+  - SELinux is Permissive, not Enforcing, so it is not protecting the system
+  - nginx.service has failed. See why: basalt why nginx.service
+  - SELinux blocked something 3 times in the last 24 hours. See what: basalt fix selinux --since 24h
+  - The root file system is 91 % full. See what uses it: basalt disk
+  - 2 proposals are waiting for your decision. See: basalt pending
+
+  System      Basalt OS 44 (Server)
+  SELinux     Permissive
+  Services    failed: nginx.service
+  Denials     3 in the last 24 hours
+  Disk /      91.2 % used, 21.0 GiB free
+  Snapshots   14, newest 31 (2026-10-04 09:12:00, post, "dnf install htop")
+  Rollback    none waiting
+  Assistant   background service active, 2 proposals waiting
+  Audit log   CHAIN BROKEN: record 17: hash mismatch (basalt audit verify)

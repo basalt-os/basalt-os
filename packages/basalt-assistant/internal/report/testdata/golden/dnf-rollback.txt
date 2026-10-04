@@ -1,0 +1,25 @@
+[p-1a2b3c] package transaction failed: dnf install basalt-lab-postfail
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  The package transaction "dnf install basalt-lab-postfail" failed after it
+  had already changed packages. Since snapshot 41, taken just before it, the
+  transaction added 1 package. The package that failed is
+  basalt-lab-postfail-1-1.noarch. If you apply it, the assistant will make
+  snapshot 41 the root from the next boot.
+
+What will run (exactly these commands, as root, in this order)
+  $ basalt-rollback --yes 41
+
+Risk: high (the whole system, but not your data, goes back to an earlier state
+at the next boot).
+Undo: your current system stays as a snapshot, so you can return to it the
+same way (basalt snapshots lists them).
+
+Next step
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm 4f6df4d3)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - dnf5.log: 2026-10-04T09:12:03-0300 [rpm] WARNING scriptlet failed, exit status 1
+  - added: basalt-lab-postfail-1-1.noarch

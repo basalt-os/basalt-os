@@ -251,7 +251,7 @@ func (s *Server) whyUnit(ctx context.Context, args map[string]any) (string, any,
 	}
 	p := report.FromUnit("mcp", rep)
 	p.ID = "preview"
-	return report.Render(p), wrap(rep), nil
+	return mcpText(p), wrap(rep), nil
 }
 
 func (s *Server) denials(ctx context.Context, args map[string]any) (string, any, error) {
@@ -264,7 +264,7 @@ func (s *Server) denials(ctx context.Context, args map[string]any) (string, any,
 	for _, it := range items {
 		p := report.FromSELinux("mcp", it)
 		p.ID = "preview"
-		b.WriteString(report.Render(p) + "\n")
+		b.WriteString(mcpText(p) + "\n")
 	}
 	return b.String(), map[string]any{"items": items}, nil
 }
@@ -276,7 +276,7 @@ func (s *Server) disk(ctx context.Context, _ map[string]any) (string, any, error
 	}
 	p := report.FromDisk("mcp", rep)
 	p.ID = "preview"
-	return report.Render(p), wrap(rep), nil
+	return mcpText(p), wrap(rep), nil
 }
 
 func (s *Server) snapshots(ctx context.Context, _ map[string]any) (string, any, error) {
@@ -331,7 +331,7 @@ func (s *Server) show(_ context.Context, args map[string]any) (string, any, erro
 	if err != nil {
 		return "", nil, err
 	}
-	return report.Render(p), wrap(p), nil
+	return mcpText(p), wrap(p), nil
 }
 
 func (s *Server) auditTail(_ context.Context, args map[string]any) (string, any, error) {
@@ -359,7 +359,7 @@ func (s *Server) store(ctx context.Context, p *proposal.Proposal) (string, any, 
 	// restore or a rollback is stored as a hint for the root view to confirm.
 	p.HoldForRoot("proposed through MCP; the confined view cannot check the snapshot")
 	if len(p.Actions) == 0 && len(p.Hints) == 0 {
-		return report.Render(p) + "\nNo change to propose; nothing was stored.\n", map[string]any{"stored": false}, nil
+		return mcpText(p) + "\nNo change to propose; nothing was stored.\n", map[string]any{"stored": false}, nil
 	}
 	if open := s.Store.FindOpen(p.Key); open != nil {
 		return fmt.Sprintf("An equivalent proposal is already pending: %s. A person applies it with: sudo basalt apply %s\n", open.ID, open.ID),
@@ -375,9 +375,7 @@ func (s *Server) store(ctx context.Context, p *proposal.Proposal) (string, any, 
 	if s.Audit != nil {
 		_, _ = s.Audit.Append("proposal", p.ID+" from mcp: "+p.Title, map[string]any{"proposal": p.ID, "actions": p.Actions, "commands": cmds})
 	}
-	text := report.Render(p)
-	// The confirmation code is for the person at the CLI, not for the client.
-	text = stripConfirm(text)
+	text := mcpText(p)
 	if len(p.Actions) == 0 {
 		text += "\nStored as " + p.ID + " as a hint. Nothing was executed. A person confirms the snapshot as root with: sudo basalt confirm " +
 			p.ID + " (it becomes a proposal they can apply)\n"
@@ -387,16 +385,10 @@ func (s *Server) store(ctx context.Context, p *proposal.Proposal) (string, any, 
 	return text, map[string]any{"stored": true, "id": p.ID, "commands": cmds, "needs_review": p.NeedsReview}, nil
 }
 
-func stripConfirm(t string) string {
-	var out []string
-	for _, l := range strings.Split(t, "\n") {
-		if strings.Contains(l, "--confirm") {
-			l = strings.TrimSpace(l[:strings.Index(l, "(non-interactive")])
-			l = "  " + l
-		}
-		out = append(out, l)
-	}
-	return strings.Join(out, "\n")
+// mcpText renders a proposal for an MCP client: the confirmation code is
+// for the person at the command line, never for the client.
+func mcpText(p *proposal.Proposal) string {
+	return report.RenderWith(p, report.Options{NoCode: true}).String()
 }
 
 func (s *Server) proposeUnit(ctx context.Context, args map[string]any) (string, any, error) {
@@ -437,7 +429,7 @@ func (s *Server) proposeRollback(ctx context.Context, args map[string]any) (stri
 	if why == "" {
 		why = "Requested through MCP."
 	}
-	return s.store(ctx, report.FromRollback("mcp", plan, why))
+	return s.store(ctx, report.FromRollback("mcp", plan, why, ""))
 }
 
 func (s *Server) proposeDisk(ctx context.Context, _ map[string]any) (string, any, error) {

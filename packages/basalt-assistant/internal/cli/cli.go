@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -18,48 +19,52 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/config"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/explain"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
 )
 
-const usage = `basalt: the Basalt OS system assistant (diagnosis without a language model)
+const usage = `basalt: the Basalt OS system assistant
 
-Read-only (no confirmation needed):
-  basalt status                       health summary
-  basalt why UNIT                     diagnose a service (state, journal, SELinux, dependencies, ports, disk, config)
-  basalt fix selinux [--since 1h]     analyze recent SELinux denials and map them to known fixes
-  basalt snapshots [list]             snapshots of the root
-  basalt snapshots diff A [B]         packages and files that differ (B: 0 or omitted = now)
-  basalt disk                         btrfs usage, space held by snapshots, fullness forecast
-  basalt pending [--all]              proposals waiting for a decision
+It looks at the system, explains what is wrong in plain words and proposes
+a fix. It never changes anything until you apply a proposal yourself.
+
+Look (no changes, no confirmation):
+  basalt status                       a health summary
+  basalt why UNIT                     why a service is not running (log, SELinux, ports, disk, config)
+  basalt fix selinux [--since 1h]     recent SELinux denials and the known fix for each
+  basalt snapshots [list]             snapshots of the system
+  basalt snapshots diff A [B]         packages and files that differ (B: 0 or left out = now)
+  basalt disk                         what uses the disk, and when it will be full
+  basalt pending [--all]              proposals waiting for your decision
   basalt show ID                      one proposal in full
-  basalt audit [N] | audit verify     audit log (hash chain, verified across rotated files)
+  basalt audit [N] | audit verify     the audit log (tamper-evident, checked across rotated files)
 
-Changes (root; exact commands shown, then confirmation):
+Change (as root; you see the exact commands first and confirm them):
   basalt apply ID [--yes --confirm CODE]
   basalt ignore ID [--reason TEXT]
-  basalt confirm ID                   check, as root, the snapshot a hint of the daemon rests on
-                                      (a file restore, a rollback) and turn it into a proposal
+  basalt confirm ID                   check, as root, a hint of the background service (a file
+                                      restore, a rollback) and turn it into a proposal
   basalt snapshots rollback N | --before ID
   basalt audit rotate [--force]       seal the audit log and continue in a new file
-                                      (when larger than [audit] rotate_size; run daily by a timer)
   basalt why UNIT --apply, basalt fix selinux --apply, basalt disk --apply
                                       store the proposal and go straight to the confirmation
 
-Natural language (optional, needs the local model service basalt-llm and
-[translator] enabled = yes in /etc/basalt/assistant.conf):
-  basalt ask "por que o nginx caiu?"  translate into one of the commands above and run it if it
-                                      only reads; a change is printed, never run (--dry-run: only print)
+Ask in your own words (optional: needs the local model service basalt-llm
+and [translator] enabled = yes in /etc/basalt/assistant.conf):
+  basalt ask "why did nginx stop?"    read-only requests run; a change is printed, never run
 
-Options: --json (machine-readable output), --config FILE.
-Diagnoses that find a change store it as a pending proposal when run as root.
+Options: --json (machine-readable), --verbose (all evidence and decisions),
+--plain (template text even when [humanize] is on), --config FILE.
+Run as root, a diagnosis that finds a fix stores it as a pending proposal.
 `
 
 // opts are the parsed flags.
 type opts struct {
 	json, apply, yes, all bool
 	dryRun, force         bool
+	verbose, plain        bool
 	since                 time.Duration
 	confirm, reason       string
 	before, config        string
@@ -92,6 +97,10 @@ func parse(argv []string) (opts, error) {
 			o.yes = true
 		case "--all":
 			o.all = true
+		case "--verbose", "-v":
+			o.verbose = true
+		case "--plain":
+			o.plain = true
 		case "--dry-run":
 			o.dryRun = true
 		case "--force":
@@ -133,6 +142,7 @@ type app struct {
 	layer *decide.Layer
 	out   io.Writer
 	root  bool
+	tty   bool // stdout is a terminal
 }
 
 // Main runs the CLI and returns the exit code.
@@ -156,6 +166,9 @@ func Main(argv []string, version string) int {
 		return 2
 	}
 	a := &app{o: o, cfg: cfg, out: os.Stdout, root: os.Geteuid() == 0}
+	if st, err := os.Stdout.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
+		a.tty = true
+	}
 	a.store = proposal.Store{Dir: cfg.StateDir + "/proposals"}
 	a.audit = audit.New(cfg.AuditPath, "basalt")
 	var logger decide.Logger
@@ -248,8 +261,8 @@ func (a *app) keep(p *proposal.Proposal) *proposal.Proposal {
 func (a *app) present(ctx context.Context, p *proposal.Proposal) error {
 	if len(p.Actions) > 0 && !a.root {
 		p.ID = "preview"
-		fmt.Fprint(a.out, report.Render(p))
-		fmt.Fprintln(a.out, "\n(run as root to store this proposal and apply it)")
+		a.render(ctx, p)
+		fmt.Fprintln(a.out, "\nThis is a preview. Run the same command with sudo to store the proposal and apply it.")
 		return nil
 	}
 	if a.o.apply && len(p.Actions) > 0 {
@@ -264,7 +277,7 @@ func (a *app) present(ctx context.Context, p *proposal.Proposal) error {
 			p.ID = "report"
 		}
 	}
-	fmt.Fprint(a.out, report.Render(p))
+	a.render(ctx, p)
 	return nil
 }
 
@@ -274,29 +287,67 @@ func (a *app) status(ctx context.Context) error {
 	if a.o.json {
 		return a.printJSON(s)
 	}
-	w := a.out
-	fmt.Fprintf(w, "System:      %s\n", s.OS)
-	fmt.Fprintf(w, "SELinux:     %s\n", s.SELinux)
-	fmt.Fprintf(w, "Failed:      %s\n", orNone(strings.Join(s.FailedUnits, " ")))
-	fmt.Fprintf(w, "Denials 24h: %d\n", s.Denials24h)
-	fmt.Fprintf(w, "Disk /:      %.1f %% used, %s available\n", s.DiskPct, diag.HumanBytes(int64(s.Disk.Free)))
-	fmt.Fprintf(w, "Snapshots:   %d, newest %s\n", s.Snapshots, orNone(s.LastSnapshot))
-	fmt.Fprintf(w, "Rollback:    %s\n", s.RollbackState)
-	fmt.Fprintf(w, "Assistant:   basalt-assistantd %s, %d pending proposal(s)\n", s.Daemon, s.Pending)
-	if n, err := audit.Verify(a.cfg.AuditPath); err == nil {
-		fmt.Fprintf(w, "Audit log:   %d records, chain verifies\n", n)
-	} else if !os.IsNotExist(err) && !os.IsPermission(err) {
-		fmt.Fprintf(w, "Audit log:   CHAIN BROKEN: %v\n", err)
+	n, err := audit.Verify(a.cfg.AuditPath)
+	if err != nil && (os.IsNotExist(err) || os.IsPermission(err)) {
+		n, err = -1, nil
 	}
-	if len(s.Problems) == 0 {
-		fmt.Fprintln(w, "\nNo problems found.")
-		return nil
-	}
-	fmt.Fprintln(w, "\nProblems:")
-	for _, p := range s.Problems {
-		fmt.Fprintf(w, "  - %s\n", p)
-	}
+	writeStatus(a.out, s, n, err)
 	return nil
+}
+
+// writeStatus prints the health summary; auditN < 0: the audit log was
+// not readable here.
+func writeStatus(w io.Writer, s diag.Status, auditN int64, auditErr error) {
+	if len(s.Problems) == 0 {
+		fmt.Fprintln(w, "Everything looks fine.")
+	} else {
+		fmt.Fprintf(w, "%s your attention:\n", plural(len(s.Problems), "thing needs", "things need"))
+		for _, p := range s.Problems {
+			fmt.Fprintln(w, "  - "+p)
+		}
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  System      %s\n", s.OS)
+	selinux := s.SELinux
+	if s.SELinux == "Enforcing" {
+		selinux += " (protecting the system)"
+	}
+	fmt.Fprintf(w, "  SELinux     %s\n", orNone(selinux))
+	if len(s.FailedUnits) == 0 {
+		fmt.Fprintln(w, "  Services    none failed")
+	} else {
+		fmt.Fprintf(w, "  Services    failed: %s\n", strings.Join(s.FailedUnits, " "))
+	}
+	if s.Denials24h == 0 {
+		fmt.Fprintln(w, "  Denials     none in the last 24 hours")
+	} else {
+		fmt.Fprintf(w, "  Denials     %d in the last 24 hours\n", s.Denials24h)
+	}
+	fmt.Fprintf(w, "  Disk /      %.1f %% used, %s free\n", s.DiskPct, diag.HumanBytes(int64(s.Disk.Free)))
+	if s.Snapshots == 0 {
+		fmt.Fprintln(w, "  Snapshots   none")
+	} else {
+		fmt.Fprintf(w, "  Snapshots   %d, newest %s\n", s.Snapshots, s.LastSnapshot)
+	}
+	rb := s.RollbackState
+	if rb == "none" {
+		rb = "none waiting"
+	}
+	fmt.Fprintf(w, "  Rollback    %s\n", rb)
+	fmt.Fprintf(w, "  Assistant   background service %s, %s\n", orNone(s.Daemon), plural(s.Pending, "proposal waiting", "proposals waiting"))
+	switch {
+	case auditErr != nil:
+		fmt.Fprintf(w, "  Audit log   CHAIN BROKEN: %v (basalt audit verify)\n", auditErr)
+	case auditN >= 0:
+		fmt.Fprintf(w, "  Audit log   %d records, chain intact\n", auditN)
+	}
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 func orNone(s string) string {
@@ -352,10 +403,11 @@ func (a *app) fix(ctx context.Context) error {
 		return incomplete(errs)
 	}
 	if len(items) == 0 {
-		fmt.Fprintf(a.out, "No SELinux denials in the last %s.\n", a.o.since)
+		fmt.Fprintf(a.out, "SELinux blocked nothing in the last %s. Nothing to do.\n", human(a.o.since))
 		return nil
 	}
-	fmt.Fprintf(a.out, "%d group(s) of SELinux denials in the last %s.\n\n", len(items), a.o.since)
+	fmt.Fprintf(a.out, "SELinux blocked %s in the last %s. Each one is explained below.\n\n",
+		plural(len(items), "kind of access", "kinds of access"), human(a.o.since))
 	for _, it := range items {
 		p := a.keep(report.FromSELinux("cli", it))
 		if err := a.present(ctx, p); err != nil {
@@ -413,7 +465,7 @@ func (a *app) confirm(ctx context.Context) error {
 	q := &proposal.Proposal{ID: proposal.NewID(), Created: now, Updated: now, LastSeen: now, Seen: 1, Source: "cli",
 		Kind: p.Kind, Subject: p.Subject, Key: p.Key, Title: p.Title, Actions: acts, Decisions: p.Decisions,
 		Severity: p.Severity, Status: proposal.Pending, NeedsReview: p.NeedsReview || review,
-		Report:   p.Report + " Confirmed as root: " + hints[0].Reason + ".",
+		Report: p.Report + " Confirmed as root: " + hints[0].Reason + ".", Facts: confirmedFacts(p),
 		Evidence: append(append([]string{}, p.Evidence...), evidence...),
 		Extra:    map[string]string{"confirms": p.ID, "origin": p.Source}}
 	if err := a.store.Save(q); err != nil {
@@ -430,7 +482,7 @@ func (a *app) confirm(ctx context.Context) error {
 	cmds, _ := q.Commands()
 	_, _ = a.audit.Append("proposal", q.ID+" from cli: confirms the hint of "+p.ID+": "+q.Title,
 		map[string]any{"proposal": q.ID, "confirms": p.ID, "actions": q.Actions, "commands": cmds, "evidence": evidence})
-	fmt.Fprintf(a.out, "Hint %s confirmed as root; stored as proposal %s (%s is closed).\n\n", p.ID, q.ID, p.ID)
+	fmt.Fprintf(a.out, "Checked as root. The hint %s is closed and stored as proposal %s, which you can apply.\n\n", p.ID, q.ID)
 	return a.present(ctx, q)
 }
 
@@ -442,29 +494,36 @@ func (a *app) disk(ctx context.Context) error {
 	if a.o.json {
 		return a.printJSON(rep)
 	}
-	w := a.out
-	fmt.Fprintf(w, "/ %s used of %s (%.1f %%), %s available\n", diag.HumanBytes(int64(rep.FS.Total-rep.FS.Free)),
-		diag.HumanBytes(int64(rep.FS.Total)), rep.UsedPct, diag.HumanBytes(int64(rep.FS.Free)))
-	if b := rep.Btrfs; len(b) > 0 {
-		fmt.Fprintf(w, "btrfs: device %s, allocated %s, used %s, free (estimated) %s, data ratio %.2f\n",
-			diag.HumanBytes(b["device_size"]), diag.HumanBytes(b["device_allocated"]), diag.HumanBytes(b["used"]),
-			diag.HumanBytes(b["free_estimated"]), float64(b["data_ratio"])/100)
-	}
-	fmt.Fprintf(w, "journal %s, package cache %s\n", diag.HumanBytes(rep.Journal), diag.HumanBytes(rep.PkgCache))
-	fmt.Fprintf(w, "snapshots: %d measured, %s held exclusively\n", len(rep.Snapshots), diag.HumanBytes(rep.SnapshotTotal))
-	for i, s := range rep.Snapshots {
-		if i >= 8 {
-			break
-		}
-		fmt.Fprintf(w, "  %4d %-6s %s  exclusive %-10s %s\n", s.Snapshot.Number, s.Snapshot.Type, s.Snapshot.Date, diag.HumanBytes(s.Exclusive), s.Snapshot.Description)
-	}
-	fmt.Fprintf(w, "forecast: %s (%d samples over %.1f h)\n\n", rep.Forecast.Note, rep.Forecast.Samples, rep.Forecast.SpanHours)
+	writeDisk(a.out, rep, a.o.verbose)
 	p := report.FromDisk("cli", rep)
 	if len(p.Actions) == 0 {
-		fmt.Fprintln(w, rep.Explanation)
+		p.ID = "report"
+		a.render(ctx, p)
 		return nil
 	}
 	return a.present(ctx, a.keep(p))
+}
+
+// writeDisk prints the measurements of a disk report.
+func writeDisk(w io.Writer, rep *diag.DiskReport, verbose bool) {
+	fmt.Fprintf(w, "Disk usage of /\n  %s used of %s (%.1f %%), %s free\n", diag.HumanBytes(int64(rep.FS.Total-rep.FS.Free)),
+		diag.HumanBytes(int64(rep.FS.Total)), rep.UsedPct, diag.HumanBytes(int64(rep.FS.Free)))
+	if b := rep.Btrfs; len(b) > 0 && verbose {
+		fmt.Fprintf(w, "  btrfs: device %s, allocated %s, used %s, free (estimated) %s, data ratio %.2f\n",
+			diag.HumanBytes(b["device_size"]), diag.HumanBytes(b["device_allocated"]), diag.HumanBytes(b["used"]),
+			diag.HumanBytes(b["free_estimated"]), float64(b["data_ratio"])/100)
+	}
+	fmt.Fprintf(w, "  system journal %s, cached packages %s\n", diag.HumanBytes(rep.Journal), diag.HumanBytes(rep.PkgCache))
+	if len(rep.Snapshots) > 0 {
+		fmt.Fprintf(w, "  snapshots hold %s that nothing else uses; the largest:\n", diag.HumanBytes(rep.SnapshotTotal))
+		for i, s := range rep.Snapshots {
+			if i >= 5 && !verbose {
+				break
+			}
+			fmt.Fprintf(w, "    %4d  %-10s %s  %s\n", s.Snapshot.Number, diag.HumanBytes(s.Exclusive), s.Snapshot.Date, s.Snapshot.Description)
+		}
+	}
+	fmt.Fprintf(w, "  forecast: %s\n\n", forecastText(rep.Forecast))
 }
 
 func (a *app) snapshots(ctx context.Context) error {
@@ -478,25 +537,7 @@ func (a *app) snapshots(ctx context.Context) error {
 		if a.o.json {
 			return a.printJSON(snaps)
 		}
-		fmt.Fprintf(a.out, "%5s %-6s %5s %-19s %s\n", "#", "type", "pre", "date (UTC)", "description")
-		for _, s := range snaps {
-			pre := ""
-			if s.Pre > 0 {
-				pre = strconv.Itoa(s.Pre)
-			}
-			extra := ""
-			if s.Userdata["basalt"] == "apply" {
-				extra = "  [" + s.Userdata["proposal"] + "]"
-			}
-			fmt.Fprintf(a.out, "%5d %-6s %5s %-19s %s%s\n", s.Number, s.Type, pre, s.Date, s.Description, extra)
-		}
-		if o := diag.OrphanPre(snaps, time.Now(), 10*time.Minute); len(o) > 0 {
-			fmt.Fprintf(a.out, "\nUnfinished transactions (pre without post): ")
-			for _, s := range o {
-				fmt.Fprintf(a.out, "%d ", s.Number)
-			}
-			fmt.Fprintln(a.out)
-		}
+		writeSnapshots(a.out, snaps, diag.OrphanPre(snaps, time.Now(), 10*time.Minute))
 		return nil
 	case "diff":
 		if len(a.o.args) < 3 {
@@ -523,11 +564,12 @@ func (a *app) snapshots(ctx context.Context) error {
 			}
 			return "snapshot " + strconv.Itoa(n)
 		}
-		fmt.Fprintf(a.out, "From %s to %s\n", name(from), name(to))
+		fmt.Fprintf(a.out, "What changed from %s to %s\n", name(from), name(to))
 		if pd.Error != "" {
 			fmt.Fprintf(a.out, "packages: %s\n", pd.Error)
 		} else {
-			fmt.Fprintf(a.out, "packages: %d -> %d; %d added, %d removed, %d changed\n", pd.FromSize, pd.ToSize, len(pd.Added), len(pd.Removed), len(pd.Changed))
+			fmt.Fprintf(a.out, "packages: %d added (+), %d removed (-), %d changed version (~); %d before, %d after\n",
+				len(pd.Added), len(pd.Removed), len(pd.Changed), pd.FromSize, pd.ToSize)
 			for _, l := range pd.Added {
 				fmt.Fprintf(a.out, "  + %s\n", l)
 			}
@@ -541,7 +583,7 @@ func (a *app) snapshots(ctx context.Context) error {
 		if fd.Skipped != "" {
 			fmt.Fprintf(a.out, "files: %s\n", fd.Skipped)
 		} else {
-			fmt.Fprintf(a.out, "files: %d changed\n", fd.Total)
+			fmt.Fprintf(a.out, "files: %d changed, by directory:\n", fd.Total)
 			for top, n := range fd.ByTop {
 				fmt.Fprintf(a.out, "  %-24s %d\n", top, n)
 			}
@@ -552,7 +594,7 @@ func (a *app) snapshots(ctx context.Context) error {
 		return nil
 	case "rollback":
 		n := 0
-		why := "Requested from the command line."
+		why, before := "Requested from the command line.", ""
 		if a.o.before != "" {
 			pre, _ := a.env.FindApplySnapshots(ctx, a.o.before)
 			if pre == 0 {
@@ -560,6 +602,7 @@ func (a *app) snapshots(ctx context.Context) error {
 			}
 			n = pre
 			why = fmt.Sprintf("Undo %s: return the root to snapshot %d, taken just before it was applied.", a.o.before, pre)
+			before = a.o.before
 		} else if len(a.o.args) > 2 {
 			var err error
 			if n, err = strconv.Atoi(a.o.args[2]); err != nil {
@@ -575,14 +618,14 @@ func (a *app) snapshots(ctx context.Context) error {
 		if a.o.json {
 			return a.printJSON(plan)
 		}
-		p := a.keep(report.FromRollback("cli", plan, why))
+		p := a.keep(report.FromRollback("cli", plan, why, before))
 		if !a.root {
 			return a.present(ctx, p)
 		}
 		if a.o.yes && a.o.confirm == "" {
 			// Non-interactive: store it and print the id and the code to
 			// confirm with (`basalt apply ID --yes --confirm CODE`).
-			fmt.Fprint(a.out, report.Render(p))
+			a.render(ctx, p)
 			return nil
 		}
 		if a.o.yes {
@@ -606,13 +649,18 @@ func (a *app) pending() error {
 		return a.printJSON(ps)
 	}
 	if len(ps) == 0 {
-		fmt.Fprintln(a.out, "No proposals.")
+		if a.o.all {
+			fmt.Fprintln(a.out, "There are no proposals.")
+		} else {
+			fmt.Fprintln(a.out, "Nothing is waiting for your decision.")
+		}
 		return nil
 	}
 	for _, p := range ps {
 		fmt.Fprintln(a.out, report.Line(p))
 	}
-	fmt.Fprintln(a.out, "\nbasalt show ID for the details; sudo basalt apply ID or sudo basalt ignore ID.")
+	fmt.Fprintln(a.out, "\n[review]: the assistant is not sure, read it first. [hint]: confirm it as root first. [report]: nothing to apply.")
+	fmt.Fprintln(a.out, "Details: basalt show ID.   Then: sudo basalt apply ID, or sudo basalt ignore ID.")
 	return nil
 }
 
@@ -631,11 +679,16 @@ func (a *app) show() error {
 	if a.o.json {
 		return a.printJSON(p)
 	}
-	fmt.Fprint(a.out, report.Render(p))
+	a.render(context.Background(), p)
 	if r := p.Result; r != nil {
-		fmt.Fprintf(a.out, "\nResult (%s): ok=%v, snapshots %d/%d, audit #%d\n", r.Time.Format(time.RFC3339), r.OK, r.PreSnapshot, r.PostSnapshot, r.AuditSeq)
+		verdict := "it worked and every check passed"
+		if !r.OK {
+			verdict = "it did NOT verify"
+		}
+		fmt.Fprintf(a.out, "\nApplied on %s UTC: %s (snapshots %d before, %d after; audit record #%d)\n",
+			r.Time.Format("2006-01-02 15:04"), verdict, r.PreSnapshot, r.PostSnapshot, r.AuditSeq)
 		for _, s := range append(r.Steps, r.Checks...) {
-			fmt.Fprintf(a.out, "  [%v] %s %s\n", s.OK, s.What, strings.ReplaceAll(s.Output, "\n", " | "))
+			fmt.Fprintf(a.out, "  [%s] %s %s\n", okMark(s.OK), s.What, strings.ReplaceAll(strings.TrimSpace(s.Output), "\n", " | "))
 		}
 	}
 	return nil
@@ -664,7 +717,7 @@ func (a *app) ignore() error {
 	if err := a.applier().Ignore(p, why); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.out, "%s ignored.\n", p.ID)
+	fmt.Fprintf(a.out, "%s is closed without changing anything (recorded in the audit log).\n", p.ID)
 	return nil
 }
 
@@ -687,13 +740,13 @@ func (a *app) auditCmd() error {
 		if err != nil {
 			return fmt.Errorf("audit chain broken after record %d: %w", sum.LastSeq, err)
 		}
-		fmt.Fprintf(a.out, "audit chain verifies: records %d to %d in %d file(s), %d seal(s), %s\n",
-			sum.FirstSeq, sum.LastSeq, len(sum.Files), sum.Seals, a.cfg.AuditPath)
+		fmt.Fprintf(a.out, "The audit log is intact: records %d to %d, %s, %s, nothing edited, removed or reordered (%s).\n",
+			sum.FirstSeq, sum.LastSeq, plural(len(sum.Files), "file", "files"), plural(sum.Seals, "seal", "seals"), a.cfg.AuditPath)
 		if sum.Truncated {
-			fmt.Fprintf(a.out, "note: the oldest file left continues from a removed one; records before %d cannot be checked\n", sum.FirstSeq)
+			fmt.Fprintf(a.out, "Note: the oldest file left continues from one that was removed, so records before %d cannot be checked.\n", sum.FirstSeq)
 		}
 		if sum.Unsealed {
-			fmt.Fprintln(a.out, "note: the current file ends with a seal: a rotation did not finish (basalt audit rotate)")
+			fmt.Fprintln(a.out, "Note: the current file ends with a seal, so a rotation did not finish. Finish it: sudo basalt audit rotate")
 		}
 		return nil
 	}
@@ -741,10 +794,85 @@ func (a *app) auditRotate() error {
 		return a.printJSON(res)
 	}
 	if !res.Rotated {
-		fmt.Fprintf(a.out, "audit log not rotated: %s\n", res.Reason)
+		fmt.Fprintf(a.out, "The audit log was not rotated: %s.\n", res.Reason)
 		return nil
 	}
-	fmt.Fprintf(a.out, "audit log sealed at record %d and kept as %s; continues at record %d in %s\n",
+	fmt.Fprintf(a.out, "The audit log is sealed at record %d and kept as %s; it continues at record %d in %s.\n",
 		res.Seal.Seq, res.Sealed, res.Continue.Seq, a.cfg.AuditPath)
 	return nil
+}
+
+func okMark(ok bool) string {
+	if ok {
+		return "ok"
+	}
+	return "FAILED"
+}
+
+// human prints a duration the way people say it (1h, 30m, 24h).
+func human(d time.Duration) string {
+	switch {
+	case d%time.Hour == 0 && d >= time.Hour:
+		return plural(int(d/time.Hour), "hour", "hours")
+	case d%time.Minute == 0 && d >= time.Minute:
+		return plural(int(d/time.Minute), "minute", "minutes")
+	}
+	return d.String()
+}
+
+func forecastText(f diag.Forecast) string {
+	switch {
+	case f.Samples < 2:
+		return "not enough history yet to tell"
+	case f.DaysToFull > 0:
+		when := "within a day"
+		if d := math.Round(f.DaysToFull); d >= 2 {
+			when = fmt.Sprintf("in about %.0f days", d)
+		} else if d == 1 {
+			when = "in about a day"
+		}
+		return fmt.Sprintf("at the current rate, full %s (%d samples over %.1f hours)", when, f.Samples, f.SpanHours)
+	}
+	return fmt.Sprintf("not growing (%d samples over %.1f hours)", f.Samples, f.SpanHours)
+}
+
+// confirmedFacts are a confirmed hint's facts: no longer a hint.
+func confirmedFacts(p *proposal.Proposal) *explain.Facts {
+	if p.Facts == nil {
+		return nil
+	}
+	f := *p.Facts
+	f.Hint = false
+	return &f
+}
+
+// writeSnapshots lists the root snapshots; o are the unfinished ones.
+func writeSnapshots(w io.Writer, snaps []diag.Snapshot, o []diag.Snapshot) {
+	if len(snaps) == 0 {
+		fmt.Fprintln(w, "There are no snapshots of the system yet.")
+		return
+	}
+	fmt.Fprintf(w, "%5s  %-19s  %-6s  %s\n", "#", "date (UTC)", "kind", "what it was taken for")
+	for _, s := range snaps {
+		kind := map[string]string{"single": "single", "pre": "before", "post": "after"}[s.Type]
+		if kind == "" {
+			kind = s.Type
+		}
+		desc := s.Description
+		if s.Type == "post" && s.Pre > 0 {
+			desc += " (pairs with " + strconv.Itoa(s.Pre) + ")"
+		}
+		if s.Userdata["basalt"] == "apply" {
+			desc += "  [proposal " + s.Userdata["proposal"] + "]"
+		}
+		fmt.Fprintf(w, "%5d  %-19s  %-6s  %s\n", s.Number, s.Date, kind, desc)
+	}
+	if len(o) > 0 {
+		var ns []string
+		for _, s := range o {
+			ns = append(ns, strconv.Itoa(s.Number))
+		}
+		fmt.Fprintf(w, "\nA package transaction did not finish: snapshot %s has no matching \"after\" snapshot.\n", strings.Join(ns, ", "))
+	}
+	fmt.Fprintln(w, "\nCompare one with now: basalt snapshots diff N.   Go back to one: sudo basalt snapshots rollback N")
 }

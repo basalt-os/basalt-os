@@ -6,6 +6,8 @@
 //	basalt-eval translate -endpoint E [-set eval/translator.jsonl] [-out FILE]
 //	basalt-eval decide [-endpoint E] [-cases DIR] [-out FILE] [-folds 5]
 //	basalt-eval check [-cases DIR]
+//	basalt-eval render-data -split train|heldout [-n N] [-seed S] [-out FILE]
+//	basalt-eval humanize -endpoint E [-set FILE] [-out FILE] [-stream]
 //
 // Output: a JSON summary on stdout; per-item results (JSON lines) in -out.
 package main
@@ -19,7 +21,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,7 +34,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: basalt-eval translate|decide|check [flags]")
+		fmt.Fprintln(os.Stderr, "usage: basalt-eval translate|decide|check|render-data|humanize [flags]")
 		os.Exit(2)
 	}
 	var err error
@@ -46,8 +47,10 @@ func main() {
 		err = runCheck(os.Args[2:])
 	case "derive":
 		err = runDerive()
-	case "render":
-		err = runRender(os.Args[2:])
+	case "render-data":
+		err = runRenderData(os.Args[2:])
+	case "humanize":
+		err = runHumanize(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -688,93 +691,4 @@ func orderedJSON(orig []byte, vals map[string]json.RawMessage) ([]byte, error) {
 	}
 	buf.WriteByte('}')
 	return []byte(buf.String()), nil
-}
-
-// runRender measures the optional rendering of a diagnosis into text: for
-// the lab cases with a unit failure, the model gets the structured result
-// (cause, diagnosis, evidence, proposed actions) and writes a short text in
-// English and in Portuguese. Checks: the text names the unit; no command
-// word, absolute path or proposal id appears that is not in the input.
-func runRender(args []string) error {
-	fs := flag.NewFlagSet("render", flag.ExitOnError)
-	ep := fs.String("endpoint", "http://127.0.0.1:8080/v1", "OpenAI-compatible endpoint")
-	file := fs.String("cases", "eval/cases/lab.jsonl", "case file")
-	out := fs.String("out", "", "texts (JSON lines)")
-	limit := fs.Int("n", 20, "cases")
-	_ = fs.Parse(args)
-	c := &llm.Client{Endpoint: *ep, Timeout: 120 * time.Second}
-	var w *bufio.Writer
-	if *out != "" {
-		f, err := os.Create(*out)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		w = bufio.NewWriter(f)
-		defer w.Flush()
-	}
-	reCmd := regexp.MustCompile(`\b(systemctl|semanage|restorecon|setsebool|setenforce|chcon|chmod|chown|rm|dnf|snapper|basalt-rollback|journalctl|audit2allow|kill|reboot)\b`)
-	rePath := regexp.MustCompile(`/[A-Za-z0-9._/-]{3,}`)
-	reID := regexp.MustCompile(`p-[0-9a-f]{6}`)
-	n, named, invented := 0, 0, 0
-	var lat []float64
-	err := readJSONL(*file, func(b []byte) error {
-		if n >= *limit*2 {
-			return nil
-		}
-		var cs struct {
-			ID       string          `json:"id"`
-			Kind     string          `json:"kind"`
-			Subject  string          `json:"subject"`
-			Evidence json.RawMessage `json:"evidence"`
-			Expected struct {
-				Diagnosis string          `json:"diagnosis"`
-				Cause     string          `json:"cause"`
-				Actions   json.RawMessage `json:"actions"`
-			} `json:"expected"`
-		}
-		if err := json.Unmarshal(b, &cs); err != nil || cs.Kind != "unit_failure" {
-			return err
-		}
-		var ev struct {
-			Journal []string `json:"journal"`
-		}
-		_ = json.Unmarshal(cs.Evidence, &ev)
-		in := map[string]any{"unit": cs.Subject, "cause": cs.Expected.Cause, "explanation": cs.Expected.Diagnosis,
-			"evidence": decide.JournalFacts(ev.Journal)["journal"], "proposed_actions": cs.Expected.Actions}
-		inText, _ := json.Marshal(in)
-		for _, lang := range []string{"en", "pt-BR"} {
-			txt, el, err := translate.Render(context.Background(), c, in, lang)
-			if err != nil {
-				return err
-			}
-			n++
-			lat = append(lat, float64(el.Milliseconds()))
-			unit := strings.TrimSuffix(cs.Subject, ".service")
-			if strings.Contains(strings.ToLower(txt), strings.ToLower(unit)) {
-				named++
-			}
-			var bad []string
-			for _, re := range []*regexp.Regexp{reCmd, rePath, reID} {
-				for _, m := range re.FindAllString(txt, -1) {
-					if !strings.Contains(string(inText), strings.TrimRight(m, ".,;:")) {
-						bad = append(bad, m)
-					}
-				}
-			}
-			if len(bad) > 0 {
-				invented++
-			}
-			if w != nil {
-				rec, _ := json.Marshal(map[string]any{"case": cs.ID, "lang": lang, "text": txt, "ms": el.Milliseconds(), "not_in_input": bad})
-				w.Write(append(rec, '\n'))
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	return json.NewEncoder(os.Stdout).Encode(map[string]any{"texts": n, "names_unit": named, "with_invented_terms": invented,
-		"latency_ms_p50": pct(lat, 50), "latency_ms_p95": pct(lat, 95)})
 }
