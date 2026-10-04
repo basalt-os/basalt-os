@@ -14,6 +14,12 @@
 #         basalt-testing. Other repositories are enabled too (Fedora's), so
 #         dependencies resolve as on an installed system.
 #
+# CLIENT_TEST_DEPS_URL, optional: a second signed repository enabled next
+# to the tested one, for dependencies that are not in Fedora (for example
+# https://obpkg.org/basalt when testing basalt-testing: basalt-shell-selinux
+# needs basalt-agent-selinux), checked with CLIENT_TEST_DEPS_KEY (a file or
+# https URL, default the published OpenBasalt release key).
+#
 # It also checks the failure modes: dnf must refuse to install when the
 # metadata signature does not match (a tampered repomd.xml, local trees
 # only) and when the key is a different one.
@@ -42,6 +48,19 @@ else
   cp "$key" "$work/key.asc"
 fi
 chmod 644 "$work/key.asc"
+: "${CLIENT_TEST_DEPS_URL:=}"
+: "${CLIENT_TEST_DEPS_KEY:=https://obpkg.org/keys/openbasalt-release-key.asc}"
+if [[ -n "$CLIENT_TEST_DEPS_URL" ]]; then
+  [[ "$CLIENT_TEST_DEPS_URL" =~ ^https?://[^[:space:]]+$ ]] || die "CLIENT_TEST_DEPS_URL must be an http(s) URL"
+  if [[ "$CLIENT_TEST_DEPS_KEY" == https://* ]]; then
+    curl -fsSL --proto '=https' -o "$work/deps-key.asc" "$CLIENT_TEST_DEPS_KEY" || die "cannot fetch $CLIENT_TEST_DEPS_KEY"
+  else
+    cp "$CLIENT_TEST_DEPS_KEY" "$work/deps-key.asc"
+  fi
+else
+  : >"$work/deps-key.asc"
+fi
+chmod 644 "$work/deps-key.asc"
 
 if [[ -d "$source_arg" ]]; then
   tree="$(cd "$source_arg" && pwd)"
@@ -62,7 +81,20 @@ client() {
   local url="$1"
   shift
   $SIGN_PODMAN run --rm --network host --security-opt label=disable -v "$work/key.asc:/key.asc:ro" \
-    -e URL="$url" "$FEDORA_IMAGE" bash -euc '
+    -v "$work/deps-key.asc:/deps-key.asc:ro" -e URL="$url" -e DEPS_URL="${CLIENT_TEST_DEPS_URL%/}" \
+    "$FEDORA_IMAGE" bash -euc '
+    if [ -n "$DEPS_URL" ]; then
+      cat >/etc/yum.repos.d/basalt-deps.repo <<EOF
+[basalt-deps]
+name=Basalt OS dependencies \$releasever - \$basearch
+baseurl=$DEPS_URL/\$releasever/\$basearch/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///deps-key.asc
+metadata_expire=0
+EOF
+    fi
     cat >/etc/yum.repos.d/basalt-test.repo <<EOF
 [basalt-test]
 name=Basalt OS test \$releasever - \$basearch

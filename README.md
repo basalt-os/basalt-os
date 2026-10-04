@@ -52,6 +52,7 @@ packages/basalt-agent/       run AI coding agents (Claude Code, Codex, Gemini, A
 packages/basalt-resolver/    per-session default-deny egress: DNS-aware nftables sets by cgroup, own resolver per session (Go)
 packages/basalt-ledger/      the audit ledger: append-only hash chain, collectors, plain-English views, TPM-signed exports (Go)
 packages/basalt-llm/         optional local model service: llama.cpp server for the CPU, no network, own SELinux domain
+packages/basalt-shell/       desktop shell build, from github.com/basalt-os/basalt-shell at a pinned commit (basalt-testing)
 eval/                        shared evaluation suite: labeled decision cases, translator test set, generators
 packages/lab/                test fixtures for the lab (never published)
 kickstart/basalt-server.ks   the installer profile
