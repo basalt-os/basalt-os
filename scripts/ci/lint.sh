@@ -46,7 +46,7 @@ step "ShellCheck: CI scripts, assistant and model service scripts, their lab scr
 shellcheck -x -S warning scripts/ci/*.sh packages/basalt-assistant/build.sh scripts/lab/assistant-*.sh scripts/lab/eval-capture.sh \
   packages/basalt-agent/build.sh scripts/lab/agent-test.sh packages/basalt-agent/tests/normal.sh packages/basalt-agent/tests/attacks.sh packages/basalt-agent/tests/driver.sh \
   packages/basalt-llm/build.sh packages/basalt-llm/basalt-llm-start packages/basalt-llm/basalt-llm-fetch \
-  packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh || fail=1
+  packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh scripts/data-package.sh || fail=1
 
 step "basalt-llm: model selection tests"
 packages/basalt-llm/tests/select-test.sh || fail=1

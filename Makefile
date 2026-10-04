@@ -168,6 +168,19 @@ eval-check: ## Every case in eval/cases: schema, expected actions pass the actio
 lab-eval-capture: ## Record labeled decision cases on a lab VM (scripts/lab/eval-capture.sh)
 	$(L)/eval-capture.sh
 
+# --- VSM decision backend data (packages/basalt-knowledge, packages/basalt-vsm-planner) ---
+
+.PHONY: rpm-knowledge rpm-vsm-planner eval-vsm
+
+rpm-knowledge: ## Build basalt-knowledge from checksum-pinned artifacts (BASALT_ARTIFACTS_URL or BASALT_ARTIFACTS_DIR; not in CI)
+	$(S)/data-package.sh basalt-knowledge
+
+rpm-vsm-planner: ## Build basalt-vsm-planner from checksum-pinned artifacts (BASALT_ARTIFACTS_URL or BASALT_ARTIFACTS_DIR; not in CI)
+	$(S)/data-package.sh basalt-vsm-planner
+
+eval-vsm: ## Decision-layer evaluation suite: rules vs the VSM backend (VSM_KNOWLEDGE=DIR VSM_PLANNER=DIR, needs Go)
+	@cd packages/basalt-assistant && go run ./tools/basalt-eval decide -cases ../../eval/cases -backend vsm -knowledge "$(VSM_KNOWLEDGE)" -planner "$(VSM_PLANNER)"
+
 # --- installer (packages/basalt-installer, docs/installer.md) ------------------------
 
 .PHONY: rpm-installer installer-test live-iso lab-installer-iso lab-installer-tui lab-installer-gui

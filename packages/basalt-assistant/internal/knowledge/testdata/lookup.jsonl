@@ -1,0 +1,192 @@
+{"goal": "diagnose", "evidence": ["cx", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 2, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:1/2-0h 2:1/2-0a", "oracle": 0}
+{"goal": "diagnose", "evidence": ["cx", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cx", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 2, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:1/2-0h 2:1/2-0a", "oracle": 0}
+{"goal": "diagnose", "evidence": ["cx", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cx"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cx"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["sl", "st"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["sl", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pd", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-avc", "m": 2, "r": 3, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/3-0h 1:1/2-0h 2:1/2-0h", "oracle": null}
+{"goal": "diagnose", "evidence": ["pd", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "st", "uf", "xj"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config", "m": 2, "r": 2, "x": 0}, {"id": "kb-unit-config-restore", "m": 2, "r": 4, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:2/4-0a 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["ce", "st", "uf", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["bo"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-boolean", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0a 1:- 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["bo"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["bo", "st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-suspicious", "m": 1, "r": 1, "x": 0}, {"id": "kb-avc-boolean", "m": 1, "r": 1, "x": 1}], "fmt": "0:1/1-0h 1:1/1-1a 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["bo", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["bo"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-boolean", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0a 1:- 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["bo"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["sc"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["sc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["jl", "nf", "sl"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["jl", "nf", "sl"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pp", "sc", "sl", "xj"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pp", "sc", "sl", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pc", "pt"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port", "m": 2, "r": 2, "x": 0}, {"id": "kb-avc-port-owned", "m": 2, "r": 3, "x": 0}], "fmt": "0:2/2-0a 1:2/3-0h 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["pc", "pt"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pb", "pc", "pt", "st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port-owned", "m": 3, "r": 3, "x": 0}, {"id": "kb-avc-suspicious", "m": 1, "r": 1, "x": 0}, {"id": "kb-avc-port", "m": 2, "r": 2, "x": 2}], "fmt": "0:3/3-0h 1:1/1-0h 2:2/2-2a", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["pb", "pc", "pt", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pc"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port", "m": 1, "r": 2, "x": 0}, {"id": "kb-avc-port-owned", "m": 1, "r": 3, "x": 0}], "fmt": "0:1/2-0a 1:1/3-0h 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["nf", "xj"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["nf", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pp", "sg"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pp", "sg"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["xs"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pb", "pc", "pt"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port-owned", "m": 3, "r": 3, "x": 0}, {"id": "kb-avc-port", "m": 2, "r": 2, "x": 1}], "fmt": "0:3/3-0h 1:2/2-1a 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["pb", "pc", "pt"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pb", "pc", "pt"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port-owned", "m": 3, "r": 3, "x": 0}, {"id": "kb-avc-port", "m": 2, "r": 2, "x": 1}], "fmt": "0:3/3-0h 1:2/2-1a 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["pb", "pc", "pt"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pb", "pc"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port-owned", "m": 2, "r": 3, "x": 0}, {"id": "kb-avc-port", "m": 1, "r": 2, "x": 1}], "fmt": "0:2/3-0h 1:1/2-1a 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pb", "pc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["cx"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["cx"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["av", "bo", "om", "pb", "sc"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-boolean", "m": 1, "r": 1, "x": 0}, {"id": "kb-avc-port-owned", "m": 1, "r": 3, "x": 0}], "fmt": "0:1/1-0a 1:1/3-0h 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["av", "bo", "om", "pb", "sc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["cp", "pp", "pt", "ru", "st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-suspicious", "m": 1, "r": 1, "x": 0}, {"id": "kb-avc-port-owned", "m": 1, "r": 3, "x": 0}, {"id": "kb-avc-port", "m": 1, "r": 2, "x": 1}], "fmt": "0:1/1-0h 1:1/3-0h 2:1/2-1a", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["cp", "pp", "pt", "ru", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-suspicious", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0h 1:- 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-suspicious", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0h 1:- 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-suspicious", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0h 1:- 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["bo", "cf", "cp"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-boolean", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0a 1:- 2:-", "oracle": 0}
+{"goal": "explain_denial", "evidence": ["bo", "cf", "cp"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["jl", "om", "pt", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port", "m": 1, "r": 2, "x": 0}, {"id": "kb-avc-port-owned", "m": 1, "r": 3, "x": 0}], "fmt": "0:1/2-0a 1:1/3-0h 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["jl", "om", "pt", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pp", "pt", "sg"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-avc-port", "m": 1, "r": 2, "x": 0}, {"id": "kb-avc-port-owned", "m": 1, "r": 3, "x": 0}], "fmt": "0:1/2-0a 1:1/3-0h 2:-", "oracle": null}
+{"goal": "explain_denial", "evidence": ["pp", "pt", "sg"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["jl", "xj"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-journal", "m": 2, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:- 2:-", "oracle": 0}
+{"goal": "check_disk", "evidence": ["jl", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["jl", "xj"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-journal", "m": 2, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:- 2:-", "oracle": 0}
+{"goal": "check_disk", "evidence": ["jl", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["jl"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-journal", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0a 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["jl"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["nf", "pd", "pt", "sl", "st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-snapshots", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0a 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["nf", "pd", "pt", "sl", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["av", "om", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-snapshots", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0a 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["av", "om", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["cx", "pc", "sl", "st", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-snapshots", "m": 2, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:- 2:-", "oracle": 0}
+{"goal": "check_disk", "evidence": ["cx", "pc", "sl", "st", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["sl", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-snapshots", "m": 2, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:- 2:-", "oracle": 0}
+{"goal": "check_disk", "evidence": ["sl", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["sl", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-snapshots", "m": 2, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:- 2:-", "oracle": 0}
+{"goal": "check_disk", "evidence": ["sl", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["sl"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-snapshots", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0a 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["sl"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["cf", "jl", "om", "st", "xj"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-disk-journal", "m": 2, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:- 2:-", "oracle": 0}
+{"goal": "check_disk", "evidence": ["cf", "jl", "om", "st", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["ce", "cf", "sc"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["ce", "cf", "sc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["ce", "cp", "pd", "pt"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "check_disk", "evidence": ["ce", "cp", "pd", "pt"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["pp"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-dnf-interrupted", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0a 1:- 2:-", "oracle": 0}
+{"goal": "rollback_candidate", "evidence": ["pp"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["pp"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-dnf-interrupted", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0a 1:- 2:-", "oracle": 0}
+{"goal": "rollback_candidate", "evidence": ["pp"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["pp"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-dnf-interrupted", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0a 1:- 2:-", "oracle": 0}
+{"goal": "rollback_candidate", "evidence": ["pp"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["pb"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["pb"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["bo", "cf", "pt", "uf"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["bo", "cf", "pt", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["bo", "pc", "pp", "sl", "st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-dnf-interrupted", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0a 1:- 2:-", "oracle": 0}
+{"goal": "rollback_candidate", "evidence": ["bo", "pc", "pp", "sl", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["ru"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-dnf-unchanged", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0h 1:- 2:-", "oracle": 0}
+{"goal": "rollback_candidate", "evidence": ["ru"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["ru"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-dnf-unchanged", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0h 1:- 2:-", "oracle": 0}
+{"goal": "rollback_candidate", "evidence": ["ru"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["ru"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-dnf-unchanged", "m": 1, "r": 1, "x": 0}], "fmt": "0:1/1-0h 1:- 2:-", "oracle": 0}
+{"goal": "rollback_candidate", "evidence": ["ru"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["bo", "nf", "sg"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["bo", "nf", "sg"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["av", "ce", "cf"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["av", "ce", "cf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["bo", "jl", "pb", "pt", "sl"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "rollback_candidate", "evidence": ["bo", "jl", "pb", "pt", "sl"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config", "m": 2, "r": 2, "x": 0}, {"id": "kb-unit-config-restore", "m": 2, "r": 4, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:2/4-0a 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["ce", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "cp", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config-restore", "m": 2, "r": 4, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/4-0a 1:1/2-0h 2:1/2-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "cp", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config-restore", "m": 1, "r": 4, "x": 0}], "fmt": "0:1/2-0h 1:1/4-0a 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["bo", "cp", "om", "pc", "pd"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-oom", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 0}, {"id": "kb-unit-selinux-avc", "m": 1, "r": 3, "x": 2}], "fmt": "0:1/2-0h 1:1/4-0a 2:1/3-2h", "oracle": null}
+{"goal": "diagnose", "evidence": ["bo", "cp", "om", "pc", "pd"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pp", "ru"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pp", "ru"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pp", "sl", "uf", "xj", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:1/2-0h 2:1/2-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["pp", "sl", "uf", "xj", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "cf", "sc", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config-restore", "m": 4, "r": 4, "x": 0}, {"id": "kb-unit-config", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:4/4-0a 1:2/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["ce", "cf", "sc", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "cf", "sc", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config-restore", "m": 4, "r": 4, "x": 0}, {"id": "kb-unit-config", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:4/4-0a 1:2/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["ce", "cf", "sc", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "cf", "sc"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config-restore", "m": 3, "r": 4, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:3/4-0a 1:1/2-0h 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "cf", "sc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:1/2-0h 2:1/2-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf", "om", "pb", "pt", "xj"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-missing-file", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-oom", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 1}], "fmt": "0:1/2-0h 1:1/2-0h 2:1/4-1a", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf", "om", "pb", "pt", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["om", "pb", "sg", "sl"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-oom", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0a 1:1/2-0h 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["om", "pb", "sg", "sl"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["sg", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-crashed", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:1/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["sg", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["sg", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-crashed", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0a 1:1/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["sg", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["sg"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0a 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["sg"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pt", "st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-port", "m": 2, "r": 4, "x": 1}, {"id": "kb-unit-selinux-avc", "m": 1, "r": 3, "x": 1}], "fmt": "0:2/4-1a 1:1/3-1h 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pt", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pp", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-avc", "m": 2, "r": 3, "x": 0}, {"id": "kb-unit-selinux-port", "m": 2, "r": 4, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/3-0h 1:2/4-0a 2:1/2-0h", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pp", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["bo", "cp", "pc", "ru", "xj"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 0}], "fmt": "0:1/4-0a 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["bo", "cp", "pc", "ru", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pc", "pt", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-port", "m": 4, "r": 4, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:4/4-0a 1:1/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["av", "pc", "pt", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pb", "pc", "pt", "st", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:1/2-0h 2:1/2-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pb", "pc", "pt", "st", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pc", "pt"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-port", "m": 3, "r": 4, "x": 0}, {"id": "kb-unit-selinux-avc", "m": 1, "r": 3, "x": 1}], "fmt": "0:3/4-0a 1:1/3-1h 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pc", "pt"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pd", "uf", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-avc", "m": 2, "r": 3, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/3-0h 1:1/2-0h 2:1/2-0h", "oracle": null}
+{"goal": "diagnose", "evidence": ["pd", "uf", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "sc", "st"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config-restore", "m": 1, "r": 4, "x": 0}, {"id": "kb-unit-selinux-avc", "m": 1, "r": 3, "x": 1}, {"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 1}], "fmt": "0:1/4-0a 1:1/3-1h 2:1/4-1a", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "sc", "st"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["xs"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pd", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-avc", "m": 3, "r": 3, "x": 0}, {"id": "kb-unit-selinux-port", "m": 2, "r": 4, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:3/3-0h 1:2/4-0a 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["av", "pd", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "bo", "pc", "pd", "st", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:1/2-0h 2:1/2-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "bo", "pc", "pd", "st", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pd"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-avc", "m": 2, "r": 3, "x": 0}, {"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 0}], "fmt": "0:2/3-0h 1:1/4-0a 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "pd"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pd"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-avc", "m": 1, "r": 3, "x": 0}], "fmt": "0:1/3-0h 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pd"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pb", "ru", "xj"], "ctx": {"fedora": 44}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["pb", "ru", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cx", "om", "pc", "pd", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 2, "r": 2, "x": 0}, {"id": "kb-unit-oom", "m": 2, "r": 2, "x": 0}, {"id": "kb-unit-selinux-port", "m": 2, "r": 4, "x": 0}], "fmt": "0:2/2-0h 1:2/2-0h 2:2/4-0a", "oracle": 0}
+{"goal": "diagnose", "evidence": ["cx", "om", "pc", "pd", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-missing-file", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:1/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["nf", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-missing-file", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:1/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["nf", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-missing-file", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "cf", "pp"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-selinux-avc", "m": 1, "r": 3, "x": 0}, {"id": "kb-unit-config-restore", "m": 1, "r": 4, "x": 0}, {"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 0}], "fmt": "0:1/3-0h 1:1/4-0a 2:1/4-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["av", "cf", "pp"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cp", "nf", "pb", "sg", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-crashed", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-missing-file", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0a 1:1/2-0h 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cp", "nf", "pb", "sg", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cx", "nf", "pc"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-missing-file", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 0}], "fmt": "0:1/2-0h 1:1/2-0h 2:1/4-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["cx", "nf", "pc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["om", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-oom", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:1/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["om", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["om", "uf"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-oom", "m": 2, "r": 2, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/2-0h 1:1/2-0h 2:1/2-0h", "oracle": 0}
+{"goal": "diagnose", "evidence": ["om", "uf"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["om"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-oom", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["om"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["cf", "pc", "uf", "xj"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config-restore", "m": 2, "r": 4, "x": 0}, {"id": "kb-unit-selinux-port", "m": 2, "r": 4, "x": 0}, {"id": "kb-add-unit-cert-expired", "m": 1, "r": 2, "x": 0}], "fmt": "0:2/4-0a 1:2/4-0a 2:1/2-0h", "oracle": null}
+{"goal": "diagnose", "evidence": ["cf", "pc", "uf", "xj"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf", "ru", "xs"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-missing-file", "m": 1, "r": 2, "x": 0}], "fmt": "0:1/2-0h 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["nf", "ru", "xs"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "pc"], "ctx": {"fedora": 44}, "hits": [{"id": "kb-unit-config", "m": 1, "r": 2, "x": 0}, {"id": "kb-unit-config-restore", "m": 1, "r": 4, "x": 0}, {"id": "kb-unit-selinux-port", "m": 1, "r": 4, "x": 0}], "fmt": "0:1/2-0h 1:1/4-0a 2:1/4-0a", "oracle": null}
+{"goal": "diagnose", "evidence": ["ce", "pc"], "ctx": {"fedora": 47}, "hits": [], "fmt": "0:- 1:- 2:-", "oracle": null}

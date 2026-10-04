@@ -46,6 +46,10 @@ type Answer struct {
 	Confidence    float64            `json:"confidence"`
 	Backend       string             `json:"backend"`
 	Rules         []string           `json:"rules,omitempty"` // which rules fired (rules backend)
+	VSM           *VSMInfo           `json:"vsm,omitempty"`   // case, candidates, evidence, knowledge (vsm backend)
+	// FallbackReason: why the configured backend did not answer (the
+	// fallback did).
+	FallbackReason string `json:"fallback_reason,omitempty"`
 }
 
 // Backend answers questions.
@@ -98,8 +102,10 @@ func (l *Layer) Threshold(id string) float64 {
 func (l *Layer) Ask(ctx context.Context, q Question) Decision {
 	a, err := l.Backend.Answer(ctx, q)
 	if err != nil && l.Fallback != nil {
+		reason := err.Error()
 		a, err = l.Fallback.Answer(ctx, q)
 		a.Backend += " (fallback)"
+		a.FallbackReason = reason
 	}
 	if err != nil {
 		a = uniform(q)

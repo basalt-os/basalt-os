@@ -29,6 +29,13 @@ type Config struct {
 	AllowRemote   bool               // a non-local model endpoint is refused unless set
 	Calibration   map[string]float64 // per question: temperature applied to the model's log-probabilities
 
+	// VSM backend (decision.backend = vsm): where the knowledge index and
+	// the planner weights are (packages basalt-knowledge and
+	// basalt-vsm-planner). Empty: the package locations.
+	VSMKnowledgeRoot string // one directory per Fedora release
+	VSMKnowledge     string // one index directory (overrides the root)
+	VSMPlanner       string
+
 	// Natural-language translator (`basalt ask`), off by default.
 	Translator         bool
 	TranslatorEndpoint string
@@ -137,12 +144,18 @@ func (c *Config) set(sec, k, v string) error {
 	case "paths.audit_log":
 		c.AuditPath = v
 	case "decision.backend":
-		if v != "rules" && v != "openai-compatible" {
-			return fmt.Errorf("backend %q (rules or openai-compatible)", v)
+		if v != "rules" && v != "openai-compatible" && v != "vsm" {
+			return fmt.Errorf("backend %q (rules, openai-compatible or vsm)", v)
 		}
 		c.Backend = v
 	case "decision.endpoint":
 		c.ModelEndpoint = v
+	case "vsm.knowledge_root":
+		c.VSMKnowledgeRoot = v
+	case "vsm.knowledge":
+		c.VSMKnowledge = v
+	case "vsm.planner":
+		c.VSMPlanner = v
 	case "decision.model":
 		c.Model = v
 	case "decision.allow_remote", "translator.allow_remote":
@@ -261,7 +274,8 @@ func (c *Config) set(sec, k, v string) error {
 // DecideConfig is the decision layer's backend selection.
 func (c Config) DecideConfig() decide.Config {
 	return decide.Config{Backend: c.Backend, Endpoint: c.ModelEndpoint, Model: c.Model,
-		AllowRemote: c.AllowRemote, Calibration: c.Calibration}
+		AllowRemote: c.AllowRemote, Calibration: c.Calibration,
+		VSMKnowledgeRoot: c.VSMKnowledgeRoot, VSMKnowledge: c.VSMKnowledge, VSMPlanner: c.VSMPlanner}
 }
 
 func yesNo(v string) (bool, error) {

@@ -35,6 +35,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "basalt-assistantd:", err)
 		os.Exit(2)
 	}
+	if len(args) > 0 && args[0] == "--probe-vsm" {
+		os.Exit(probeVSM(cfg))
+	}
 	if err := os.MkdirAll(filepath.Join(cfg.StateDir, "proposals"), 0o700); err != nil {
 		fmt.Fprintln(os.Stderr, "basalt-assistantd:", err)
 		os.Exit(1)
@@ -44,14 +47,45 @@ func main() {
 	env := diag.Real(true, layer)
 	env.HistoryPath = filepath.Join(cfg.StateDir, "disk-history.jsonl")
 	eng := engine.New(cfg, env, proposal.Store{Dir: filepath.Join(cfg.StateDir, "proposals")}, al, layer, os.Stdout)
-	if _, err := al.Append("start", "basalt-assistantd "+version+" started", map[string]any{"backend": layer.Backend.Name(),
-		"thresholds": cfg.Thresholds, "default_threshold": layer.Default}); err != nil {
+	start := map[string]any{"backend": layer.Backend.Name(), "thresholds": cfg.Thresholds, "default_threshold": layer.Default}
+	if vb, ok := layer.Backend.(*decide.VSMBackend); ok {
+		// Load the knowledge and the planner now, so the start record says
+		// which ones answer (or why the rules will).
+		if e, err := vb.Engine(); err != nil {
+			start["vsm_error"] = err.Error()
+		} else {
+			start["vsm"] = e.Version()
+		}
+	}
+	if _, err := al.Append("start", "basalt-assistantd "+version+" started", start); err != nil {
 		fmt.Fprintln(os.Stderr, "basalt-assistantd: audit log:", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	_ = eng.Run(ctx)
 	_, _ = al.Append("stop", "basalt-assistantd stopped", eng.Stats())
+}
+
+// probeVSM loads the VSM backend as configured and answers one question
+// with it. It exists for the confinement test: run inside the daemon's
+// SELinux domain, it shows the knowledge and the planner are readable
+// there (no denial) while --probe-write shows they are not writable.
+func probeVSM(cfg config.Config) int {
+	c := cfg.DecideConfig()
+	vb := decide.NewVSMBackend(c.VSMKnowledgeRoot, c.VSMKnowledge, c.VSMPlanner)
+	e, err := vb.Engine()
+	if err != nil {
+		fmt.Println("vsm:", err)
+		return 1
+	}
+	q := decide.UnitCause("probe.service", map[string]bool{"unit_failed": true, "journal_address_in_use": true})
+	a, err := vb.Answer(context.Background(), q)
+	if err != nil {
+		fmt.Println("vsm:", err)
+		return 1
+	}
+	fmt.Printf("vsm: %s; %s -> %s %.3f (case %s, %d us)\n", e.Version(), q.ID, a.Top, a.Confidence, a.VSM.Case, a.VSM.Micros)
+	return 0
 }
 
 // probeWrite tries to create each path and reports the result. It exists

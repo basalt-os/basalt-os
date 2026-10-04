@@ -413,6 +413,59 @@ whenever the model fails. The rules stay the default: on the evaluation
 suite they are more accurate than the small models
 ([milestone-2b-report.md](milestone-2b-report.md)).
 
+### The VSM backend (optional)
+
+A third backend, `vsm`, answers the same four questions with VSM, a
+small diagnosis engine that runs in process (Go, no model server):
+
+- a knowledge index (package `basalt-knowledge`, one per Fedora release,
+  under `/usr/share/basalt/knowledge/<release>`) holds known problems as
+  cases: the evidence pattern each one needs (the diagnosers' findings as
+  two-letter codes), the cause, a diagnosis, typed actions from the closed
+  set and the checks that confirm the fix, the versions where it applies;
+  for the findings of a question it returns the three best ranked cases
+  (required codes matched, minus contradictions, then the most specific);
+- a planner (package `basalt-vsm-planner`, about 65,000 parameters, 256
+  KiB of weights under `/usr/share/basalt/vsm-planner`) reads the goal,
+  the codes and the candidates' match statistics, never names, paths or
+  ports, and accepts a candidate, picks another or abstains; its pick
+  probabilities become the answer's probabilities (an abstention goes to
+  the cautious option: unknown, investigate, other data);
+- a deterministic guard outside the model refuses any pick the evidence
+  does not fully support (a required finding missing, or one the case
+  excludes), and answers the cautious option when the SELinux policy could
+  not be queried.
+
+New problems arrive as knowledge cases (a data update with the system
+updates), not as a new model. Every decision it makes goes to the audit
+log with the picked case, the candidates, the evidence codes and the
+knowledge and planner versions. The knowledge index is checked when it is
+opened (the SHA-256 of its cases in its manifest, the table layout, the
+DSL version the planner speaks); if the packages are missing, damaged or
+for another DSL, or a question takes more than 2 s, the rules answer,
+marked `(fallback)`, with the reason in the decision record. Severity,
+notification and routing stay with the rules.
+
+On the evaluation suite (253 questions of 239 cases, basalt-assistant
+0.6.0, knowledge of 37 cases):
+
+| Backend | Accuracy | ECE | Brier | lab | lab-daemon | generated |
+|---|---|---|---|---|---|---|
+| rules/v1 | 96.8 % | 0.212 | 0.138 | 32/34 | 29/30 | 184/189 |
+| vsm | 97.6 % | 0.020 | 0.050 | 32/34 | 28/30 | 187/189 |
+
+VSM is better calibrated everywhere and more accurate overall, but one
+answer behind on the confined daemon's own cases (a unit killed by a
+denial without a "Permission denied" line, which no case covers yet), so
+the rules stay the default. Latency: about 1 ms per question, 0.4 MB of
+memory for the knowledge and the planner.
+
+```ini
+# /etc/basalt/assistant.conf
+[decision]
+backend = vsm
+```
+
 ## MCP tools
 
 `basalt-mcp` speaks MCP (protocol 2025-06-18) over stdio.
@@ -454,6 +507,9 @@ SELinux module `basalt_assistant` (package `basalt-assistant-selinux`):
   sockets. `basalt` as root runs them.
 - What the daemon and the MCP server cannot check they do not propose: a
   file restore or a rollback from them is a hint (see Hints).
+- The VSM backend's knowledge and planner weights
+  (`/usr/share/basalt/knowledge`, `/usr/share/basalt/vsm-planner`) have
+  their own type, `basalt_knowledge_t`, which the domain may only read.
 - Denials of the assistant's own domain are reported as a bug, never with a
   fix that would widen its access.
 
@@ -464,7 +520,7 @@ as a second, independent fence.
 ## Configuration
 
 `/etc/basalt/assistant.conf` (INI): decision backend, thresholds and
-calibration, the translator (`[translator]`: enabled, endpoint, prompt), the
+calibration, where the VSM backend's data is (`[vsm]`), the translator (`[translator]`: enabled, endpoint, prompt), the
 humanize layer (`[humanize]`: enabled, endpoint, model, allow_remote,
 api_key_file, prompt, max_chars, timeout, stream), disk
 thresholds (warn 85 %, critical 95 %, what counts as large), event timings

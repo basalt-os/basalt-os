@@ -6,4 +6,7 @@
 /var/log/basalt-assistant(/.*)?			gen_context(system_u:object_r:basalt_assistant_log_t,s0)
 /etc/basalt/assistant\.conf		--	gen_context(system_u:object_r:basalt_assistant_conf_t,s0)
 
+/usr/share/basalt/knowledge(/.*)?		gen_context(system_u:object_r:basalt_knowledge_t,s0)
+/usr/share/basalt/vsm-planner(/.*)?		gen_context(system_u:object_r:basalt_knowledge_t,s0)
+
 /usr/lib/systemd/system/basalt-assistantd\.service	--	gen_context(system_u:object_r:basalt_assistant_unit_file_t,s0)

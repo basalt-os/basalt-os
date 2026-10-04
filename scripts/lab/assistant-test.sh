@@ -29,7 +29,9 @@
 #             reports it, `basalt disk` (root) finds the snapshot, its
 #             deletion is applied and the space is back
 #   confine   the daemon runs in basalt_assistant_t, may not write outside its
-#             state directory (probe through systemd-run), 0 denials
+#             state directory (probe through systemd-run), 0 denials; with the
+#             VSM data installed it reads the knowledge and the planner and
+#             may not write them
 #   mcp       the MCP server: tools, a proposal stored, nothing executed
 #   audit     the audit chain verifies; recent records
 # Every apply is non-interactive here: the confirmation code printed with
@@ -258,7 +260,13 @@ step_confine() {
   # hardening, so only SELinux decides) and tries to create files.
   vm 'systemd-run --wait --pipe --quiet /usr/libexec/basalt/basalt-assistantd --probe-write \
         /etc/basalt-probe /root/basalt-probe /var/tmp/basalt-probe /srv/basalt-probe /var/log/basalt-probe \
-        /var/log/basalt-assistant/probe /var/lib/basalt-assistant/probe' || true
+        /var/log/basalt-assistant/probe /var/lib/basalt-assistant/probe \
+        /usr/share/basalt/knowledge/probe /usr/share/basalt/vsm-planner/probe' || true
+  # With the VSM data installed: the domain reads the knowledge and the
+  # planner (one question answered) and may not write them (above).
+  if vm 'test -d /usr/share/basalt/vsm-planner'; then
+    vm 'systemd-run --wait --pipe --quiet /usr/libexec/basalt/basalt-assistantd --probe-vsm' || true
+  fi
   log "denials caused by the probe (expected):"
   vm "ausearch --input-logs -m AVC -ts $t 2>/dev/null | grep -o 'avc: .*' | sed 's/ ino=[0-9]*//; s/pid=[0-9]* //' | sort -u" || true
 }

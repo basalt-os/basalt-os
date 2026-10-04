@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.5.0
+Version:        0.6.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -39,6 +39,9 @@ Requires:       diffutils
 Requires:       findutils
 Requires:       coreutils
 Requires:       (%{name}-selinux = %{version}-%{release} if selinux-policy-%{selinuxtype})
+# Data of the optional VSM decision backend (decision.backend = vsm).
+Suggests:       basalt-knowledge
+Suggests:       basalt-vsm-planner
 %{?systemd_requires}
 
 %description
@@ -159,6 +162,20 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.0-1
+- Optional VSM decision backend (decision.backend = vsm): a knowledge
+  index (package basalt-knowledge) ranks known cases for the diagnosers'
+  findings, a small planner (package basalt-vsm-planner) judges them, and
+  a deterministic guard turns any pick the evidence does not fully support
+  into the cautious answer. It answers unit.cause, avc.class, disk.cause
+  and dnf.next; the rules stay the default and the fallback. Its decisions
+  carry the picked case, the candidates and the knowledge version in the
+  audit log.
+- SELinux: basalt_knowledge_t for the shipped knowledge and weights,
+  read only; the daemon may read dnf5.log (it was denied, so the event
+  engine missed failed post-install scriptlets).
+- basalt-eval decide -backend vsm measures it next to the rules.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.5.0-1
 - Plain, friendly English everywhere: each finding says what is wrong,
   why, what applying will do, the risk, how to undo it and the next step;

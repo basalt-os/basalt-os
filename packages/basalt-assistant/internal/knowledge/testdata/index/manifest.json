@@ -1,0 +1,26 @@
+{
+  "schema": "basalt-knowledge/v1",
+  "format": "BKIX0001",
+  "dsl": "basalt-os-dsl/2",
+  "cases": 16,
+  "codes": 21,
+  "sha256": "5e996b212bbee360f1ac2c5b348e44c399da9390437df0849080308618fbc46f",
+  "ids": [
+    "kb-add-unit-cert-expired",
+    "kb-avc-boolean",
+    "kb-avc-port",
+    "kb-avc-port-owned",
+    "kb-avc-suspicious",
+    "kb-disk-journal",
+    "kb-disk-snapshots",
+    "kb-dnf-interrupted",
+    "kb-dnf-unchanged",
+    "kb-unit-config",
+    "kb-unit-config-restore",
+    "kb-unit-crashed",
+    "kb-unit-missing-file",
+    "kb-unit-oom",
+    "kb-unit-selinux-avc",
+    "kb-unit-selinux-port"
+  ]
+}

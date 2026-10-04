@@ -1,0 +1,8 @@
+# Files of basalt-vsm-planner (the planner weights of the assistant's VSM
+# backend). They are not kept in this repository: scripts/data-package.sh
+# fetches each one by its path under the artifacts location and refuses it
+# unless the SHA-256 and the size match.
+#
+# Columns: name  sha256  bytes  path
+weights.bin  41e8c37852375eaf70bf16230c9ded8a2d59f1371be37e6b932961ed2e6e6523  261880  vsm-planner/dsl2/20261003/weights.bin
+config.txt   0377aa2e5d047ddc97b36ddc345edc305702195e94d62702fd348519c50155ea  313     vsm-planner/dsl2/20261003/config.txt

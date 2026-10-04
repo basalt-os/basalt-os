@@ -4,7 +4,7 @@
 // system, it only reads the case files and talks to a model endpoint.
 //
 //	basalt-eval translate -endpoint E [-set eval/translator.jsonl] [-out FILE]
-//	basalt-eval decide [-endpoint E] [-cases DIR] [-out FILE] [-folds 5]
+//	basalt-eval decide [-endpoint E | -backend vsm -knowledge DIR -planner DIR] [-cases DIR] [-out FILE] [-folds 5]
 //	basalt-eval check [-cases DIR]
 //	basalt-eval render-data -split train|heldout [-n N] [-seed S] [-out FILE]
 //	basalt-eval humanize -endpoint E [-set FILE] [-out FILE] [-stream]
@@ -21,6 +21,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,8 +29,10 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/knowledge"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/llm"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/translate"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/vsm"
 )
 
 func main() {
@@ -93,6 +96,21 @@ func pct(xs []float64, p float64) float64 {
 		i = 0
 	}
 	return s[i]
+}
+
+// maxRSS is the process's peak resident set (VmHWM, kB), 0 when unknown.
+func maxRSS() int {
+	b, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if v, ok := strings.CutPrefix(line, "VmHWM:"); ok {
+			n, _ := strconv.Atoi(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "kB")))
+			return n
+		}
+	}
+	return 0
 }
 
 func round(v float64, d int) float64 {
@@ -354,6 +372,11 @@ func runDecide(args []string) error {
 	fs := flag.NewFlagSet("decide", flag.ExitOnError)
 	ep := fs.String("endpoint", "", "OpenAI-compatible endpoint (empty: rules only)")
 	model := fs.String("model", "", "model name")
+	backend := fs.String("backend", "", "second backend: openai-compatible (default with -endpoint) or vsm")
+	kdir := fs.String("knowledge", "", "vsm: knowledge index directory (cases.jsonl, index.bin, manifest.json)")
+	pdir := fs.String("planner", "", "vsm: planner directory (weights.bin, config.txt)")
+	fedora := fs.Int("fedora", 44, "vsm: Fedora release the cases were recorded on (version gating)")
+	ext := fs.Bool("vsm-extensions", true, "vsm: map the assistant's newer features (oom_killed) as the daemon does")
 	dir := fs.String("cases", "eval/cases", "directory of *.jsonl case files")
 	out := fs.String("out", "", "per-item results (JSON lines)")
 	label := fs.String("label", "", "label for the summary")
@@ -382,11 +405,38 @@ func runDecide(args []string) error {
 			return fmt.Errorf("%s: schema %q", c.ID, c.Schema)
 		}
 	}
-	var mb *decide.ModelBackend
-	if *ep != "" {
-		mb = decide.NewModelBackend(*ep, *model, false)
-		mb.C.Timeout = 120 * time.Second
+	// The second backend, measured next to the rules.
+	var mb decide.Backend
+	key := "model"
+	var heap uint64
+	switch {
+	case *backend == "vsm":
+		if *kdir == "" || *pdir == "" {
+			return fmt.Errorf("vsm needs -knowledge and -planner")
+		}
+		var m0, m1 goruntime.MemStats
+		goruntime.GC()
+		goruntime.ReadMemStats(&m0)
+		eng, err := vsm.Open(*kdir, *pdir, knowledge.Context{Fedora: *fedora})
+		if err != nil {
+			return err
+		}
+		goruntime.GC()
+		goruntime.ReadMemStats(&m1)
+		heap = m1.HeapAlloc - m0.HeapAlloc
+		eng.Ext = *ext
+		mb, key = decide.NewVSMBackendFromEngine(eng), "vsm"
+		if *label == "" {
+			*label = "vsm " + eng.Version()
+		}
+	case *ep != "" && (*backend == "" || *backend == "openai-compatible"):
+		m := decide.NewModelBackend(*ep, *model, false)
+		m.C.Timeout = 120 * time.Second
+		mb = m
+	case *backend != "":
+		return fmt.Errorf("backend %q (openai-compatible or vsm)", *backend)
 	}
+	var abstained, guarded, fellBack int
 	var w *bufio.Writer
 	if *out != "" {
 		f, err := os.Create(*out)
@@ -421,9 +471,22 @@ func runDecide(args []string) error {
 				t0 := time.Now()
 				// Raw log-probabilities: temperature 1, kept for the fit.
 				ma, err := mb.Answer(context.Background(), q)
-				ms := float64(time.Since(t0).Milliseconds())
+				ms := float64(time.Since(t0).Microseconds()) / 1000
+				if err != nil && key == "vsm" {
+					// As the daemon does: the rules answer when VSM cannot.
+					ma, err = ra, nil
+					fellBack++
+				}
 				if err != nil {
 					return fmt.Errorf("%s %s: %v", c.ID, qid, err)
+				}
+				if ma.VSM != nil {
+					if ma.VSM.Abstained {
+						abstained++
+					}
+					if ma.VSM.Guarded {
+						guarded++
+					}
 				}
 				lg := map[string]float64{}
 				for k, v := range ma.Probabilities {
@@ -431,7 +494,12 @@ func runDecide(args []string) error {
 				}
 				models = append(models, item{Case: c.ID, Question: qid, Source: c.Provenance.Source, Want: want, P: ma.Probabilities, Logits: lg, MS: ms})
 				if w != nil {
-					b, _ := json.Marshal(map[string]any{"case": c.ID, "q": qid, "want": want, "rules": ra.Probabilities, "model": ma.Probabilities, "ms": ms})
+					row := map[string]any{"case": c.ID, "q": qid, "source": c.Provenance.Source, "want": want,
+						"rules": ra.Probabilities, key: ma.Probabilities, "ms": ms}
+					if ma.VSM != nil {
+						row["vsm_detail"] = ma.VSM
+					}
+					b, _ := json.Marshal(row)
 					w.Write(append(b, '\n'))
 				}
 			} else if w != nil {
@@ -445,15 +513,22 @@ func runDecide(args []string) error {
 	rcal, rtemps := crossValTemperature(rules, *folds)
 	sum["rules_temperature_cv"], sum["rules_temperatures_full_fit"] = metrics(rcal), rtemps
 	if mb != nil {
-		sum["model"] = metrics(models)
+		sum[key] = metrics(models)
 		var lat []float64
 		for _, it := range models {
 			lat = append(lat, it.MS)
 		}
-		sum["model_latency_ms_p50"], sum["model_latency_ms_p95"] = pct(lat, 50), pct(lat, 95)
+		sum[key+"_latency_ms_p50"], sum[key+"_latency_ms_p95"] = pct(lat, 50), pct(lat, 95)
 		cal, temps := crossValTemperature(models, *folds)
-		sum["model_temperature_cv"] = metrics(cal)
+		sum[key+"_temperature_cv"] = metrics(cal)
 		sum["temperatures_full_fit"] = temps
+		if key == "vsm" {
+			sum["vsm_backend"] = mb.Name()
+			sum["vsm_abstained"], sum["vsm_guarded"], sum["vsm_fallback"] = abstained, guarded, fellBack
+			sum["vsm_extensions"] = *ext
+			sum["vsm_heap_bytes"] = heap
+			sum["max_rss_kb"] = maxRSS()
+		}
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")

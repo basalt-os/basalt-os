@@ -226,6 +226,13 @@ type Config struct {
 	Model       string
 	AllowRemote bool
 	Calibration map[string]float64
+
+	// vsm backend: the knowledge root (one directory per Fedora release),
+	// or one index directory, and the planner directory. Empty: the
+	// package locations.
+	VSMKnowledgeRoot string
+	VSMKnowledge     string
+	VSMPlanner       string
 }
 
 // FromConfigFull is FromConfig with every model option.
@@ -234,10 +241,14 @@ func FromConfigFull(c Config, log Logger, thresholds map[string]float64, def flo
 	if def > 0 {
 		l.Default = def
 	}
-	if c.Backend == "openai-compatible" {
+	switch c.Backend {
+	case "openai-compatible":
 		mb := NewModelBackend(c.Endpoint, c.Model, c.AllowRemote)
 		mb.Calibration = c.Calibration
 		l.Backend = mb
+		l.Fallback = Rules{}
+	case "vsm":
+		l.Backend = NewVSMBackend(c.VSMKnowledgeRoot, c.VSMKnowledge, c.VSMPlanner)
 		l.Fallback = Rules{}
 	}
 	return l

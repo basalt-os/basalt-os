@@ -1,4 +1,4 @@
-policy_module(basalt_assistant, 0.1.0)
+policy_module(basalt_assistant, 0.2.0)
 
 # Basalt OS system assistant.
 #
@@ -40,6 +40,14 @@ files_config_file(basalt_assistant_conf_t)
 type basalt_assistant_unit_file_t;
 systemd_unit_file(basalt_assistant_unit_file_t)
 
+# Shipped knowledge and planner weights of the VSM decision backend
+# (packages basalt-knowledge and basalt-vsm-planner, under
+# /usr/share/basalt): data the domain only reads. Its own type keeps them
+# apart from other files under /usr: nothing in this domain can write,
+# map for execution or relabel them.
+type basalt_knowledge_t;
+files_type(basalt_knowledge_t)
+
 ########################################
 #
 # Own files
@@ -64,6 +72,11 @@ allow basalt_assistant_t basalt_assistant_log_t:file { create getattr open read 
 
 read_files_pattern(basalt_assistant_t, basalt_assistant_conf_t, basalt_assistant_conf_t)
 files_read_etc_files(basalt_assistant_t)
+
+# Knowledge index and planner weights: read only (the files are small and
+# read whole; no map, no write).
+list_dirs_pattern(basalt_assistant_t, basalt_knowledge_t, basalt_knowledge_t)
+read_files_pattern(basalt_assistant_t, basalt_knowledge_t, basalt_knowledge_t)
 
 ########################################
 #
@@ -129,6 +142,13 @@ optional_policy(`
 	')
 	list_dirs_pattern(basalt_assistant_t, snapperd_data_t, snapperd_data_t)
 	read_files_pattern(basalt_assistant_t, snapperd_data_t, snapperd_data_t)
+')
+
+optional_policy(`
+	# dnf5.log (rpm_log_t): the event engine reads scriptlet failures
+	# there (a failing %post leaves the package installed and rpm reports
+	# success). Read only.
+	rpm_read_log(basalt_assistant_t)
 ')
 
 optional_policy(`

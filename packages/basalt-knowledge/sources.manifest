@@ -1,0 +1,9 @@
+# Files of basalt-knowledge (the knowledge index of the assistant's VSM
+# backend for one Fedora release). They are not kept in this repository:
+# scripts/data-package.sh fetches each one by its path under the artifacts
+# location and refuses it unless the SHA-256 and the size match.
+#
+# Columns: name  sha256  bytes  path
+cases.jsonl    437fcc78e9aa6e55e5567b77b54f32bf58af9843c21a7ae97acb2af278636473  26759  knowledge/44/20261003/cases.jsonl
+index.bin      c3817c412f4069db1a01143da09302799f426f797ebca92d282777115ff699a5  1252   knowledge/44/20261003/index.bin
+manifest.json  98914caf2b0972404eb8888835a7be0733430e8f5929191ba3e50973479e6e61  1212   knowledge/44/20261003/manifest.json

@@ -31,6 +31,8 @@ cd packages/basalt-assistant
 go run ./tools/basalt-eval check -cases ../../eval/cases                  # validate every case
 go run ./tools/basalt-eval decide -cases ../../eval/cases                 # rules only
 go run ./tools/basalt-eval decide -cases ../../eval/cases -endpoint unix:/run/basalt-llm/llm.sock
+go run ./tools/basalt-eval decide -cases ../../eval/cases -backend vsm \
+    -knowledge /usr/share/basalt/knowledge/44 -planner /usr/share/basalt/vsm-planner
 go run ./tools/basalt-eval translate -set ../../eval/translator.jsonl -endpoint unix:/run/basalt-llm/llm.sock
 ```
 
@@ -39,7 +41,9 @@ top probability), Brier score and negative log-likelihood, overall, per
 question and per source, and for a model also its latency and a
 per-question temperature fitted with 5-fold cross-validation (the numbers
 after the fit are measured on held-out folds; the temperatures fitted on
-all cases are what goes into `[calibration]` of `assistant.conf`).
+all cases are what goes into `[calibration]` of `assistant.conf`). For the
+VSM backend it also prints how often VSM abstained, how often the guard
+refused a pick, and the memory the knowledge and the planner take.
 `translate` prints intent and argument accuracy (strict, and lenient where
 a case lists other acceptable answers), changes the person did not ask
 for, latency and tokens per second, for the model's own answer and after
