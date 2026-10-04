@@ -1,0 +1,13 @@
+# Basalt OS live desktop: the live user starts the Basalt session on the
+# first boot (initial_session); logging out returns to the login screen
+# (tuigreet), where the live user's password is "basalt".
+[terminal]
+vt = 1
+
+[default_session]
+command = "tuigreet --time --remember --remember-session --sessions /usr/share/wayland-sessions --cmd 'basalt-session sway'"
+user = "greetd"
+
+[initial_session]
+command = "basalt-session sway"
+user = "basalt"

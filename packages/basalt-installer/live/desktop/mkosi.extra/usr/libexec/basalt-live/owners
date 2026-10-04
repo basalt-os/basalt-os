@@ -1,0 +1,9 @@
+#!/bin/bash
+# Give the packaged files of service users (greetd, polkitd and others) and
+# the live user's home their owners back. The image stores every file as
+# root; only these few change, so the overlay copies up little.
+while read -r user group path; do
+  [ -e "$path" ] || [ -L "$path" ] || continue
+  chown -h "$user:$group" "$path" 2>/dev/null || echo "owner of $path not set" >&2
+done </usr/lib/basalt-live/owners.list
+chown -R basalt:basalt /home/basalt

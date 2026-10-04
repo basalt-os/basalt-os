@@ -19,6 +19,11 @@
 #    Secure Boot on; the Basalt repository travels on it too (the "media"
 #    repository of the installer). UEFI only, hybrid (CD or USB stick).
 #
+# LIVE_PROFILE=desktop builds the live desktop instead (live/desktop/: the
+# Basalt desktop edition with a live user, the graphical installer as an
+# app of the session; it needs basalt-desktop and its packages in REPO_DIR,
+# and runs from the medium rather than from memory).
+#
 # Variables: REPO_DIR (signed repository, required), LIVE_CMDLINE (extra
 # kernel arguments, e.g. basalt.inst.repo=URL), LIVE_PLANS (directory of
 # plan files copied to /basalt/plans on the media), LIVE_NAME (ISO name
@@ -30,7 +35,16 @@ live="$REPO_ROOT/packages/basalt-installer/live"
 : "${LIVE_PLANS:=}"
 : "${LIVE_NAME:=}"
 : "${LIVE_TIMEOUT:=5}"
+: "${LIVE_PROFILE:=}"
 label=BASALT-INST
+case "$LIVE_PROFILE" in
+  "") ;;
+  desktop)
+    ls "$REPO_DIR/$FEDORA_RELEASE/$ARCH"/basalt-desktop-*.rpm >/dev/null 2>&1 ||
+      die "basalt-desktop is not in $REPO_DIR (the desktop profile needs it)"
+    LIVE_NAME="desktop${LIVE_NAME:+-$LIVE_NAME}" ;;
+  *) die "LIVE_PROFILE must be empty or desktop" ;;
+esac
 [[ -d "$REPO_DIR/$FEDORA_RELEASE/$ARCH/repodata" ]] || die "no repository at $REPO_DIR (make repo)"
 [[ -f "$REPO_DIR/RPM-GPG-KEY-basalt" ]] || die "no RPM-GPG-KEY-basalt in $REPO_DIR"
 ls "$REPO_DIR/$FEDORA_RELEASE/$ARCH"/basalt-installer-gui-*.rpm >/dev/null 2>&1 ||
@@ -54,9 +68,10 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
   -v "$live:/live:ro" -v "$REPO_DIR:/repo:ro" -v "$out:/out" -v "$BUILD_DIR/cache/mkosi:/cache" \
   -v "$plans:/plans:ro" \
   -e NAME="$name" -e LABEL="$label" -e VERSION="$BASALT_VERSION" -e RELEASE="$FEDORA_RELEASE" \
-  -e CMDLINE_EXTRA="$LIVE_CMDLINE" -e TIMEOUT="$LIVE_TIMEOUT" \
+  -e CMDLINE_EXTRA="$LIVE_CMDLINE" -e TIMEOUT="$LIVE_TIMEOUT" -e PROFILE="$LIVE_PROFILE" \
   "$tools" bash -euo pipefail -c '
-    port=8197
+    # A free port: other builds on the same host share the network namespace.
+    port=$(python3 -c "import socket; s=socket.socket(); s.bind((\"127.0.0.1\", 0)); print(s.getsockname()[1])")
     python3 -m http.server "$port" --bind 127.0.0.1 --directory /repo >/tmp/http.log 2>&1 &
     trap "kill $! 2>/dev/null || true" EXIT
 
@@ -73,6 +88,13 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
     # never reuse its cached metadata or packages.
     find /cache -path "*libdnf5/basalt-*" -prune -exec rm -rf {} + 2>/dev/null || true
     rm -rf /tmp/build && mkdir -p /tmp/build && cp -a /live/. /tmp/build/ && cd /tmp/build
+    rm -rf /tmp/build/desktop
+    if [ "$PROFILE" = desktop ]; then
+      # The desktop profile: more packages (mkosi.conf.d) and files on top
+      # of the installer image (finalize-desktop runs from mkosi.finalize.chroot).
+      mkdir -p mkosi.conf.d && cp -a /live/desktop/mkosi.conf.d/. mkosi.conf.d/
+      cp -a /live/desktop/mkosi.extra/. mkosi.extra/
+    fi
     mkosi --sandbox-tree="$sb" --output-directory=/tmp/out --cache-directory=/cache --workspace-directory=/tmp \
       --force build >/tmp/mkosi.log 2>&1 || { tail -60 /tmp/mkosi.log; cp /tmp/mkosi.log "/out/$NAME.mkosi.log"; exit 1; }
     cp /tmp/mkosi.log "/out/$NAME.mkosi.log"
@@ -91,8 +113,13 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
     efisrc="$tree/boot/efi/EFI"
     [ -f "$efisrc/BOOT/BOOTX64.EFI" ] && [ -f "$efisrc/fedora/grubx64.efi" ] || { echo "signed shim/GRUB not found in the tree" >&2; exit 1; }
     # enforcing=1: a live system that cannot load the policy does not boot.
-    cmdline="root=live:CDLABEL=$LABEL quiet rd.live.image rd.live.ram=1 rd.live.overlay.overlayfs=1 enforcing=1 systemd.firstboot=off systemd.getty_auto=0 console=tty0 console=ttyS0,115200n8 $CMDLINE_EXTRA"
-    sed -e "s|@LABEL@|$LABEL|" -e "s|@VERSION@|$VERSION|g" -e "s|@CMDLINE@|$cmdline|g" -e "s|@TIMEOUT@|$TIMEOUT|" /live/grub.cfg.in >/tmp/grub.cfg
+    # The desktop runs from the medium (a desktop image is too large to
+    # copy to memory on modest machines); the installer image from memory.
+    live_args="rd.live.ram=1" menu=/live/grub.cfg.in
+    [ "$PROFILE" = desktop ] && live_args="" menu=/live/desktop/grub.cfg.in
+    cmdline="root=live:CDLABEL=$LABEL quiet rd.live.image $live_args rd.live.overlay.overlayfs=1 enforcing=1 systemd.firstboot=off systemd.getty_auto=0 console=tty0 console=ttyS0,115200n8 $CMDLINE_EXTRA"
+    cmdline="$(echo "$cmdline" | tr -s " ")"
+    sed -e "s|@LABEL@|$LABEL|" -e "s|@VERSION@|$VERSION|g" -e "s|@CMDLINE@|$cmdline|g" -e "s|@TIMEOUT@|$TIMEOUT|" "$menu" >/tmp/grub.cfg
     img="$iso/images/efiboot.img"
     mkfs.vfat -C -n BASALTEFI "$img" 8192 >/dev/null
     mmd -i "$img" ::/EFI ::/EFI/BOOT
@@ -110,15 +137,20 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
     fc="$tree/etc/selinux/targeted/contexts/files"
     [ -f "$tree/etc/selinux/targeted/policy/policy.$(ls "$tree/etc/selinux/targeted/policy" | sed -n "s/^policy\.//p" | sort -n | tail -1)" ] ||
       { echo "no compiled SELinux policy in the tree" >&2; exit 1; }
-    cat "$fc/file_contexts" "$fc/file_contexts.local" >/tmp/file_contexts
+    # file_contexts.homedirs: the home of the live desktop user.
+    cat "$fc/file_contexts" "$fc/file_contexts.local" $([ -f "$fc/file_contexts.homedirs" ] && echo "$fc/file_contexts.homedirs") >/tmp/file_contexts
     mkfs.erofs --quiet -zlzma -C1048576 --all-root --file-contexts=/tmp/file_contexts \
       "$iso/LiveOS/squashfs.img" "$tree" >/tmp/erofs.log 2>&1 || { cat /tmp/erofs.log >&2; exit 1; }
 
     # The labels the live system depends on, read back from the image.
+    # Read through the build host kernel, so only types the host policy
+    # knows (Fedora ones) read back as written; a type of a Basalt module
+    # shows as unlabeled_t here and is checked on the booted image instead.
     mkdir -p /tmp/check && mount -t erofs -o ro,loop "$iso/LiveOS/squashfs.img" /tmp/check
     bad=0
     for want in /:root_t /usr/lib/systemd/systemd:init_exec_t /usr/bin/bash:shell_exec_t \
-                /etc/shadow:shadow_t /usr/bin/basalt-installer:install_exec_t /usr/bin/cage:bin_t; do
+                /etc/shadow:shadow_t /usr/bin/basalt-installer:install_exec_t /usr/bin/cage:bin_t \
+                $([ "$PROFILE" = desktop ] && echo /home/basalt:user_home_dir_t /usr/bin/sway:bin_t); do
       f="${want%%:*}" t="${want##*:}"
       got="$(getfattr --absolute-names --only-values -h -n security.selinux "/tmp/check$f" 2>&1 | tr -d "\\0")"
       case "$got" in *":$t:"*) echo "label $f: $got" ;; *) echo "label $f: $got (expected $t)" >&2; bad=1 ;; esac

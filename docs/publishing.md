@@ -80,7 +80,10 @@ container, because `basalt-shell-selinux` needs `basalt-agent-selinux`.
 ## Build
 
 `build.sh` builds every package from a clean checkout of a commit:
-`scripts/build-rpms.sh`, `basalt-llm`, and the data packages
+`scripts/build-rpms.sh`, `basalt-llm`, `swayfx` (the desktop session's
+compositor: SwayFX from its pinned release archive, Provides and
+Conflicts with Fedora's sway, no Obsoletes, so switching stays explicit
+with `dnf swap`), and the data packages
 `basalt-knowledge` and `basalt-vsm-planner` (from `BASALT_ARTIFACTS_DIR` or
 `BASALT_ARTIFACTS_URL`). It ignores `.env` and refuses the lab overrides
 (development repository key, lab module certificates, lab repository

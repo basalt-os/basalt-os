@@ -134,7 +134,7 @@ ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwa
 
 # --- system assistant (packages/basalt-assistant) -----------------------------------
 
-.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-agent agent-test lab-agent-test rpm-llm llm-test eval-rules eval-check lab-eval-capture
+.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-agent agent-test lab-agent-test rpm-llm rpm-swayfx llm-test eval-rules eval-check lab-eval-capture
 
 rpm-assistant: ## Build only basalt-assistant (+ -selinux, source) into the RPM directory
 	packages/basalt-assistant/build.sh
@@ -178,6 +178,9 @@ lab-ledger-test: ## Egress + ledger on a lab VM: default-deny sessions, rebindin
 rpm-llm: ## Build basalt-llm (+ -selinux): llama.cpp server for the CPU, unit without network, SELinux domain (not in CI)
 	packages/basalt-llm/build.sh
 
+rpm-swayfx: ## Build swayfx: SwayFX (sway with corners, shadows, blur) for the desktop session (not in CI)
+	packages/swayfx/build.sh
+
 llm-test: ## Unit tests of basalt-llm's model selection (MODEL=auto, aliases, unpublished models fail closed)
 	packages/basalt-llm/tests/select-test.sh
 
@@ -205,7 +208,7 @@ eval-vsm: ## Decision-layer evaluation suite: rules vs the VSM backend (VSM_KNOW
 
 # --- installer (packages/basalt-installer, docs/installer.md) ------------------------
 
-.PHONY: rpm-installer installer-test live-iso lab-installer-iso lab-installer-tui lab-installer-gui
+.PHONY: rpm-installer installer-test live-iso live-desktop-iso lab-installer-iso lab-installer-tui lab-installer-gui
 
 rpm-installer: ## Build basalt-installer (+ -gui, source) with the upstream Go toolchain go.mod names
 	packages/basalt-installer/build.sh
@@ -215,6 +218,9 @@ installer-test: ## go vet + go test of basalt-installer (plan validation, step g
 
 live-iso: ## Live installer ISO (mkosi): runs from memory, Fedora's signed boot chain, Basalt repository on the media
 	packages/basalt-installer/live/build-live.sh
+
+live-desktop-iso: ## Live desktop ISO: the desktop edition with a live user, the installer as an app (needs basalt-desktop in REPO_DIR)
+	LIVE_PROFILE=desktop packages/basalt-installer/live/build-live.sh
 
 lab-installer-iso: ## Lab live ISO: a plan for the lab VM on the media, a root shell on the second serial port
 	packages/basalt-installer/tests/install-test.sh iso

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install Basalt OS
+Comment=Install Basalt OS on this computer
+Exec=quickshell -p /usr/share/basalt-installer/gui
+Icon=system-software-install
+Terminal=false
+Categories=System;
+Keywords=install;installer;disk;

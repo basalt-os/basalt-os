@@ -37,3 +37,8 @@ for f in usr/lib/systemd/systemd usr/lib/systemd/systemd-sysroot-fstab-check \
   grep -q "$f" /tmp/initrd.list || { echo "the live initramfs lacks $f" >&2; exit 1; }
 done
 rm -f /tmp/dracut.log /tmp/initrd.list
+
+# The live desktop (build-live.sh LIVE_PROFILE=desktop) adds its own steps.
+if [ -x /usr/libexec/basalt-live/finalize-desktop ]; then
+  /usr/libexec/basalt-live/finalize-desktop
+fi

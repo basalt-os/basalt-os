@@ -1,0 +1,16 @@
+#!/bin/bash
+# Live desktop image setup, run by mkosi.finalize.chroot after the
+# installer image's own steps (LIVE_PROFILE=desktop).
+set -euo pipefail
+install -d /usr/lib/basalt-live
+systemctl set-default graphical.target
+# The live user: logs in automatically (greetd initial_session), may
+# administer with its password ("basalt", also for the screen lock).
+useradd -m -c "Basalt live" -G wheel basalt
+echo 'basalt:basalt' | chpasswd
+# The shell's activity log, settings and the default user directories
+# are created on first login.
+# The image stores every file as root (mkfs.erofs --all-root); list the
+# packaged files that belong to someone else, for basalt-live-owners at boot.
+rpm -qa --qf '[%{FILEUSERNAME} %{FILEGROUPNAME} %{FILENAMES}\n]' |
+  awk '($1 != "root" || $2 != "root") && NF == 3' >/usr/lib/basalt-live/owners.list

@@ -1,0 +1,14 @@
+# GRUB menu of the Basalt OS live desktop (read by Fedora's signed GRUB
+# from the EFI system partition image of the ISO).
+set default="0"
+set timeout=@TIMEOUT@
+serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+terminal_input serial console
+terminal_output serial console
+# The serial console gets the text installer, as on the installer image.
+search --no-floppy --set=root -l '@LABEL@'
+
+menuentry 'Try Basalt OS @VERSION@ (live desktop)' --class basalt --class gnu-linux --class os {
+	linux /images/vmlinuz @CMDLINE@
+	initrd /images/initrd.img
+}

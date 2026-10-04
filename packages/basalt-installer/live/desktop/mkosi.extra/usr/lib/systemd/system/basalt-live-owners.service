@@ -1,0 +1,19 @@
+[Unit]
+Description=Basalt OS live desktop: file owners of the packages and the live user
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/installer.md
+# The live image stores every file as root (mkfs.erofs --all-root, so the
+# build sandbox's ID mapping never leaks into the image); the few files
+# that belong to service users (greetd, polkitd) and the live user's home
+# get their owners back here, on the overlay, before anyone logs in.
+DefaultDependencies=no
+After=local-fs.target systemd-sysusers.service
+Before=greetd.service systemd-user-sessions.service polkit.service
+ConditionPathExists=/home/basalt
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/basalt-live/owners
+
+[Install]
+WantedBy=sysinit.target

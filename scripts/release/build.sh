@@ -10,8 +10,9 @@
 #
 # Packages: scripts/build-rpms.sh (basalt-release, -logos, -snapshots,
 # -security, -prompt, -assistant, -agent, -resolver, -ledger, -installer),
-# basalt-llm, and the data packages basalt-knowledge and basalt-vsm-planner
-# (BASALT_ARTIFACTS_DIR or BASALT_ARTIFACTS_URL, see scripts/data-package.sh).
+# basalt-llm, swayfx (the desktop session's compositor), and the data
+# packages basalt-knowledge and basalt-vsm-planner (BASALT_ARTIFACTS_DIR or
+# BASALT_ARTIFACTS_URL, see scripts/data-package.sh).
 #
 # OUT_DIR receives the binary and source RPMs, BUILD-INFO.txt and
 # SHA256SUMS. scripts/release/sign.sh takes that directory as input.
@@ -30,6 +31,7 @@ commit="$(git -C "$REPO_ROOT" rev-parse HEAD)" || die "not a git checkout"
 rm -rf "$RPM_DIR"
 "$REPO_ROOT/scripts/build-rpms.sh"
 "$REPO_ROOT/packages/basalt-llm/build.sh"
+"$REPO_ROOT/packages/swayfx/build.sh"
 "$REPO_ROOT/scripts/data-package.sh" basalt-knowledge
 "$REPO_ROOT/scripts/data-package.sh" basalt-vsm-planner
 

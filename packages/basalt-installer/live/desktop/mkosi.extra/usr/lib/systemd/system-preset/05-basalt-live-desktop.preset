@@ -1,0 +1,5 @@
+# Live desktop image: the login screen owns tty1 instead of the installer;
+# the graphical installer runs as an app of the session.
+enable greetd.service
+disable basalt-installer-ui.service
+enable basalt-live-owners.service

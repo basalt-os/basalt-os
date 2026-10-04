@@ -200,6 +200,36 @@ Kernel command line options of the live image: `basalt.inst.repo=URL`,
 `basalt/plans/default.yaml` on the media (`LIVE_PLANS` when building) is
 the starting point; the person still reviews it and types the disk name.
 
+## The live desktop image
+
+`LIVE_PROFILE=desktop` (`make live-desktop-iso`) builds a live system for
+trying the desktop edition, from the same tooling: the installer image plus
+the files in `packages/basalt-installer/live/desktop/`.
+
+- Packages: `basalt-desktop` (the Basalt shell on SwayFX, the greetd login
+  screen, portals, PipeWire, fonts, themes, foot, Files, Text Editor and
+  Firefox) and the assistant, from the media repository, which must hold
+  them (the shell is built in its own repository); Fedora packages come
+  from Fedora's repositories with their updates, so the image ships the
+  current ones (selinux-policy among them).
+- A live user, `basalt` (password `basalt`, in `wheel`), starts the Basalt
+  session at boot (greetd's initial session); logging out leads to the
+  login screen. The graphical installer is an app of the session
+  ("Install Basalt OS"): the engine's API service allows that user. The
+  serial console still gets the text installer, tty2 a root shell.
+- It runs from the medium (no `rd.live.ram`, a desktop image is too large
+  to copy to memory on modest machines), boots `quiet`, and keeps SELinux
+  enforcing and Fedora's signed boot chain like the installer image.
+- The image stores every file as root (`mkfs.erofs --all-root`, so the
+  build sandbox's ID mapping never reaches it); the build lists the
+  packaged files that belong to other users (`/usr/lib/basalt-live/owners.list`)
+  and `basalt-live-owners.service` gives those and the live home their
+  owners back before anyone logs in. Only those few files are copied up
+  into the overlay, which lives in memory.
+- A plan at `basalt/plans/default.yaml` with `edition: desktop` and
+  `packages.extra: [basalt-desktop, ...]` makes the installer install the
+  desktop edition.
+
 ## Building
 
 ```sh
