@@ -354,7 +354,7 @@ func FromSELinux(source string, it diag.SELinuxItem) *proposal.Proposal {
 	p.Evidence = append(p.Evidence, it.Fix.Evidence...)
 	p.Evidence = append(p.Evidence, "raw: "+a.Raw)
 	if it.Decision.Confident && it.Decision.Answer.Top != selinux.ClassUnknown && it.Decision.Answer.Top != selinux.ClassSuspicious &&
-		len(it.Fix.Errors) == 0 {
+		it.Decision.Answer.Top == it.Fix.Class && len(it.Fix.Errors) == 0 {
 		p.Actions = it.Fix.Actions
 	}
 	p.Severity = 3

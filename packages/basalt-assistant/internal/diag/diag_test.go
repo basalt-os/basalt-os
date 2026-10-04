@@ -412,3 +412,52 @@ PRETTY_NAME="Basalt OS 44 (Basalt 0.0.1, pre-alpha)"
 		t.Fatalf("%q", got)
 	}
 }
+
+// fixedBackend answers avc.class with one class at a fixed confidence (a
+// stand-in for a model or VSM backend); everything else goes to the rules.
+type fixedBackend struct {
+	class string
+	vsm   *decide.VSMInfo
+}
+
+func (fixedBackend) Name() string { return "fixed" }
+
+func (b fixedBackend) Answer(ctx context.Context, q decide.Question) (decide.Answer, error) {
+	if q.ID != "avc.class" {
+		return decide.Rules{}.Answer(ctx, q)
+	}
+	p := map[string]float64{}
+	for _, o := range q.Options {
+		p[o] = 0.002
+	}
+	p[b.class] = 0.99
+	return decide.Answer{Probabilities: p, Top: b.class, Confidence: 0.99, Backend: "fixed", VSM: b.vsm}, nil
+}
+
+// A backend confident that the denial is "unknown", or confident in a
+// class VSM knows only as a hint (a port another type owns), must not
+// turn the analyzer's fix into a proposal.
+func TestConfidentAnswerWithoutAFixProposesNothing(t *testing.T) {
+	for _, b := range []fixedBackend{
+		{class: "unknown"},
+		{class: "port", vsm: &decide.VSMInfo{Case: "kb-avc-port-owned", Actionable: false}},
+	} {
+		te := newEnv(t)
+		te.Decide = &decide.Layer{Backend: b, Default: 0.75}
+		te.fake.Prefixes["journalctl --no-pager -o json -u nginx.service"] = runner.Result{Out: fixture(t, "nginx-port-denied.journal.json")}
+		te.fake.Prefixes["journalctl --no-pager -o json _TRANSPORT=audit"] = runner.Result{Out: fixture(t, "avc-port-8181.audit.json")}
+		te.fake.Answers["nginx -t"] = runner.Result{Out: "nginx: [emerg] bind() to 0.0.0.0:8181 failed (13: Permission denied)", Code: 1}
+		te.fake.Answers["seinfo --portcon=8181"] = runner.Result{Out: fixture(t, "seinfo-portcon-8181-80.txt")}
+		te.fake.Answers["sesearch -A -s httpd_t -c tcp_socket -p name_bind"] = runner.Result{Out: fixture(t, "sesearch-httpd-name_bind.txt")}
+		rep, err := WhyUnit(context.Background(), te.Env, "nginx")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rep.AVCs) != 1 || len(rep.AVCs[0].Actions) == 0 {
+			t.Fatalf("%s: the analyzer should have a (port) fix: %+v", b.class, rep.AVCs)
+		}
+		if len(rep.Actions) != 0 {
+			t.Errorf("%s: proposed %+v", b.class, rep.Actions)
+		}
+	}
+}

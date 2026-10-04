@@ -116,7 +116,7 @@ func (b *VSMBackend) Answer(ctx context.Context, q Question) (Answer, error) {
 	v := &VSMInfo{Knowledge: e.Version(), Abstained: r.Abstained, Guarded: r.Guarded, Evidence: r.Evidence,
 		Probes: r.Probes, Note: r.Note, Micros: took.Microseconds()}
 	if r.Picked != nil {
-		v.Case = r.Picked.ID
+		v.Case, v.Actionable = r.Picked.ID, r.Picked.Actionable()
 	}
 	for _, h := range r.Hits {
 		v.Candidates = append(v.Candidates, fmt.Sprintf("%s %d/%d-%d", h.Case.ID, h.M, h.R, h.X))
@@ -129,7 +129,12 @@ func (b *VSMBackend) Answer(ctx context.Context, q Question) (Answer, error) {
 // log): the case it picked, the candidates, the evidence codes and the
 // knowledge and planner it used.
 type VSMInfo struct {
-	Case       string   `json:"case,omitempty"`
+	Case string `json:"case,omitempty"`
+	// Actionable: the picked case has typed actions and their checks. A
+	// case without them is a hint (known, but no automatic fix): its
+	// answer is never confident enough for the automatic path when the
+	// answer selects a fix directly (avc.class); see Layer.Ask.
+	Actionable bool     `json:"actionable,omitempty"`
 	Candidates []string `json:"candidates,omitempty"`
 	Abstained  bool     `json:"abstained,omitempty"`
 	Guarded    bool     `json:"guarded,omitempty"`

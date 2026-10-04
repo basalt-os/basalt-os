@@ -112,8 +112,20 @@ func (l *Layer) Ask(ctx context.Context, q Question) Decision {
 		a.Backend = "none: " + err.Error()
 	}
 	t := l.Threshold(q.ID)
-	return Decision{Question: q, Answer: a, Threshold: t, Confident: a.Confidence >= t}
+	confident := a.Confidence >= t
+	if a.VSM != nil && a.VSM.Case != "" && !a.VSM.Actionable && HintGated[q.ID] {
+		// VSM knows this case but holds no verified fix for it (for
+		// example a port another service's type owns): the class is right,
+		// the automatic fix for that class is not. Deterministic, outside
+		// the model.
+		confident = false
+	}
+	return Decision{Question: q, Answer: a, Threshold: t, Confident: confident}
 }
+
+// HintGated are the questions whose confident answer selects a fix by
+// itself (the denial's class picks the analyzer's actions).
+var HintGated = map[string]bool{"avc.class": true}
 
 // Record logs a decision with the action taken.
 func (l *Layer) Record(d Decision, act string) Decision {

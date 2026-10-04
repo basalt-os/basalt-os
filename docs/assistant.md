@@ -471,19 +471,34 @@ for another DSL, or a question takes more than 2 s, the rules answer,
 marked `(fallback)`, with the reason in the decision record. Severity,
 notification and routing stay with the rules.
 
-On the evaluation suite (253 questions of 239 cases, basalt-assistant
-0.6.0, knowledge of 37 cases):
+On the evaluation suite (253 questions of 239 cases, knowledge of 37
+cases):
 
 | Backend | Accuracy | ECE | Brier | lab | lab-daemon | generated |
 |---|---|---|---|---|---|---|
 | rules/v1 | 96.8 % | 0.212 | 0.138 | 32/34 | 29/30 | 184/189 |
 | vsm | 97.6 % | 0.020 | 0.050 | 32/34 | 28/30 | 187/189 |
 
-VSM is better calibrated everywhere and more accurate overall, but one
-answer behind on the confined daemon's own cases (a unit killed by a
-denial without a "Permission denied" line, which no case covers yet), so
-the rules stay the default. Latency: about 1 ms per question, 0.4 MB of
-memory for the knowledge and the planner.
+On 35 faults injected on a lab machine (basalt-assistant 0.6.2, the same
+fault diagnosed by `basalt` as root and by the confined daemon):
+
+| Backend | root: answers | root: changes right | daemon: answers | daemon: changes right | unsafe proposals |
+|---|---|---|---|---|---|
+| rules/v1 | 33/35 | 34/35 | 31/35 | 31/35 | 0 |
+| vsm | 33/35 | 34/35 | 30/35 | 30/35 | 0 |
+
+VSM is better calibrated everywhere and as accurate or more accurate
+overall, but one answer behind on the confined daemon's view in both
+measurements (a unit killed by a denial without a "Permission denied"
+line, which no case covers yet; a moved log directory whose evidence the
+daemon sees exactly like a file-permission error), so the rules stay the
+default. Its cost: about 1 ms per question, 0.4 MB of memory for the
+knowledge and the planner.
+
+Whatever the backend, a denial's fix is proposed only when the decision
+is confident in the class the fix was built for (never for a confident
+"unknown"), and a case VSM knows without a verified fix (a port another
+service's type owns) never takes the automatic path.
 
 ```ini
 # /etc/basalt/assistant.conf

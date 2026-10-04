@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.6.1
+Version:        0.6.2
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -167,6 +167,14 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.2-1
+- A denial's fix is proposed only when the decision is confident in the
+  class the fix was built for, never for a confident "unknown" or another
+  class (a model or VSM backend can be confident in either).
+- VSM backend: a known case without a verified fix (for example a port
+  another service's type owns) is never confident enough for the
+  automatic path of avc.class.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.1-1
 - Policy queries: one walk of the policy per batch of queries
   (basalt-policy-query, python3-setools), answers reused for as long as the

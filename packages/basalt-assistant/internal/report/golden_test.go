@@ -136,6 +136,7 @@ func scenarios() map[string]*proposal.Proposal {
 	ps["unit-low-confidence"] = FromUnit("cli", r)
 
 	sel := func(class string, fx selinux.Fix, conf float64) *proposal.Proposal {
+		fx.Class = class // the analyzer's own classification, as on a machine
 		return FromSELinux("cli", diag.SELinuxItem{Fix: fx, Decision: dec("avc.class", class, conf, 0.75)})
 	}
 	ps["selinux-mislabeled"] = sel(selinux.ClassMislabeled, selinux.Fix{Group: avc("httpd_t", "admin_home_t", "file", []string{"read"}, "index.html", 0, 1),

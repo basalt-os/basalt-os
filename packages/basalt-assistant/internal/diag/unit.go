@@ -829,7 +829,12 @@ func (e *Env) unitPlan(rep *UnitReport) {
 		for _, f := range rep.AVCs {
 			d := e.ask(context.Background(), decide.AVCClass(f.Group.AVC.Key(), f.Features))
 			rep.AVCDecision = append(rep.AVCDecision, d)
-			if d.Confident && len(f.Actions) > 0 {
+			// Act only on a confident answer that is the class the fix was
+			// built for: a backend may be confident that a denial is
+			// unknown or of another class, and that is never a reason to
+			// apply this fix.
+			if d.Confident && len(f.Actions) > 0 && len(f.Errors) == 0 && d.Answer.Top == f.Class &&
+				f.Class != selinux.ClassUnknown && f.Class != selinux.ClassSuspicious {
 				acts = append(acts, f.Actions...)
 				rep.Explanation += " " + f.Explanation + "."
 			} else {

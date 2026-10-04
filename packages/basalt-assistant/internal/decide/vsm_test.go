@@ -69,3 +69,27 @@ func TestVSMBackendFallsBackToRules(t *testing.T) {
 		t.Error("opened without a planner")
 	}
 }
+
+func TestVSMHintIsNotConfident(t *testing.T) {
+	b := fixedVSM{info: &VSMInfo{Case: "kb-avc-port-owned", Actionable: false}}
+	l := &Layer{Backend: b, Default: 0.75}
+	if d := l.Ask(context.Background(), AVCClass("k", nil)); d.Confident {
+		t.Error("a hint case passed the threshold for avc.class")
+	}
+	b.info.Actionable = true
+	if d := l.Ask(context.Background(), AVCClass("k", nil)); !d.Confident {
+		t.Error("an actionable case did not")
+	}
+	b.info.Actionable = false
+	if d := l.Ask(context.Background(), UnitCause("u", nil)); !d.Confident {
+		t.Error("unit.cause is not gated by hint cases")
+	}
+}
+
+type fixedVSM struct{ info *VSMInfo }
+
+func (fixedVSM) Name() string { return "fixed" }
+
+func (f fixedVSM) Answer(_ context.Context, q Question) (Answer, error) {
+	return Answer{Probabilities: map[string]float64{q.Options[0]: 0.99}, Top: q.Options[0], Confidence: 0.99, VSM: f.info}, nil
+}
