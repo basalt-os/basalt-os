@@ -229,8 +229,8 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
       <section aria-labelledby="repos">
         <h2 id="repos">Repositories</h2>
         <p>
-          The Basalt OS and Basalt tools repositories are live. The others will appear at their paths below, and this
-          page will carry their setup instructions once they are live.
+          The Basalt OS, Basalt tools and Basalt testing repositories are live. The apt repository will appear at its
+          path below, and this page will carry its setup instructions once it is live.
         </p>
         <div class="table-wrap">
           <table>
@@ -261,8 +261,12 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
               </tr>
               <tr>
                 <td><code>/basalt-testing/</code></td>
-                <td>Packages on their way to <code>/basalt/</code>. Opt-in, off by default.</td>
-                <td class="soon">Coming soon</td>
+                <td>
+                  Packages on their way to <code>/basalt/</code>. Opt-in, off by default.
+                  Currently: the Basalt desktop shell preview.
+                  Release 44: <code>/basalt-testing/44/x86_64/</code>.
+                </td>
+                <td class="live">Available</td>
               </tr>
               <tr>
                 <td><code>/apt/</code></td>
@@ -277,7 +281,7 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
       <section aria-labelledby="use">
         <h2 id="use">Use it</h2>
         <p>
-          Basalt OS installs come with the repository preconfigured by the <code>basalt-release</code> package, along
+          Basalt OS installs come with the repositories preconfigured by the <code>basalt-release</code> package, along
           with the release key, so there is nothing to set up there.
         </p>
         <p>
@@ -295,7 +299,9 @@ metadata_expire=6h</code></pre>
         <p>
           <code>$basalt_repo_url</code> is a dnf variable read from <code>/etc/dnf/vars/basalt_repo_url</code>, which
           contains <code>https://obpkg.org/basalt</code>. <code>/etc/pki/rpm-gpg/RPM-GPG-KEY-basalt</code> is the
-          release key above. The same file also defines <code>[basalt-testing]</code>, off by default.
+          release key above. The same file also defines <code>[basalt-tools]</code>, on by default, and
+          <code>[basalt-testing]</code>, off by default, with their base URLs in <code>/etc/dnf/vars/basalt_tools_url</code>
+          and <code>/etc/dnf/vars/basalt_testing_url</code>.
         </p>
         <p>
           Packages are signed by the packages subkey of the release key, with fingerprint
@@ -319,8 +325,15 @@ metadata_expire=6h</code></pre>
           <code>conductor-files</code>, each with its <code>-selinux</code> policy package.
         </p>
         <p>
-          An upcoming <code>basalt-release</code> will enable this repository by default on Basalt OS. Until then, set
-          it up by hand: save this as <code>/etc/yum.repos.d/basalt-tools.repo</code>:
+          On Basalt OS this repository is enabled by default, since <code>basalt-release</code> 44-7. Install a tool
+          directly, for example:
+        </p>
+        <pre><code>sudo dnf install conductor</code></pre>
+        <p>To turn the repository off:</p>
+        <pre><code>sudo dnf config-manager setopt basalt-tools.enabled=0</code></pre>
+        <p>
+          On other Fedora-based systems, set it up by hand: save this as
+          <code>/etc/yum.repos.d/basalt-tools.repo</code>:
         </p>
         <pre><code>[basalt-tools]
 name=Basalt OS tools $releasever - $basearch
@@ -332,10 +345,35 @@ gpgkey=https://obpkg.org/keys/openbasalt-release-key.asc
 metadata_expire=6h</code></pre>
         <p>Then install a tool, for example:</p>
         <pre><code>sudo dnf install conductor</code></pre>
+      </section>
+
+      <section aria-labelledby="testing">
+        <h2 id="testing">Basalt testing</h2>
         <p>
-          Once <code>basalt-release</code> ships the repository, you can turn it off with
-          <code>sudo dnf config-manager setopt basalt-tools.enabled=0</code>.
+          <code>/basalt-testing/</code> carries packages on their way to <code>/basalt/</code>, for people who want to
+          try them early. It is opt-in and off by default. Packages are signed by the same packages subkey as
+          <code>/basalt/</code>.
         </p>
+        <p>
+          Currently: the Basalt desktop shell preview, as <code>basalt-shell</code> with its
+          <code>basalt-shell-selinux</code> policy package
+          (<a href="https://github.com/basalt-os/basalt-shell">source</a>).
+        </p>
+        <p>
+          On Basalt OS, <code>basalt-release</code> already defines the repository. Enable it, then install the
+          preview:
+        </p>
+        <pre><code>sudo dnf config-manager setopt basalt-testing.enabled=1
+sudo dnf install basalt-shell</code></pre>
+        <p>
+          On Fedora 44, <code>dnf</code> is dnf5 and <code>config-manager</code> comes from the
+          <code>dnf5-plugins</code> package; if dnf reports an unknown command, run
+          <code>sudo dnf install dnf5-plugins</code> first.
+        </p>
+        <p>To try a package without leaving the repository enabled, use it for a single command instead:</p>
+        <pre><code>sudo dnf --enablerepo=basalt-testing install basalt-shell</code></pre>
+        <p>To turn it off again:</p>
+        <pre><code>sudo dnf config-manager setopt basalt-testing.enabled=0</code></pre>
       </section>
 
       <section aria-labelledby="mirrors">
