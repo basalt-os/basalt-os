@@ -80,9 +80,17 @@ func FromUnit(source string, r *diag.UnitReport) *proposal.Proposal {
 	for _, s := range r.Skipped {
 		p.Evidence = append(p.Evidence, "not checked here: "+s)
 	}
+	for _, e := range r.Errors {
+		p.Evidence = append(p.Evidence, "error: "+e)
+	}
 	p.Actions = r.Actions
+	p.Hints = r.Hints
 	p.Severity = 4
-	return finish(p, append([]decide.Decision{r.Decision}, r.AVCDecision...)...)
+	p = finish(p, append([]decide.Decision{r.Decision}, r.AVCDecision...)...)
+	if len(r.Errors) > 0 {
+		p.NeedsReview = true
+	}
+	return p
 }
 
 // FromSELinux builds a proposal from one denial group.
@@ -100,7 +108,8 @@ func FromSELinux(source string, it diag.SELinuxItem) *proposal.Proposal {
 	}
 	p.Evidence = append(p.Evidence, it.Fix.Evidence...)
 	p.Evidence = append(p.Evidence, "raw: "+a.Raw)
-	if it.Decision.Confident && it.Decision.Answer.Top != selinux.ClassUnknown && it.Decision.Answer.Top != selinux.ClassSuspicious {
+	if it.Decision.Confident && it.Decision.Answer.Top != selinux.ClassUnknown && it.Decision.Answer.Top != selinux.ClassSuspicious &&
+		len(it.Fix.Errors) == 0 {
 		p.Actions = it.Fix.Actions
 	}
 	p.Severity = 3
@@ -171,6 +180,7 @@ func FromDnf(source string, r *diag.DnfReport) *proposal.Proposal {
 		p.Evidence = append(p.Evidence, "added: "+x)
 	}
 	p.Actions = r.Actions
+	p.Hints = r.Hints
 	p.Severity = 4
 	return finish(p, r.Decision)
 }
@@ -261,7 +271,12 @@ Proposed change
   Apply:  sudo basalt apply {{.P.ID}}      (non-interactive: sudo basalt apply {{.P.ID}} --yes --confirm {{.Fingerprint}})
   Ignore: sudo basalt ignore {{.P.ID}}
 {{end}}{{else}}  none: this is a report; nothing will be changed.
-{{end}}`))
+{{end}}{{if .P.Hints}}
+Hint (not a proposal: the confined view cannot check the snapshot it rests on)
+{{range .P.Hints}}  {{.Reason}}:
+{{range .Actions}}{{range cmds .}}    $ {{.}}
+{{end}}{{end}}{{end}}{{if eq .P.Status "pending"}}  Confirm as root: sudo basalt confirm {{.P.ID}}   (checks the snapshot and turns the hint into a proposal)
+{{end}}{{end}}`))
 
 // Render prints a proposal.
 func Render(p *proposal.Proposal) string {
@@ -282,7 +297,9 @@ func Line(p *proposal.Proposal) string {
 	if p.NeedsReview {
 		flag = " [review]"
 	}
-	if len(p.Actions) == 0 {
+	if len(p.Hints) > 0 {
+		flag += " [hint]"
+	} else if len(p.Actions) == 0 {
 		flag += " [report]"
 	}
 	return fmt.Sprintf("%-9s %-8s %-8s %s%s", p.ID, p.Status, p.Kind, p.Title, flag)

@@ -53,14 +53,23 @@ type checkedCase struct {
 	} `json:"evidence"`
 	Expected struct {
 		Actions  []action.Action `json:"actions"`
+		Hints    []action.Hint   `json:"hints"`
 		Proposal string          `json:"proposal"`
 	} `json:"expected"`
+	Provenance struct {
+		Source string `json:"source"`
+	} `json:"provenance"`
 }
 
+// confinedSources record what the confined daemon proposed: a file restore
+// or a rollback is only a hint there.
+var confinedSources = map[string]bool{"lab-daemon": true}
+
 // checkCase validates one case line: known schema, every expected action
-// passes the assistant's own validator (action.Validate), the snapshot
-// evidence is well formed, and (v1.1) every snapshot an action names is in
-// the evidence with the role that action needs.
+// (and hint) passes the assistant's own validator (action.Validate), the
+// snapshot evidence is well formed, (v1.1) every snapshot an action names
+// is in the evidence with the role that action needs, and a case of the
+// confined daemon expects no file restore or rollback as an action.
 func checkCase(line []byte) (string, error) {
 	var c checkedCase
 	if err := json.Unmarshal(line, &c); err != nil {
@@ -102,7 +111,14 @@ func checkCase(line []byte) (string, error) {
 			fail("snapshot %d: pre snapshot %d not in the evidence", s.Number, s.PreNumber)
 		}
 	}
-	for i, a := range c.Expected.Actions {
+	all := append([]action.Action(nil), c.Expected.Actions...)
+	for _, h := range c.Expected.Hints {
+		all = append(all, h.Actions...)
+	}
+	if confinedSources[c.Provenance.Source] && action.AnyNeedsRootView(c.Expected.Actions) {
+		fail("a %s case expects a file restore or a rollback as an action; from the confined view it is a hint", c.Provenance.Source)
+	}
+	for i, a := range all {
 		if err := a.Validate(); err != nil {
 			fail("action %d (%s): %v", i, a.Kind, err)
 			continue

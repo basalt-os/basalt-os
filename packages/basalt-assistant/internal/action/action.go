@@ -40,6 +40,33 @@ type Action struct {
 	Params map[string]string `json:"params"`
 }
 
+// NeedsRootView reports kinds whose safety rests on a snapshot the confined
+// view cannot check: it sees snapshot metadata, not the file contents nor
+// the package databases. From the confined daemon or the MCP server they
+// are hints until the root command line confirms the snapshot
+// (`basalt confirm ID`).
+func NeedsRootView(kind string) bool {
+	return kind == FileRestore || kind == SnapshotRollback
+}
+
+// AnyNeedsRootView reports a list with such an action.
+func AnyNeedsRootView(as []Action) bool {
+	for _, a := range as {
+		if NeedsRootView(a.Kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// Hint is a change the confined view found plausible but may not propose:
+// the actions (kept together, a restore and the restart that needs it) and
+// why. `basalt confirm` checks it as root and turns it into a proposal.
+type Hint struct {
+	Actions []Action `json:"actions"`
+	Reason  string   `json:"reason"`
+}
+
 // SnapshotDir is where snapper keeps the root snapshots.
 var SnapshotDir = "/.snapshots"
 
@@ -304,10 +331,10 @@ func (a Action) Verify(since time.Time) []Check {
 	case SnapshotDelete:
 		return []Check{{Description: "deleted subvolumes cleaned up (space released)", Argv: []string{"btrfs", "subvolume", "sync", "/"}},
 			{Description: "snapshot " + p["snapshot"] + " is gone",
-			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
-				res := r.Read(ctx, "test", "-e", SnapshotDir+"/"+p["snapshot"])
-				return res.Code != 0, ""
-			}}}
+				Func: func(ctx context.Context, r runner.Reader) (bool, string) {
+					res := r.Read(ctx, "test", "-e", SnapshotDir+"/"+p["snapshot"])
+					return res.Code != 0, ""
+				}}}
 	case JournalVacuum:
 		return []Check{{Description: "journal disk usage", Argv: []string{"journalctl", "--disk-usage"}}}
 	case DnfClean:

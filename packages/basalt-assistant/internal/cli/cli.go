@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/apply"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/audit"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/config"
@@ -38,6 +39,8 @@ Read-only (no confirmation needed):
 Changes (root; exact commands shown, then confirmation):
   basalt apply ID [--yes --confirm CODE]
   basalt ignore ID [--reason TEXT]
+  basalt confirm ID                   check, as root, the snapshot a hint of the daemon rests on
+                                      (a file restore, a rollback) and turn it into a proposal
   basalt snapshots rollback N | --before ID
   basalt audit rotate [--force]       seal the audit log and continue in a new file
                                       (when larger than [audit] rotate_size; run daily by a timer)
@@ -197,6 +200,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.applyCmd(ctx)
 	case "ignore":
 		return a.ignore()
+	case "confirm":
+		return a.confirm(ctx)
 	case "audit":
 		return a.auditCmd()
 	case "ask":
@@ -310,10 +315,25 @@ func (a *app) why(ctx context.Context) error {
 		return err
 	}
 	if a.o.json {
-		return a.printJSON(rep)
+		if err := a.printJSON(rep); err != nil {
+			return err
+		}
+		return incomplete(rep.Errors)
 	}
 	p := a.keep(report.FromUnit("cli", rep))
-	return a.present(ctx, p)
+	if err := a.present(ctx, p); err != nil {
+		return err
+	}
+	return incomplete(rep.Errors)
+}
+
+// incomplete turns probe errors into the command's error: a diagnosis that
+// could not query the SELinux policy is not a clean answer.
+func incomplete(errs []string) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("the diagnosis is incomplete: %s", strings.Join(errs, "; "))
 }
 
 func (a *app) fix(ctx context.Context) error {
@@ -321,8 +341,15 @@ func (a *app) fix(ctx context.Context) error {
 		return errors.New("usage: basalt fix selinux [--since 1h] [--apply]")
 	}
 	items := a.env.FixSELinux(ctx, time.Now().Add(-a.o.since))
+	var errs []string
+	for _, it := range items {
+		errs = append(errs, it.Fix.Errors...)
+	}
 	if a.o.json {
-		return a.printJSON(items)
+		if err := a.printJSON(items); err != nil {
+			return err
+		}
+		return incomplete(errs)
 	}
 	if len(items) == 0 {
 		fmt.Fprintf(a.out, "No SELinux denials in the last %s.\n", a.o.since)
@@ -336,7 +363,75 @@ func (a *app) fix(ctx context.Context) error {
 		}
 		fmt.Fprintln(a.out)
 	}
-	return nil
+	return incomplete(errs)
+}
+
+// confirm checks a hint of the confined view as root (the snapshot exists,
+// a restored copy passes the service's config checker, what a rollback
+// changes) and stores it as a new proposal from the command line; the hint
+// is closed as resolved. Proposals of older versions whose confined source
+// carried a restore or a rollback as actions are confirmed the same way.
+func (a *app) confirm(ctx context.Context) error {
+	if len(a.o.args) < 2 {
+		return errors.New("usage: basalt confirm ID")
+	}
+	if !a.root {
+		return errors.New("confirming a hint needs the root view: run it with sudo")
+	}
+	p, err := a.store.Load(a.o.args[1])
+	if err != nil {
+		return err
+	}
+	if p.Status != proposal.Pending {
+		return fmt.Errorf("proposal %s is %s", p.ID, p.Status)
+	}
+	hints := p.Hints
+	if len(hints) == 0 && p.FromConfinedView() && action.AnyNeedsRootView(p.Actions) {
+		hints = []action.Hint{{Actions: p.Actions, Reason: "proposed by " + p.Source + " before hints existed"}}
+	}
+	if len(hints) == 0 {
+		return fmt.Errorf("proposal %s has no hint to confirm", p.ID)
+	}
+	unit := ""
+	if p.Kind == "unit" {
+		unit = p.Subject
+	}
+	var acts []action.Action
+	var evidence []string
+	review := false
+	for _, h := range hints {
+		ev, rv, err := a.env.ConfirmHint(ctx, unit, h.Actions)
+		if err != nil {
+			_, _ = a.audit.Append("refuse", "hint "+p.ID+" not confirmed: "+err.Error(), map[string]any{"proposal": p.ID, "hint": h})
+			return fmt.Errorf("hint of %s not confirmed: %w", p.ID, err)
+		}
+		acts = append(acts, h.Actions...)
+		evidence = append(evidence, ev...)
+		review = review || rv
+	}
+	now := time.Now().UTC()
+	q := &proposal.Proposal{ID: proposal.NewID(), Created: now, Updated: now, LastSeen: now, Seen: 1, Source: "cli",
+		Kind: p.Kind, Subject: p.Subject, Key: p.Key, Title: p.Title, Actions: acts, Decisions: p.Decisions,
+		Severity: p.Severity, Status: proposal.Pending, NeedsReview: p.NeedsReview || review,
+		Report:   p.Report + " Confirmed as root: " + hints[0].Reason + ".",
+		Evidence: append(append([]string{}, p.Evidence...), evidence...),
+		Extra:    map[string]string{"confirms": p.ID, "origin": p.Source}}
+	if err := a.store.Save(q); err != nil {
+		return err
+	}
+	p.Status = proposal.Resolved
+	if p.Extra == nil {
+		p.Extra = map[string]string{}
+	}
+	p.Extra["confirmed_as"] = q.ID
+	if err := a.store.Save(p); err != nil {
+		return err
+	}
+	cmds, _ := q.Commands()
+	_, _ = a.audit.Append("proposal", q.ID+" from cli: confirms the hint of "+p.ID+": "+q.Title,
+		map[string]any{"proposal": q.ID, "confirms": p.ID, "actions": q.Actions, "commands": cmds, "evidence": evidence})
+	fmt.Fprintf(a.out, "Hint %s confirmed as root; stored as proposal %s (%s is closed).\n\n", p.ID, q.ID, p.ID)
+	return a.present(ctx, q)
 }
 
 func (a *app) disk(ctx context.Context) error {

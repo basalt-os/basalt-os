@@ -38,6 +38,9 @@ type Fix struct {
 	Evidence    []string          `json:"evidence"`
 	Actions     []action.Action   `json:"actions,omitempty"`
 	Facts       map[string]string `json:"facts,omitempty"`
+	// Errors are policy queries that failed (after retries): the analysis
+	// has no conclusion and proposes nothing.
+	Errors []string `json:"errors,omitempty"`
 }
 
 // PathResolver finds the file an AVC refers to (AVC records carry only the
@@ -46,9 +49,49 @@ type PathResolver func(ctx context.Context, a AVC) (path, how string)
 
 // Analyzer maps denials to fixes using the loaded policy (sesearch, seinfo,
 // matchpathcon, getsebool from setools-console and libselinux-utils).
+// Policy queries go through Policy (retries when another process holds the
+// policy file, short cache); one is made from R when it is nil.
 type Analyzer struct {
 	R       runner.Reader
 	Resolve PathResolver
+	Policy  *Policy
+	errs    *[]string
+}
+
+// begin prepares one analysis: its own error list, a policy reader.
+func (z Analyzer) begin() Analyzer {
+	if z.Policy == nil {
+		z.Policy = NewPolicy(z.R)
+	}
+	z.errs = &[]string{}
+	return z
+}
+
+func (z Analyzer) fail(err error) {
+	if z.errs != nil {
+		*z.errs = append(*z.errs, err.Error())
+	}
+}
+
+// finishErrors turns failed policy queries into "no conclusion": a query
+// that could not be answered is never read as "no rule allows it".
+func (z Analyzer) finishErrors(f *Fix) {
+	if z.errs == nil || len(*z.errs) == 0 {
+		return
+	}
+	f.Errors = append(f.Errors, *z.errs...)
+	f.Features["policy_query_failed"] = true
+	f.Actions = nil
+	f.Class = ClassUnknown
+	f.Explanation = "the SELinux policy could not be queried (" + (*z.errs)[0] + "); no conclusion was drawn and nothing is proposed: run the diagnosis again"
+	f.Evidence = append(f.Evidence, "policy query failed: "+strings.Join(*z.errs, "; "))
+}
+
+// ValidPath reports a path the action validators accept: absolute, clean,
+// from the allowed character set. Anything else (an error message a tool
+// printed where a path was expected) is never used as a denied object.
+func ValidPath(p string) bool {
+	return action.Action{Kind: action.SELinuxRestorecon, Params: map[string]string{"path": p}}.Validate() == nil
 }
 
 // Generic types: a service file found here was never given a label for
@@ -112,6 +155,7 @@ var topDirs = map[string]bool{
 
 // Analyze classifies one denial group and builds the fix, if there is one.
 func (z Analyzer) Analyze(ctx context.Context, g Group) Fix {
+	z = z.begin()
 	a := g.AVC
 	f := Fix{Group: g, Features: map[string]bool{}, Facts: map[string]string{}}
 	dom, tgt := a.SType(), a.TType()
@@ -139,6 +183,7 @@ func (z Analyzer) Analyze(ctx context.Context, g Group) Fix {
 	if f.Class == ClassUnknown || f.Class == ClassSuspicious {
 		f.Actions = nil
 	}
+	z.finishErrors(&f)
 	if dom == "basalt_assistant_t" {
 		f.Explanation = "a denial of the assistant itself (basalt_assistant_t): its confinement held; this is a bug in the assistant or its policy, never something to allow from here"
 	}
@@ -178,6 +223,8 @@ func hasAny(list []string, want ...string) bool {
 // classify is the rule-based class used as the decision layer's input.
 func classify(ft map[string]bool) string {
 	switch {
+	case ft["policy_query_failed"]:
+		return ClassUnknown
 	case ft["sensitive_target"]:
 		return ClassSuspicious
 	case ft["boolean_off"]:
@@ -295,9 +342,13 @@ var rePortcon = regexp.MustCompile(`portcon\s+(\w+)\s+(\d+)(?:-(\d+))?\s+\S+:\S+
 
 // portType is the label of a port in the loaded policy (most specific range).
 func (z Analyzer) portType(ctx context.Context, proto string, port int) string {
-	res := z.R.Read(ctx, "seinfo", "--portcon="+strconv.Itoa(port))
+	out, err := z.Policy.Query(ctx, "seinfo", "--portcon="+strconv.Itoa(port))
+	if err != nil {
+		z.fail(err)
+		return ""
+	}
 	best, width := "", 1<<30
-	for _, m := range rePortcon.FindAllStringSubmatch(res.Out, -1) {
+	for _, m := range rePortcon.FindAllStringSubmatch(out, -1) {
 		if m[1] != proto {
 			continue
 		}
@@ -321,6 +372,10 @@ func (z Analyzer) analyzeFile(ctx context.Context, f *Fix) {
 	p, how := a.Path, "audit record"
 	if p == "" && z.Resolve != nil {
 		p, how = z.Resolve(ctx, a)
+	}
+	if p != "" && !ValidPath(p) {
+		f.Evidence = append(f.Evidence, fmt.Sprintf("the path lookup returned %q, which is not a valid path; ignored", p))
+		p = ""
 	}
 	if p == "" {
 		f.Explanation = fmt.Sprintf("the denied object %q (inode %d on %s) could not be located; find it with: find / -xdev -inum %d", a.Name, a.Ino, a.Dev, a.Ino)
@@ -476,11 +531,12 @@ func ParseSesearch(out string) []Rule {
 }
 
 func (z Analyzer) sesearch(ctx context.Context, args ...string) []Rule {
-	res := z.R.Read(ctx, append([]string{"sesearch"}, args...)...)
-	if res.Err != nil {
+	out, err := z.Policy.Query(ctx, append([]string{"sesearch"}, args...)...)
+	if err != nil {
+		z.fail(err)
 		return nil
 	}
-	return ParseSesearch(res.Out)
+	return ParseSesearch(out)
 }
 
 // allowed reports an unconditional rule (or one whose boolean is on).
@@ -494,5 +550,12 @@ func (z Analyzer) allowed(ctx context.Context, dom, tgt, class, perm string) boo
 }
 
 func (z Analyzer) booleanOn(ctx context.Context, name string) bool {
-	return strings.Contains(z.R.Read(ctx, "getsebool", name).Out, "--> on")
+	res := z.R.Read(ctx, "getsebool", name)
+	if res.Err != nil || res.Code != 0 {
+		// An unknown state is not "off": suggesting to turn it on would
+		// rest on nothing.
+		z.fail(fmt.Errorf("getsebool %s: %s", name, detail(res)))
+		return true
+	}
+	return strings.Contains(res.Out, "--> on")
 }

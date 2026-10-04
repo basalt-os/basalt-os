@@ -122,6 +122,14 @@ The rules row is measured on the corrected cases (see the note below);
 the model rows on the first revision, where 4 of the 189 generated cases
 differ.
 
+Update, basalt-assistant 0.4.0 (after a live run of 35 fault scenarios on
+a lab VM): the rules reach 0.968 (lab 0.941, daemon 0.967, generated
+0.974; unit.cause 0.986) on the suite as it is now (239 cases, 253
+questions: `lab-nginx-include-missing` relabeled, `lab-dac-permission`
+recaptured, `lab-oom` added, `generate-cases/3`). The gains come from
+out-of-memory kills, file-permission (DAC) errors and the relabel; see
+`eval/results/2026-10-03/dec-rules-0.4.0.summary.json`.
+
 Per question (accuracy): rules unit.cause 0.91, avc.class 0.98, dnf.next
 0.87, disk.cause 0.92; 4B unit.cause 0.89 (with the journal lines it
 nearly matches the rules), avc.class 0.74, dnf.next 0.43, disk.cause 0.48.

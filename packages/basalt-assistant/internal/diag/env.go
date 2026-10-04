@@ -14,6 +14,8 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sandbox"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/selinux"
 )
 
 // FSStat is the result of statfs on a mount point.
@@ -55,12 +57,30 @@ type Env struct {
 	SnapshotDir string
 	// HistoryPath stores disk usage samples for the forecast.
 	HistoryPath string
+	// Policy answers SELinux policy queries (retries, short cache); one is
+	// made from R when it is nil.
+	Policy *selinux.Policy
+	// Isolate wraps a config checker's argv so it runs without side effects
+	// (package sandbox), with replace[dst] = src copied over dst for the
+	// run. Nil only in tests: the argv then runs as it is.
+	Isolate func(argv []string, replace map[string]string) []string
 }
 
 // Real returns an Env bound to this machine.
 func Real(confined bool, layer *decide.Layer) *Env {
+	// Only the `basalt` binary has the sandbox subcommand (the daemon and
+	// the MCP server never run checkers).
+	exe, err := os.Executable()
+	if err != nil || filepath.Base(exe) != "basalt" {
+		exe = "/usr/bin/basalt"
+	}
+	r := runner.Exec{}
 	return &Env{
-		R:           runner.Exec{},
+		Policy: selinux.NewPolicy(r),
+		Isolate: func(argv []string, replace map[string]string) []string {
+			return sandbox.Wrap(exe, argv, replace)
+		},
+		R:           r,
 		Confined:    confined,
 		Now:         time.Now,
 		Statfs:      statfs,
@@ -115,6 +135,19 @@ func (e *Env) now() time.Time {
 		return e.Now()
 	}
 	return time.Now()
+}
+
+// policy is the shared policy reader.
+func (e *Env) policy() *selinux.Policy {
+	if e.Policy == nil {
+		e.Policy = selinux.NewPolicy(e.R)
+	}
+	return e.Policy
+}
+
+// analyzer is an SELinux analyzer bound to this machine.
+func (e *Env) analyzer() selinux.Analyzer {
+	return selinux.Analyzer{R: e.R, Resolve: e.resolveAVCPath, Policy: e.policy()}
 }
 
 func (e *Env) ask(ctx context.Context, q decide.Question) decide.Decision {

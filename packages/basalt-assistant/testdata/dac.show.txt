@@ -1,0 +1,13 @@
+Id=basalt-lab-dac.service
+Requires=system.slice sysinit.target
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+Result=exit-code
+StateChangeTimestamp=@1791037390
+InactiveExitTimestamp=@1791037389
+ExecMainCode=1
+ExecMainStatus=1
+ExecMainPID=4300
+User=nobody
+ExecStart={ path=/bin/sh ; argv[]=/bin/sh -c echo state > /var/lib/basalt-lab-dac/state ; ignore_errors=no ; start_time=[@1791037389] ; stop_time=[@1791037390] ; pid=4300 ; code=exited ; status=1 }

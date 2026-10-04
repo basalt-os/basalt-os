@@ -44,6 +44,9 @@ func TestCheckCase(t *testing.T) {
 		  {"number":64,"role":"transaction_post","type":"post","pre_number":63}]},
 		  "expected":{"actions":[{"kind":"snapshot.rollback","params":{"snapshot":"63"}}],"proposal":"propose"}}`,
 		`{"schema":"basalt-case/v1.1","id":"d","expected":{"actions":[],"proposal":"review"}}`,
+		`{"schema":"basalt-case/v1.1","id":"d2","evidence":{"snapshots":[{"number":5,"role":"restore_source","path":"/etc/x.conf"}]},
+		  "expected":{"actions":[],"hints":[{"actions":[{"kind":"file.restore","params":{"path":"/etc/x.conf","snapshot":"5"}}]}],"proposal":"review"},
+		  "provenance":{"source":"lab-daemon"}}`,
 	}
 	for _, c := range ok {
 		if _, err := checkCase([]byte(c)); err != nil {
@@ -60,6 +63,13 @@ func TestCheckCase(t *testing.T) {
 		  "expected":{"actions":[{"kind":"snapshot.rollback","params":{"snapshot":"64"}}],"proposal":"propose"}}`: "pre snapshot",
 		`{"schema":"basalt-case/v2","id":"k","expected":{"actions":[],"proposal":"review"}}`:  "schema",
 		`{"schema":"basalt-case/v1.1","id":"l","expected":{"actions":[],"proposal":"maybe"}}`: "proposal",
+		// The confined daemon's view: a restore is a hint, never an action.
+		`{"schema":"basalt-case/v1.1","id":"m","evidence":{"snapshots":[{"number":5,"role":"restore_source","path":"/etc/x.conf"}]},
+		  "expected":{"actions":[{"kind":"file.restore","params":{"path":"/etc/x.conf","snapshot":"5"}}],"proposal":"propose"},
+		  "provenance":{"source":"lab-daemon"}}`: "hint",
+		// Hints are validated like actions.
+		`{"schema":"basalt-case/v1.1","id":"n","expected":{"actions":[],"hints":[{"actions":[{"kind":"file.restore","params":{"path":"/etc/x.conf","snapshot":"5"}}]}],
+		  "proposal":"review"},"provenance":{"source":"lab-daemon"}}`: "not in evidence.snapshots",
 	}
 	for c, want := range bad {
 		_, err := checkCase([]byte(c))

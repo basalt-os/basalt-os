@@ -43,7 +43,7 @@ Read-only, no confirmation:
 | Command | What it reports |
 |---|---|
 | `basalt status` | SELinux mode, failed units, denials in 24 h, root file system usage, snapshots, unfinished package transactions, pending rollback, daemon state, pending proposals, audit chain |
-| `basalt why UNIT` | unit state and result; relevant journal lines; SELinux denials for the unit's domain (from its executable's label) and, when a service reports "Permission denied" without any logged denial, a label check of every component of the path (dontaudit rules hide many denials); failed dependencies; ports named in the failure and who holds them; full file systems; the service's own config checker (`nginx -t`, `httpd -t`, `sshd -t`, `named-checkconf`, `haproxy -c`, `postfix check`, `testparm`, and others) with the file and line of the error; a snapshot that holds a different copy of the broken file |
+| `basalt why UNIT` | unit state and result; relevant journal lines; the unit's SELinux domain (from the loaded policy: `SELinuxContext=` or the transition from `init_t` for its executable's label) and the denials for it; for a "Permission denied", the mode and owner of every component of the path against the unit's `User=` (file permissions, DAC) and, for a confined domain without any logged denial, a label check of every component (dontaudit rules hide many denials); out-of-memory kills (result `oom-kill`, systemd's and the kernel's messages) with the unit's memory limits; failed dependencies; ports named in the failure and who holds them; full file systems; the service's own config checker (`nginx -t`, `httpd -t`, `sshd -t`, `named-checkconf`, `haproxy -c`, `postfix check`, `testparm`, and others, run without side effects, see below) with the file and line of the error; the newest snapshot copy of the broken file that passes the checker |
 | `basalt fix selinux [--since 1h]` | recent denials grouped by domain, target, class, permission and object, each mapped to a known fix or to review |
 | `basalt snapshots` | the root snapshots; `[proposal]` marks the ones `basalt apply` took |
 | `basalt snapshots diff A [B]` | packages added, removed and changed (rpm databases of the two snapshots) and changed files by directory (`snapper status`) |
@@ -58,6 +58,7 @@ Changes (root):
 |---|---|
 | `basalt apply ID` | runs a proposal after confirmation |
 | `basalt ignore ID [--reason TEXT]` | closes a proposal without running it (recorded) |
+| `basalt confirm ID` | checks, as root, the snapshot a hint of the daemon or the MCP server rests on (see Hints) and stores it as a proposal |
 | `basalt snapshots rollback N` or `--before ID` | proposes and runs `basalt-rollback N`; `--before` uses the snapshot `basalt apply` took before proposal ID |
 | `basalt why UNIT --apply`, `basalt fix selinux --apply`, `basalt disk --apply` | store the proposal and go straight to the confirmation |
 
@@ -91,6 +92,60 @@ file matches the snapshot, a rollback is pending, the snapshot is gone.
 
 There is no free-form command action and no `audit2allow`: a denial
 without a known fix is reported for review, never turned into policy.
+
+A proposal is validated when it is stored and again when it is applied:
+every action must pass its validator, and a proposal of the confined view
+may not carry the two actions below.
+
+### Hints: restores and rollbacks from the confined view
+
+A `file.restore` or a `snapshot.rollback` is only as good as the snapshot
+it rests on, and the confined view (the daemon, the MCP server) cannot
+check it: it sees snapshot metadata, not the file contents or the package
+databases. From there these changes are hints, not actions: the proposal
+holds the actions as a hint (a restore together with the restart that
+needs it), is marked for review and has nothing to apply. `basalt confirm
+ID`, run as root, checks the hint: the snapshot exists, its copy of the
+file differs from the current one and passes the service's config checker
+in place of it (in the sandbox), or, for a rollback, what it changes in
+packages and files. A confirmed hint is stored as a new proposal from the
+command line (the hint is closed as resolved) and applied as usual; a
+hint whose copy fails the checker is refused. `basalt why UNIT` as root
+reaches the same proposal directly.
+
+## Diagnosis without side effects
+
+Config checkers are not read-only: `nginx -t` opens, and so creates, the
+log files its configuration names, and `postfix check` creates missing
+directories. Run as root during a diagnosis, that would change the fault
+being diagnosed. `basalt` therefore runs every checker through a hidden
+subcommand (`basalt __sandbox`) in a private mount namespace where every
+disk-backed and tmpfs file system is an overlay with a throwaway upper
+layer (256 MiB of tmpfs): the checker sees the real files and may create
+and write files as usual, and all of it disappears with the namespace. A
+file system that cannot be overlaid is bound read-only; `/proc`, `/sys`
+and `/dev` are bound as they are. The same tree can hold another copy of
+one file, which is how a snapshot copy is tested in place of the current
+one. It needs root; without it (or when the namespace cannot be set up)
+the checker is not run and the report says so. A check that writes more
+than the throwaway layer holds is reported as inconclusive.
+
+The SELinux policy queries (`sesearch`, `seinfo`) read
+`/sys/fs/selinux/policy`, which one process at a time may open: when the
+daemon and the command line diagnose the same event, one of them gets
+EBUSY. Every query is retried with a jittered exponential backoff (10
+attempts, about 14 s); one that still fails is an error and the diagnosis
+is incomplete (no change is proposed, `basalt why` and `basalt fix
+selinux` exit with an error), never a "no rule allows it". Answers are
+cached for a minute per process. There is no cache shared between the
+daemon and the command line on purpose: the root command line does not
+trust answers the less privileged daemon wrote.
+
+Every path a diagnosis uses comes from the audit record, a journal message
+or an inode search (the document roots in the nginx and httpd
+configurations, the usual web roots, then the usual service directories),
+and must be a valid path with the denial's name and inode before it is
+used; a tool's error message is never taken for one.
 
 ## Apply: preview, confirmation, snapshot, verification, audit
 
@@ -233,7 +288,7 @@ application, not the backend, decides what to do.
 
 | Question | Kind | Options |
 |---|---|---|
-| `unit.cause` | choice | config_error, selinux_denial, port_conflict, dependency_failed, disk_full, missing_file, crashed, unknown |
+| `unit.cause` | choice | config_error, selinux_denial, port_conflict, dependency_failed, disk_full, missing_file, crashed (also an out-of-memory kill), unknown (also a file-permission error) |
 | `avc.class` | choice | mislabeled, missing_fcontext, port, boolean, unknown, suspicious |
 | `event.severity` | score | 1 to 5 |
 | `event.notify` | boolean | true, false |
@@ -277,7 +332,9 @@ suite they are more accurate than the small models
 No tool executes a change. The confirmation code is not returned to the
 client: the person reads it from `basalt show ID` or `basalt apply ID`.
 `basalt_propose_action` lets a client propose any action of the closed set;
-it is always marked for review. Example client configuration:
+it is always marked for review. The MCP server runs in the confined
+domain: a file restore or a rollback it is asked for is stored as a hint
+for `basalt confirm`. Example client configuration:
 
 ```json
 { "mcpServers": { "basalt": { "command": "sudo", "args": ["basalt-mcp"] } } }
@@ -301,6 +358,8 @@ SELinux module `basalt_assistant` (package `basalt-assistant-selinux`):
   named in the report: config checkers (they open log files), btrfs ioctls
   (space per snapshot), rpm database comparison, process owners of
   sockets. `basalt` as root runs them.
+- What the daemon and the MCP server cannot check they do not propose: a
+  file restore or a rollback from them is a hint (see Hints).
 - Denials of the assistant's own domain are reported as a bug, never with a
   fix that would widen its access.
 
@@ -320,9 +379,10 @@ daemon (and `basalt-notify`) after a change.
 ## Lab
 
 `make lab-assistant-test` (`scripts/lab/assistant-test.sh`) runs the
-scenarios on a lab VM: broken nginx config, a log directory moved from
-`/root` (hidden denial), nginx on an unlabeled port, a package whose `%post`
-fails, a disk filled by a file only a snapshot holds, the confinement probe
-and the MCP server. `make assistant-test` runs the unit tests (fixtures of
+scenarios on a lab VM: broken nginx config (the daemon's hint, confirmed
+as root), a config checker that must leave no file behind, a log
+directory moved from `/root` (hidden denial), nginx on an unlabeled port,
+a package whose `%post` fails, a disk filled by a file only a snapshot
+holds, the confinement probe and the MCP server. `make assistant-test` runs the unit tests (fixtures of
 real journal, AVC, sesearch, seinfo, btrfs and snapper output) in a Fedora
 container. Results: [milestone-2a-report.md](milestone-2a-report.md).

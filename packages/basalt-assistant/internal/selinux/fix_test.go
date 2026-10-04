@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
@@ -183,5 +184,51 @@ func TestAnalyzePathNeverRelabelsShadow(t *testing.T) {
 		func(p string) string { return labels[p] })
 	if !ok || f.Class != ClassSuspicious || len(f.Actions) != 0 {
 		t.Fatalf("ok %v class %s actions %+v", ok, f.Class, f.Actions)
+	}
+}
+
+// A policy query that keeps losing the race for /sys/fs/selinux/policy is
+// an error and no conclusion, never "no rule allows it".
+func TestBusyPolicyGivesNoConclusion(t *testing.T) {
+	a, _ := ParseAVC(`avc:  denied  { append } for  pid=1 comm="nginx" name="site.log" dev="vda3" ino=9 scontext=system_u:system_r:httpd_t:s0 tcontext=unconfined_u:object_r:admin_home_t:s0 tclass=file permissive=0`)
+	a.Path = "/var/log/nginx/site.log"
+	r := fake(map[string]runner.Result{
+		"matchpathcon -n /var/log/nginx/site.log":                 {Out: "system_u:object_r:httpd_log_t:s0"},
+		"sesearch -A -s httpd_t -t httpd_log_t -c file -p append": {Out: "ERROR: Device or resource busy", Code: 1},
+	})
+	p := &Policy{R: r, Sleep: func(context.Context, time.Duration) {}}
+	f := Analyzer{R: r, Policy: p}.Analyze(context.Background(), Group{AVC: a, Count: 1})
+	if f.Class != ClassUnknown || len(f.Actions) != 0 || len(f.Errors) == 0 || !f.Features["policy_query_failed"] {
+		t.Fatalf("class %s actions %+v errors %v", f.Class, f.Actions, f.Errors)
+	}
+	if !strings.Contains(f.Errors[0], "after 10 attempts") {
+		t.Errorf("errors %v", f.Errors)
+	}
+	// A path that is not a path (a tool's error message) is never analyzed.
+	b := a
+	b.Path = ""
+	z := Analyzer{R: fake(nil), Resolve: func(context.Context, AVC) (string, string) {
+		return "/usr/bin/find: '/var/www': No such file or directory", "inode search"
+	}}
+	g := z.Analyze(context.Background(), Group{AVC: b, Count: 1})
+	if g.Path != "" || len(g.Actions) != 0 || g.Class != ClassUnknown {
+		t.Fatalf("path %q class %s actions %+v", g.Path, g.Class, g.Actions)
+	}
+}
+
+func TestServiceDomain(t *testing.T) {
+	r := fake(map[string]runner.Result{
+		"sesearch -T -s init_t -t shell_exec_t -c process": {Out: "type_transition init_t shell_exec_t:process unconfined_service_t;\ntype_transition init_t shell_exec_t:process foo_t \"special\";"},
+		"sesearch -T -s init_t -t httpd_exec_t -c process": {Out: "type_transition initrc_domain httpd_exec_t:process httpd_t;\ntype_transition init_t httpd_exec_t:process httpd_t;"},
+	})
+	p := NewPolicy(r)
+	if d, err := p.ServiceDomain(context.Background(), "shell_exec_t"); err != nil || d != "unconfined_service_t" || !Unconfined(d) {
+		t.Fatalf("%q %v", d, err)
+	}
+	if d, _ := p.ServiceDomain(context.Background(), "httpd_exec_t"); d != "httpd_t" || Unconfined(d) {
+		t.Fatalf("%q", d)
+	}
+	if d, err := p.ServiceDomain(context.Background(), "nothing_exec_t"); err != nil || d != "" {
+		t.Fatalf("%q %v", d, err)
 	}
 }

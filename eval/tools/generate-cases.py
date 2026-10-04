@@ -20,12 +20,17 @@ generate-cases/2 (same seed, same random draws as /1): the second large
 holder of a disk case is 1 GiB plus up to 500 MiB, as intended; /1 shifted
 the whole sum (operator precedence), which made it larger than the holder
 named by the label.
+
+generate-cases/3 (same seed, same random draws as /2): a DAC permission
+case carries dac_denied, which the diagnosers set (root view and daemon)
+since they check the mode and owner of the denied path against the unit's
+User= (before, they only knew that a label check found nothing).
 """
 import argparse
 import json
 import random
 
-VERSION = "generate-cases/2"
+VERSION = "generate-cases/3"
 SCHEMA = "basalt-case/v1.1"
 
 SERVICES = ["nginx", "httpd", "haproxy", "postfix", "named", "postgresql", "mariadb", "redis", "grafana-server",
@@ -168,10 +173,9 @@ def gen_unit(r, n):
         lines = ["%s %s: start operation timed out. Terminating." % (t, unit), "%s %s: Failed with result 'timeout'." % (t, unit)]
     elif kind == "dac":
         lines = ["%s %s: /var/lib/%s/state: Permission denied" % (t, svc, svc)] + failed_lines(r, unit)
-        if not confined:
-            notes += "; DAC (file mode), label check found nothing"
-        else:
-            notes += "; DAC (file mode)"
+        # Both views check the mode and owner (stat, id): the daemon may.
+        ft["dac_denied"] = True
+        notes += "; DAC (file mode and owner checked against User=)"
     else:
         lines = failed_lines(r, unit)
     return unit_case(r, n, "unknown", svc, lines, ft, "no known cause class (%s)" % kind, notes)

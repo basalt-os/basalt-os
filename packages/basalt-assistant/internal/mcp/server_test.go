@@ -31,6 +31,7 @@ func TestProtocolAndProposeOnly(t *testing.T) {
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"basalt_propose_action","arguments":{"kind":"selinux.boolean","params":{"name":"httpd_can_network_connect","value":"on"},"reason":"test"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"basalt_propose_action","arguments":{"kind":"selinux.boolean","params":{"name":"x; reboot","value":"on"},"reason":"bad"}}}`,
 		`{"jsonrpc":"2.0","id":5,"method":"nope"}`,
+		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"basalt_propose_action","arguments":{"kind":"file.restore","params":{"path":"/etc/nginx/nginx.conf","snapshot":"27"},"reason":"a client"}}}`,
 	}, "\n")
 	var out bytes.Buffer
 	if err := s.Serve(context.Background(), strings.NewReader(in), &out); err != nil {
@@ -44,7 +45,7 @@ func TestProtocolAndProposeOnly(t *testing.T) {
 		}
 		resps = append(resps, m)
 	}
-	if len(resps) != 5 {
+	if len(resps) != 6 {
 		t.Fatalf("%d responses (notifications get none): %s", len(resps), out.String())
 	}
 	init := resps[0]["result"].(map[string]any)
@@ -88,6 +89,19 @@ func TestProtocolAndProposeOnly(t *testing.T) {
 	}
 	if resps[4]["error"] == nil {
 		t.Error("unknown method")
+	}
+	// A file restore through MCP (the confined view) is stored as a hint.
+	hint := resps[5]["result"].(map[string]any)
+	hs := hint["structuredContent"].(map[string]any)
+	if hint["isError"] == true || hs["stored"] != true || hs["hint"] != true {
+		t.Fatalf("restore through MCP: %v", hint)
+	}
+	hp, err := s.Store.Load(hs["id"].(string))
+	if err != nil || len(hp.Actions) != 0 || len(hp.Hints) != 1 || hp.Hints[0].Actions[0].Kind != "file.restore" {
+		t.Fatalf("stored %+v %v", hp, err)
+	}
+	if text := hint["content"].([]any)[0].(map[string]any)["text"].(string); !strings.Contains(text, "basalt confirm "+hp.ID) {
+		t.Errorf("hint text:\n%s", text)
 	}
 	if n, err := audit.Verify(dir + "/audit.jsonl"); err != nil || n == 0 {
 		t.Errorf("audit: %d %v", n, err)

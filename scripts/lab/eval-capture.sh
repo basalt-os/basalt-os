@@ -93,8 +93,12 @@ sc_nginx_syntax() {
 }
 sc_nginx_include_missing() {
   nginx_edit 'sed -i "s#^\(\s*\)include /etc/nginx/default.d/\*.conf;#&\n\1include /etc/nginx/basalt-lab-missing.conf;#" /etc/nginx/nginx.conf'
-  capture nginx-include-missing nginx.service '{"unit.cause":"missing_file"}' \
-    "nginx.conf includes a file that does not exist" '[]'
+  # The fault is the edit of nginx.conf: the checker fails at its line and
+  # the snapshot copy of nginx.conf passes it (labeled missing_file before
+  # 2026-10-03; the missing file is the symptom, not the cause).
+  capture nginx-include-missing nginx.service '{"unit.cause":"config_error"}' \
+    "nginx.conf includes a file that does not exist; the snapshot copy of nginx.conf passes the config checker" \
+    '[{"kind":"file.restore","params":{"path":"/etc/nginx/nginx.conf"}},{"kind":"unit.restart","params":{"unit":"nginx.service"}}]'
 }
 sc_nginx_port_conflict() {
   vm 'systemctl stop nginx; systemd-run --unit basalt-lab-holder -p Type=simple python3 -m http.server 80 --bind 0.0.0.0; sleep 2; systemctl start nginx 2>/dev/null || true'
@@ -193,6 +197,12 @@ sc_dac() {
   capture dac-permission basalt-lab-dac.service '{"unit.cause":"unknown"}' \
     "Permission denied from file mode and owner (DAC), not SELinux: the directory is root-only" '[]'
 }
+sc_oom() {
+  lab_unit basalt-lab-oom "/usr/bin/python3 -c 'b = bytearray(1 << 30)'" $'MemoryMax=64M\nMemorySwapMax=0'
+  vm 'systemctl start basalt-lab-oom 2>/dev/null || true'
+  capture oom basalt-lab-oom.service '{"unit.cause":"crashed"}' \
+    "the out-of-memory killer stopped it at its MemoryMax limit (64M); a restart would fail the same way" '[]'
+}
 sc_timeout() {
   lab_unit basalt-lab-timeout '/bin/sleep 30' 'TimeoutStartSec=3'
   vm 'systemctl start basalt-lab-timeout 2>/dev/null || true'
@@ -216,7 +226,7 @@ sc_port_22() {
 
 all=(nginx_directive nginx_syntax nginx_include_missing nginx_port_conflict nginx_moved_dir nginx_port_8085 nginx_port_8181
      nginx_data_log nginx_shadow nginx_boolean nginx_dep exec_missing segv abrt kill dep_custom disk_full generic dac timeout
-     app_config app_missing_conf port_22)
+     app_config app_missing_conf port_22 oom)
 steps=("$@")
 [[ ${#steps[@]} -gt 0 ]] || steps=("${all[@]}")
 for s in "${steps[@]}"; do

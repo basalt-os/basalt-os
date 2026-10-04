@@ -56,6 +56,9 @@ var ruleSets = map[string]ruleSet{
 			{"a path in a permission error has a wrong or generic label", []string{"path_label_problem"}, nil, map[string]float64{"selinux_denial": 15}},
 			{"the path is mislabeled (default label would work)", []string{"path_mislabeled"}, nil, map[string]float64{"selinux_denial": 3}},
 			{"the denial explains a permission error", []string{"avc_for_domain", "journal_permission_denied"}, nil, map[string]float64{"selinux_denial": 3}},
+			{"killed by the out-of-memory killer", []string{"oom_killed"}, nil, map[string]float64{"crashed": 40}},
+			{"permission denied by file mode and owner (DAC), no denial logged", []string{"dac_denied"}, []string{"avc_for_domain"},
+				map[string]float64{"unknown": 12, "selinux_denial": 0.1, "missing_file": 0.5}},
 		},
 	},
 	// What kind of SELinux denial is this?
@@ -73,6 +76,7 @@ var ruleSets = map[string]ruleSet{
 			{"security-sensitive target", []string{"sensitive_target"}, nil, map[string]float64{"suspicious": 400}},
 			{"permissive domain", []string{"permissive"}, nil, map[string]float64{"unknown": 1.2}},
 			{"found by a label check (no AVC logged)", []string{"no_avc"}, nil, map[string]float64{"unknown": 1.5}},
+			{"the policy could not be queried", []string{"policy_query_failed"}, nil, map[string]float64{"unknown": 1000}},
 		},
 	},
 	// Severity on a 1 to 5 rubric (1 informational, 5 the system or a

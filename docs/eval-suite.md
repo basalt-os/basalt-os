@@ -20,7 +20,8 @@ eval/
   tools/generate-translator-train.py   templates -> translator training pairs (fine-tuning)
   tools/train-translator-lora.py       LoRA fine-tuning of the translator on those pairs
   tools/overlap.py            similarity between training pairs and a test set
-  results/2026-10-03/         summaries of the milestone 2b runs (per model; training settings)
+  results/2026-10-03/         summaries of the milestone 2b runs (per model; training settings);
+                              dec-rules-0.4.0: the rules after the fixes of basalt-assistant 0.4.0
 ```
 
 `packages/basalt-assistant/tools/basalt-eval` runs them:
@@ -59,7 +60,7 @@ backward compatible: a v1 reader ignores the new evidence key, and
 | `goal` | the structured goal a command or the translator emits for it, e.g. `why(unit=nginx.service)` |
 | `evidence` | what was observed: `journal` lines, unit `state`, `config_check`, `avcs` (raw records), `ports`, `deps`, `dnf_log`, `usage`, `snapshots` (v1.1, below) |
 | `questions` | the decision-layer questions exactly as the diagnosers ask them: `id`, `subject`, `features` (true ones), `facts` (what a model sees besides the features), `want` (the expected answer) |
-| `expected` | `diagnosis` (one sentence), `cause`, `actions` (typed actions of the closed set in [assistant.md](assistant.md), possibly empty), `proposal` (`propose` or `review`) |
+| `expected` | `diagnosis` (one sentence), `cause`, `actions` (typed actions of the closed set in [assistant.md](assistant.md), possibly empty), `hints` (optional: `{actions, reason}` the confined view holds as a hint instead of proposing, see assistant.md), `proposal` (`propose` or `review`) |
 | `provenance` | `source` (`lab`, `lab-daemon`, `generated`), `ref` (scenario or generator version), `recorded`, `method`, `labels`, `notes` |
 | `license` | Apache-2.0 for every case here |
 
@@ -92,9 +93,11 @@ action that names a snapshot must find it here with the role it needs:
 `basalt-eval check` (and the Go test `TestAllCasesValidate`, which
 `make assistant-test` runs with `eval/cases` mounted in the container)
 checks every case file: a known schema, unique ids, `proposal` of
-`propose` or `review`, every expected action passes the assistant's own
-validator (`internal/action`, the same code that refuses a proposal),
-well formed snapshot evidence and, for v1.1, the snapshot bindings above.
+`propose` or `review`, every expected action and hint passes the
+assistant's own validator (`internal/action`, the same code that refuses a
+proposal), well formed snapshot evidence and, for v1.1, the snapshot
+bindings above. A `lab-daemon` case may not expect a `file.restore` or a
+`snapshot.rollback` as an action: from the confined view they are hints.
 
 Example (shortened):
 
@@ -139,10 +142,21 @@ Example (shortened):
   a seed. `generate-cases/2` fixed an operator precedence error of `/1`
   that made the second large holder of a disk case about 1 PiB (cases
   `gen-disk-017-journal` and `gen-disk-018-package_cache`, whose facts
-  contradicted their labels).
+  contradicted their labels). `generate-cases/3` sets `dac_denied` on the
+  file-permission cases, which the diagnosers now find (mode and owner
+  checked against the unit's `User=`); the out-of-memory cases get
+  `oom_killed` from the journal, through `basalt-eval derive`.
 
 The generated cases reflect how the authors understand these failures;
 the lab cases are the ground truth. Results are reported per source.
+
+Label reviews: `lab-nginx-include-missing` (nginx.conf told to include a
+file that does not exist) was labeled `missing_file` with nothing to
+propose; it is `config_error` with a restore of nginx.conf and a restart.
+The fault is the edit of nginx.conf, `nginx -t` fails at that line, the
+snapshot copy of nginx.conf passes it, and restoring it fixed the service
+on a lab VM; the missing file is the symptom. The two `lab-daemon` cases
+whose expected actions were a restore now expect it as a hint.
 
 ### Use for a specialist model
 

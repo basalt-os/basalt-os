@@ -17,11 +17,25 @@ import (
 // one whose label is wrong (and whose default the service may use), or
 // generic, gives the fix. label returns a file's context ("" when the file
 // does not exist).
-func (z Analyzer) AnalyzePath(ctx context.Context, dom, p string, write bool, label func(string) string) (Fix, bool) {
+func (z Analyzer) AnalyzePath(ctx context.Context, dom, p string, write bool, label func(string) string) (f Fix, found bool) {
 	p = path.Clean(p)
-	if !strings.HasPrefix(p, "/") || dom == "" {
+	if !strings.HasPrefix(p, "/") || dom == "" || !ValidPath(p) || Unconfined(dom) {
 		return Fix{}, false
 	}
+	z = z.begin()
+	defer func() {
+		if found {
+			z.finishErrors(&f)
+		} else if len(*z.errs) > 0 {
+			// A failed query must not hide a problem silently either: report
+			// the path with no conclusion.
+			f = Fix{Group: Group{AVC: AVC{SContext: "system_u:system_r:" + dom + ":s0", Class: "file", Path: p,
+				Raw: "(no AVC logged) label check of " + p}}, Features: map[string]bool{"has_path": true, "no_avc": true},
+				Facts: map[string]string{}, Path: p, PathFrom: "journal message, label check"}
+			z.finishErrors(&f)
+			found = true
+		}
+	}()
 	var comps []string
 	for c := p; c != "/"; c = path.Dir(c) {
 		comps = append([]string{c}, comps...)

@@ -54,8 +54,18 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	if p.Status != proposal.Pending && p.Status != proposal.Failed {
 		return fmt.Errorf("proposal %s is %s; only pending or failed proposals can be applied", p.ID, p.Status)
 	}
+	if len(p.Actions) == 0 && len(p.Hints) > 0 {
+		return fmt.Errorf("proposal %s is a hint from the confined view: confirm the snapshot first with `sudo basalt confirm %s`", p.ID, p.ID)
+	}
 	if len(p.Actions) == 0 {
 		return fmt.Errorf("proposal %s is a report: it has no change to apply", p.ID)
+	}
+	if err := p.Validate(); err != nil {
+		a.audit("refuse", "invalid proposal "+p.ID+": "+err.Error(), map[string]any{"proposal": p.ID, "source": p.Source, "actions": p.Actions})
+		if errors.Is(err, proposal.ErrNeedsRootView) {
+			return fmt.Errorf("proposal %s: %w (sudo basalt confirm %s)", p.ID, err, p.ID)
+		}
+		return fmt.Errorf("proposal %s: %w", p.ID, err)
 	}
 	var cmds []runner.Command
 	for _, act := range p.Actions {

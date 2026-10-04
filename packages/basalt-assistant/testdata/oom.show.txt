@@ -1,0 +1,17 @@
+Id=basalt-lab-oom.service
+Requires=system.slice sysinit.target
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+Result=oom-kill
+StateChangeTimestamp=@1791037390
+InactiveExitTimestamp=@1791037389
+ExecMainCode=2
+ExecMainStatus=9
+ExecMainPID=4242
+ExecStart={ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 -c b = bytearray(1 << 30) ; ignore_errors=no ; start_time=[@1791037389] ; stop_time=[@1791037390] ; pid=4242 ; code=killed ; status=9/KILL }
+MemoryMax=67108864
+MemoryHigh=infinity
+MemorySwapMax=0
+MemoryPeak=67108864
+OOMPolicy=stop

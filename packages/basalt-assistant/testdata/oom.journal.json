@@ -1,0 +1,3 @@
+{"MESSAGE":"basalt-lab-oom.service: A process of this unit has been killed by the OOM killer.","PRIORITY":"4","UNIT":"basalt-lab-oom.service","_PID":"1","__REALTIME_TIMESTAMP":"1791037390000000"}
+{"MESSAGE":"basalt-lab-oom.service: Main process exited, code=killed, status=9/KILL","PRIORITY":"5","UNIT":"basalt-lab-oom.service","_PID":"1","__REALTIME_TIMESTAMP":"1791037390100000"}
+{"MESSAGE":"basalt-lab-oom.service: Failed with result 'oom-kill'.","PRIORITY":"4","UNIT":"basalt-lab-oom.service","_PID":"1","MESSAGE_ID":"d9b373ed55a64feb8242e02dbe79a49c","__REALTIME_TIMESTAMP":"1791037390200000"}

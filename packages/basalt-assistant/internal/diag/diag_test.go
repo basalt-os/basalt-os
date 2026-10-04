@@ -12,6 +12,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/selinux"
 )
 
 func fixture(t *testing.T, name string) string {
@@ -73,6 +74,14 @@ func newEnv(t *testing.T) *testEnv {
 		return out
 	}
 	te.labels["/usr/sbin/nginx"] = "system_u:object_r:httpd_exec_t:s0"
+	// Policy queries answer "nothing matches" unless a test says otherwise;
+	// a failure is an error now, not a negative.
+	te.fake.Prefixes["sesearch"] = runner.Result{}
+	te.fake.Prefixes["seinfo"] = runner.Result{}
+	te.fake.Prefixes["journalctl --no-pager -o cat -k"] = runner.Result{}
+	te.fake.Answers["sesearch -T -s init_t -t httpd_exec_t -c process"] = runner.Result{Out: "type_transition init_t httpd_exec_t:process httpd_t;"}
+	te.Policy = selinux.NewPolicy(te.fake)
+	te.Policy.Sleep = func(context.Context, time.Duration) {}
 	te.fake.Prefixes["systemctl show --timestamp=unix"] = runner.Result{Out: fixture(t, "nginx-config-error.show.txt")}
 	te.fake.Prefixes["systemctl show -p Id,ActiveState,Result,LoadState"] = runner.Result{Out: "Id=system.slice\nActiveState=active\nResult=success\nLoadState=loaded\n"}
 	te.fake.Prefixes["journalctl --no-pager -o json _TRANSPORT=audit"] = runner.Result{}
@@ -338,8 +347,11 @@ func TestDnfPostScriptletFailure(t *testing.T) {
 			t.Fatalf("a line of the previous transaction leaked in: %s", l)
 		}
 	}
-	if r.Decision.Answer.Top != "rollback" || len(r.Actions) != 1 || r.Actions[0].Params["snapshot"] != "16" {
-		t.Fatalf("decision %s actions %+v", r.Decision.Answer.String(), r.Actions)
+	// The daemon cannot compare the package databases: the rollback is a
+	// hint for the root view to confirm, never an action of its own.
+	if r.Decision.Answer.Top != "rollback" || len(r.Actions) != 0 || len(r.Hints) != 1 ||
+		r.Hints[0].Actions[0].Kind != action.SnapshotRollback || r.Hints[0].Actions[0].Params["snapshot"] != "16" {
+		t.Fatalf("decision %s actions %+v hints %+v", r.Decision.Answer.String(), r.Actions, r.Hints)
 	}
 }
 
@@ -351,19 +363,31 @@ func TestRestoreSkipsCopiesNewerThanTheLastGoodStart(t *testing.T) {
 	te.fake.Answers["stat -c '%s %Y' /etc/nginx/nginx.conf"] = runner.Result{Out: "36 1791037500"}
 	te.fake.Answers["stat -c '%s %Y' /.snapshots/4/snapshot/etc/nginx/nginx.conf"] = runner.Result{Out: "50 1791037400"} // broken too, newer
 	te.fake.Answers["stat -c '%s %Y' /.snapshots/3/snapshot/etc/nginx/nginx.conf"] = runner.Result{Out: "15 1791037000"}
-	rc := te.findRestore(context.Background(), "/etc/nginx/nginx.conf", time.Unix(1791037335, 0))
+	rc, _ := te.findRestore(context.Background(), "/etc/nginx/nginx.conf", time.Unix(1791037335, 0), nil)
 	if rc == nil || rc.Snapshot != 3 {
 		t.Fatalf("candidate %+v", rc)
 	}
 }
 
 func TestFoundPathSkipsFindErrors(t *testing.T) {
+	te := newEnv(t)
+	te.Inode = func(p string) (uint64, bool) {
+		return map[string]uint64{"/srv/data/x.log": 257}[p], p == "/srv/data/x.log"
+	}
+	a := selinux.AVC{Name: "x.log", Ino: 257}
 	out := "/usr/bin/find: '/var/www': No such file or directory\n/srv/data/x.log\n"
-	if p := foundPath(out); p != "/srv/data/x.log" {
+	if p := te.foundPath(out, a); p != "/srv/data/x.log" {
 		t.Fatalf("got %q", p)
 	}
-	if p := foundPath("/usr/bin/find: '/var/www': No such file or directory\n"); p != "" {
-		t.Fatalf("an error message was taken for a path: %q", p)
+	for _, bad := range []string{
+		"/usr/bin/find: '/var/www': No such file or directory\n",
+		"/usr/bin/find: ‘/var/www’: No such file or directory\n",
+		"/srv/other/x.log\n", // right name, another inode
+		"/srv/data/y.log\n",  // another name
+	} {
+		if p := te.foundPath(bad, a); p != "" {
+			t.Fatalf("%q taken for the denied object", p)
+		}
 	}
 }
 

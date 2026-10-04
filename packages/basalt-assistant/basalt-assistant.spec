@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.3.0
+Version:        0.4.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -159,6 +159,31 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.0-1
+- Fixes from a live run on a lab VM. SELinux policy queries retry with a
+  jittered backoff when another process holds /sys/fs/selinux/policy
+  (EBUSY) and a query that still fails is an error and an incomplete
+  diagnosis, never "no rule"; answers are cached briefly per process.
+- Config checkers (nginx -t and the others) run in a private mount
+  namespace where every file system is a throwaway overlay (basalt
+  __sandbox): a diagnosis no longer creates the log files a configuration
+  names. A restore candidate is the newest snapshot copy that passes the
+  checker in place of the current file; copies that fail are listed.
+- The AVC path search covers the document roots in the nginx and httpd
+  configurations and the usual web roots; every answer must be a valid
+  path with the AVC's name and inode (find's error text is never a path).
+- The service domain comes from the policy (the transition from init_t,
+  or SELinuxContext=): a unit that runs a shell is unconfined_service_t,
+  not shell_t. "Permission denied" is checked against file mode and owner
+  for the unit's User= first (DAC), so file permissions are not blamed on
+  SELinux.
+- Out-of-memory kills (result oom-kill, systemd and kernel messages) are
+  recognized: cause crashed, the memory limits as evidence, no restart.
+- From the confined daemon and the MCP server a file restore or a rollback
+  is a hint, not an action; basalt confirm ID checks the snapshot as root
+  and stores it as a proposal. Proposals are validated when stored and
+  applied.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
 - Installed and enabled by default (the daemon only proposes; applying
   still needs basalt apply and a confirmation).

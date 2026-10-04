@@ -14,6 +14,8 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/journal"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sandbox"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/selinux"
 )
 
@@ -24,7 +26,10 @@ type UnitReport struct {
 	Healthy     bool              `json:"healthy"`
 	Journal     []string          `json:"journal,omitempty"` // relevant lines
 	Domain      string            `json:"domain,omitempty"`
+	DomainHow   string            `json:"domain_how,omitempty"`
 	AVCs        []selinux.Fix     `json:"avcs,omitempty"`
+	DAC         []DACFinding      `json:"dac,omitempty"`
+	OOM         *OOMInfo          `json:"oom,omitempty"`
 	Deps        []DepState        `json:"deps,omitempty"`
 	Ports       []PortInfo        `json:"ports,omitempty"`
 	Disks       []FSStat          `json:"disks,omitempty"`
@@ -39,7 +44,12 @@ type UnitReport struct {
 	Explanation string            `json:"explanation"`
 	Evidence    []string          `json:"evidence"`
 	Actions     []action.Action   `json:"actions,omitempty"`
-	Skipped     []string          `json:"skipped,omitempty"` // probes left out (confined)
+	// Hints: changes the confined view may not propose (see action.Hint).
+	Hints   []action.Hint `json:"hints,omitempty"`
+	Skipped []string      `json:"skipped,omitempty"` // probes left out (confined)
+	// Errors: probes that failed in a way that leaves the diagnosis
+	// incomplete (an SELinux policy query that could not be answered).
+	Errors []string `json:"errors,omitempty"`
 }
 
 // DepState is a dependency's state.
@@ -70,6 +80,9 @@ type RestoreCandidate struct {
 	Date     string `json:"date"`
 	Diff     string `json:"diff,omitempty"`
 	How      string `json:"how"` // content or size/mtime
+	// Checked is the config checker the copy passed in place of the
+	// current file (in the sandbox), when the service has one.
+	Checked string `json:"checked,omitempty"`
 }
 
 // Config checkers for common services, keyed by unit name without suffix.
@@ -142,7 +155,8 @@ func ParseShow(out string) []map[string]string {
 }
 
 var showProps = "Id,LoadState,ActiveState,SubState,Result,ExecMainStatus,ExecMainCode,FragmentPath,ExecStart,ExecStartPre," +
-	"MainPID,NRestarts,StateChangeTimestamp,InactiveExitTimestamp,ActiveEnterTimestamp,Requires,Requisite,BindsTo,Wants,After,Description"
+	"MainPID,NRestarts,StateChangeTimestamp,InactiveExitTimestamp,ActiveEnterTimestamp,Requires,Requisite,BindsTo,Wants,After,Description," +
+	"User,Group,DynamicUser,SELinuxContext,ExecMainPID,MemoryMax,MemoryHigh,MemorySwapMax,MemoryPeak,MemoryCurrent,OOMPolicy"
 
 // WhyUnit diagnoses a unit.
 func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
@@ -175,6 +189,9 @@ func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
 	if st["Result"] == "signal" || st["Result"] == "core-dump" || st["Result"] == "watchdog" {
 		rep.Features["signal_or_core"] = true
 	}
+	if st["Result"] == "oom-kill" {
+		rep.Features["oom_killed"] = true
+	}
 
 	// The window opens at the last start attempt: older failures of the
 	// same unit (already fixed) must not count as evidence now.
@@ -187,8 +204,13 @@ func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
 	}
 
 	e.unitJournal(ctx, rep, window)
+	e.unitDomain(ctx, rep)
+	if rep.DomainHow != "" {
+		rep.Evidence = append(rep.Evidence, "domain: "+rep.DomainHow)
+	}
 	e.unitAVCs(ctx, rep, window)
-	e.unitPathLabels(ctx, rep)
+	e.unitPermissions(ctx, rep)
+	e.unitOOM(ctx, rep, window)
 	e.unitDeps(ctx, rep)
 	e.unitPorts(ctx, rep)
 	e.unitDisks(ctx, rep)
@@ -240,6 +262,9 @@ func lineFeatures(m string, noSpace bool, ft map[string]bool) (string, int) {
 	if noSpace {
 		ft["journal_no_space"] = true
 	}
+	if reOOM.MatchString(m) {
+		ft["oom_killed"] = true
+	}
 	if strings.Contains(m, "Dependency failed") {
 		ft["dependency_failed"] = true
 	}
@@ -273,7 +298,7 @@ func (e *Env) unitJournal(ctx context.Context, rep *UnitReport, window time.Time
 			continue
 		}
 		interesting := en.Priority <= 4 || reConfigErr.MatchString(m) || reAddrInUse.MatchString(m) ||
-			rePermDenied.MatchString(m) || reNoSuchFile.MatchString(m) || en.IsNoSpace() ||
+			rePermDenied.MatchString(m) || reNoSuchFile.MatchString(m) || en.IsNoSpace() || reOOM.MatchString(m) ||
 			strings.Contains(m, "Failed with result") || strings.Contains(m, "Dependency failed")
 		if !interesting {
 			continue
@@ -311,27 +336,18 @@ func execPath(st map[string]string) string {
 	return ""
 }
 
-// DomainOf guesses a service's SELinux domain from its executable's label
-// (httpd_exec_t -> httpd_t).
-func (e *Env) DomainOf(exe string) string {
-	if exe == "" || e.Label == nil {
-		return ""
-	}
-	t := selinux.Type(e.Label(exe))
-	if strings.HasSuffix(t, "_exec_t") {
-		return strings.TrimSuffix(t, "_exec_t") + "_t"
-	}
-	return ""
-}
-
 func (e *Env) unitAVCs(ctx context.Context, rep *UnitReport, window time.Time) {
 	exe := execPath(rep.State)
-	rep.Domain = e.DomainOf(exe)
 	comm := path.Base(exe)
+	pid, _ := strconv.Atoi(strings.TrimSpace(rep.State["ExecMainPID"]))
+	confined := rep.Domain != "" && !selinux.Unconfined(rep.Domain)
 	avcs := e.CollectAVCs(ctx, window)
 	var mine []selinux.AVC
 	for _, a := range avcs {
-		if (rep.Domain != "" && a.SType() == rep.Domain) || (comm != "" && comm != "." && a.Comm == comm) {
+		switch {
+		case confined && a.SType() == rep.Domain,
+			pid > 0 && a.PID == pid,
+			comm != "" && comm != "." && !genericComm[comm] && a.Comm == comm:
 			mine = append(mine, a)
 		}
 	}
@@ -341,6 +357,10 @@ func (e *Env) unitAVCs(ctx context.Context, rep *UnitReport, window time.Time) {
 	rep.Features["avc_for_domain"] = true
 	for _, g := range selinux.GroupAVCs(mine) {
 		f := e.AnalyzeAVC(ctx, g)
+		if len(f.Errors) > 0 {
+			rep.Errors = append(rep.Errors, f.Errors...)
+			rep.Features["policy_query_failed"] = true
+		}
 		if f.Features["resolved"] {
 			rep.Evidence = append(rep.Evidence, "already allowed now: "+f.Explanation)
 			continue
@@ -349,42 +369,6 @@ func (e *Env) unitAVCs(ctx context.Context, rep *UnitReport, window time.Time) {
 	}
 	if len(rep.AVCs) == 0 {
 		delete(rep.Features, "avc_for_domain")
-	}
-}
-
-// unitPathLabels checks the paths of "Permission denied" messages when no
-// denial was logged for them (dontaudit rules hide many).
-func (e *Env) unitPathLabels(ctx context.Context, rep *UnitReport) {
-	if rep.Domain == "" || !rep.Features["journal_permission_denied"] || e.Label == nil {
-		return
-	}
-	logged := map[string]bool{}
-	for _, f := range rep.AVCs {
-		if f.Path != "" {
-			logged[f.Path] = true
-		}
-	}
-	z := selinux.Analyzer{R: e.R}
-	seen := map[string]bool{}
-	for _, l := range rep.Journal {
-		if !rePermDenied.MatchString(l) {
-			continue
-		}
-		for _, m := range reQuotedPath.FindAllStringSubmatch(l, -1) {
-			p := strings.TrimRight(m[1]+m[2]+m[3], ".,:;)")
-			if seen[p] || logged[p] || !strings.HasPrefix(p, "/") {
-				continue
-			}
-			seen[p] = true
-			write := strings.HasSuffix(p, ".log") || strings.Contains(p, "/log") || strings.Contains(l, "open()")
-			if f, ok := z.AnalyzePath(ctx, rep.Domain, p, write, e.Label); ok {
-				rep.AVCs = append(rep.AVCs, f)
-				rep.Features["path_label_problem"] = true
-				if f.Features["default_differs"] && f.Features["default_allowed"] {
-					rep.Features["path_mislabeled"] = true
-				}
-			}
-		}
 	}
 }
 
@@ -428,9 +412,7 @@ func auditTime(line string) time.Time {
 
 // AnalyzeAVC classifies one group and asks the decision layer.
 func (e *Env) AnalyzeAVC(ctx context.Context, g selinux.Group) selinux.Fix {
-	z := selinux.Analyzer{R: e.R, Resolve: e.resolveAVCPath}
-	f := z.Analyze(ctx, g)
-	return f
+	return e.analyzer().Analyze(ctx, g)
 }
 
 // resolveAVCPath finds the file an AVC names: candidate paths from recent
@@ -469,31 +451,54 @@ func (e *Env) resolveAVCPath(ctx context.Context, a selinux.AVC) (string, string
 	if e.Confined {
 		return "", ""
 	}
-	r := e.R.Read(ctx, "find", "/srv", "/var/www", "/var/lib", "/var/log", "/opt", "/home", "/etc", "/var/spool", "/var/cache", "/run",
-		"-xdev", "-inum", strconv.FormatUint(a.Ino, 10), "-name", a.Name, "-print", "-quit")
-	if p := foundPath(r.Out); p != "" {
-		return p, "inode search"
-	}
-	// btrfs subvolumes are separate devices for -xdev: search each mount.
-	for _, d := range []string{"/srv", "/var/log", "/home", "/var/lib/containers", "/var/lib/pgsql", "/var/lib/mysql", "/var/spool", "/var/cache", "/var/tmp"} {
-		r := e.R.Read(ctx, "find", d, "-xdev", "-inum", strconv.FormatUint(a.Ino, 10), "-name", a.Name, "-print", "-quit")
-		if p := foundPath(r.Out); p != "" {
-			return p, "inode search"
+	// Document roots first (a denied page), then the usual service
+	// directories; btrfs subvolumes are separate devices for -xdev, so the
+	// usual mounts are searched one by one after that. Start directories
+	// that do not exist are left out (find's error message for them is not
+	// a path), and every answer is checked: a valid path, the AVC's name,
+	// the AVC's inode.
+	groups := [][]string{e.docRoots(),
+		{"/srv", "/var/lib", "/var/log", "/opt", "/home", "/etc", "/var/spool", "/var/cache", "/run"},
+		{"/var/lib/containers", "/var/lib/pgsql", "/var/lib/mysql", "/var/tmp", "/data"}}
+	searched := map[string]bool{}
+	for _, g := range groups {
+		for _, d := range g {
+			if searched[d] {
+				continue
+			}
+			searched[d] = true
+			if _, ok := e.Inode(d); !ok {
+				continue
+			}
+			r := e.R.Read(ctx, "find", d, "-xdev", "-inum", strconv.FormatUint(a.Ino, 10), "-name", a.Name, "-print", "-quit")
+			if p := e.foundPath(r.Out, a); p != "" {
+				return p, "inode search"
+			}
 		}
 	}
 	return "", ""
 }
 
-// foundPath is the first path find printed. find's error messages for
-// missing start directories ("/usr/bin/find: '/var/www': No such file or
-// directory") also start with "/" when stderr is merged; they are skipped
-// (found in the lab: such a message was taken for the denied object).
-func foundPath(out string) string {
+// foundPath is the first line find printed that is really the denied
+// object: a valid absolute path (find's error messages, "find: '/x': No
+// such file or directory", are not; one was once taken for the denied
+// object and turned into a restorecon of that text), whose last component
+// is the AVC's name and whose inode is the AVC's inode.
+func (e *Env) foundPath(out string, a selinux.AVC) string {
 	for _, l := range strings.Split(out, "\n") {
 		l = strings.TrimSpace(l)
-		if strings.HasPrefix(l, "/") && !strings.Contains(l, "find: ") {
-			return l
+		if !strings.HasPrefix(l, "/") || strings.Contains(l, ": ") || !selinux.ValidPath(l) {
+			continue
 		}
+		if a.Name != "" && path.Base(l) != a.Name {
+			continue
+		}
+		if a.Ino != 0 && e.Inode != nil {
+			if ino, ok := e.Inode(l); !ok || ino != a.Ino {
+				continue
+			}
+		}
+		return l
 	}
 	return ""
 }
@@ -615,33 +620,60 @@ func (e *Env) unitConfig(ctx context.Context, rep *UnitReport) {
 	name := strings.TrimSuffix(rep.Unit, path.Ext(rep.Unit))
 	name, _, _ = strings.Cut(name, "@")
 	argv, ok := checkers[name]
+	var checker []string
 	if ok && argv != nil {
 		if e.Confined {
 			rep.Skipped = append(rep.Skipped, "config syntax check `"+strings.Join(argv, " ")+"` (run `basalt why "+name+"` as root)")
-		} else {
-			res := e.R.Read(ctx, argv...)
-			if res.Err == nil {
-				cr := &CheckResult{Command: strings.Join(argv, " "), OK: res.Code == 0, Output: trimLines(res.Out, 12)}
-				rep.ConfigCheck = cr
-				if cr.OK {
-					rep.Features["config_check_passed"] = true
-				} else if reConfigErr.MatchString(res.Out) {
-					rep.Features["config_check_failed"] = true
-					if mm := reConfigAt.FindStringSubmatch(res.Out); mm != nil {
-						rep.ConfigFile = mm[1]
-						rep.ConfigLine, _ = strconv.Atoi(mm[2])
-					}
-				} else {
-					// The checker failed for a runtime reason (a port it
-					// could not bind, a file it could not open): not syntax.
-					rep.Features["config_check_runtime"] = true
+		} else if res, skip := e.runChecker(ctx, argv, nil); skip != "" {
+			rep.Skipped = append(rep.Skipped, "config syntax check `"+strings.Join(argv, " ")+"`: "+skip)
+		} else if res.Err == nil {
+			checker = argv
+			cr := &CheckResult{Command: strings.Join(argv, " "), OK: res.Code == 0, Output: trimLines(res.Out, 12)}
+			rep.ConfigCheck = cr
+			if cr.OK {
+				rep.Features["config_check_passed"] = true
+			} else if reConfigErr.MatchString(res.Out) {
+				rep.Features["config_check_failed"] = true
+				if mm := reConfigAt.FindStringSubmatch(res.Out); mm != nil {
+					rep.ConfigFile = mm[1]
+					rep.ConfigLine, _ = strconv.Atoi(mm[2])
 				}
+			} else {
+				// The checker failed for a runtime reason (a port it
+				// could not bind, a file it could not open): not syntax.
+				rep.Features["config_check_runtime"] = true
 			}
 		}
 	}
 	if rep.ConfigFile != "" && (rep.Features["config_check_failed"] || rep.Features["journal_config_error"]) {
-		rep.Restore = e.findRestore(ctx, rep.ConfigFile, unixTS(rep.State["ActiveEnterTimestamp"]))
+		var rejected []string
+		rep.Restore, rejected = e.findRestore(ctx, rep.ConfigFile, unixTS(rep.State["ActiveEnterTimestamp"]), checker)
+		rep.Evidence = append(rep.Evidence, rejected...)
 	}
+}
+
+// runChecker runs a config checker without side effects (package sandbox),
+// optionally with replace[dst] = src in place of dst. skip says why it
+// could not run (or why its answer does not count); the result is only
+// meaningful when skip is "".
+func (e *Env) runChecker(ctx context.Context, argv []string, replace map[string]string) (runner.Result, string) {
+	run := argv
+	switch {
+	case e.Isolate != nil:
+		run = e.Isolate(argv, replace)
+	case len(replace) > 0:
+		return runner.Result{}, "cannot test another copy without the sandbox"
+	}
+	res := e.R.Read(ctx, run...)
+	if sandbox.Failed(res.Code, res.Out) {
+		return res, "not run: " + strings.TrimSpace(strings.TrimPrefix(firstLine(strings.TrimSpace(res.Out)), sandbox.Prefix))
+	}
+	if e.Isolate != nil && res.Code != 0 && strings.Contains(res.Out, "No space left on device") {
+		// Inside the sandbox writes go to a bounded throwaway layer: this
+		// is that bound, not the real disk.
+		return res, "inconclusive: the check wrote more than the sandbox holds"
+	}
+	return res, ""
 }
 
 func trimLines(s string, n int) string {
@@ -652,19 +684,27 @@ func trimLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// findRestore looks for the newest snapshot copy of a config file that is
-// different from the current one and was already in place the last time
-// the unit started successfully (its modification time is not newer than
-// ActiveEnterTimestamp): that copy is known to have worked. Outside the
-// daemon the contents are compared and a diff is shown; the confined
-// daemon compares metadata only (it may not read every service's config).
-func (e *Env) findRestore(ctx context.Context, file string, lastGood time.Time) *RestoreCandidate {
+// findRestore looks for a snapshot copy of a broken config file to restore.
+//
+// With the service's config checker (root view), each copy that differs
+// from the current file is tested in its place in the sandbox, newest
+// first, and the first one that passes is the candidate: a copy that only
+// differs (an intermediate edit, a copy saved while it was already broken)
+// is never proposed. Without a checker, the newest copy that was already in
+// place the last time the unit started successfully (its modification time
+// is not newer than ActiveEnterTimestamp) is the candidate. The confined
+// daemon compares metadata only (it may not read every service's config);
+// its candidate is a hint (see action.Hint). rejected lists the copies that
+// failed the checker, as evidence.
+func (e *Env) findRestore(ctx context.Context, file string, lastGood time.Time, checker []string) (rc *RestoreCandidate, rejected []string) {
 	snaps := e.Snapshots(ctx)
 	cur, curErr := []byte(nil), error(nil)
 	if !e.Confined {
 		cur, curErr = e.ReadFile(file)
 	}
 	curMeta := strings.TrimSpace(e.R.Read(ctx, "stat", "-c", "%s %Y", file).Out)
+	tested := 0
+	cmd := strings.Join(checker, " ")
 	for i := len(snaps) - 1; i >= 0; i-- {
 		s := snaps[i]
 		if s.Number == 0 {
@@ -675,28 +715,65 @@ func (e *Env) findRestore(ctx context.Context, file string, lastGood time.Time) 
 		if meta.Code != 0 || strings.TrimSpace(meta.Out) == curMeta {
 			continue
 		}
-		f := strings.Fields(meta.Out)
-		if len(f) == 2 && !lastGood.IsZero() {
+		newer := false
+		if f := strings.Fields(meta.Out); len(f) == 2 && !lastGood.IsZero() {
 			if mt, err := strconv.ParseInt(f[1], 10, 64); err == nil && time.Unix(mt, 0).After(lastGood) {
-				continue // changed after the last good start: not known to work
+				newer = true // changed after the last good start: not known to work
 			}
 		}
+		if newer && checker == nil {
+			continue
+		}
 		rc := &RestoreCandidate{Path: file, Snapshot: s.Number, Date: s.Date, How: "size/mtime differ"}
-		if !lastGood.IsZero() {
+		if !lastGood.IsZero() && !newer {
 			rc.How += ", in place at the last successful start"
 		}
 		if e.Confined || curErr != nil {
-			return rc
+			return rc, rejected
 		}
 		old, err := e.ReadFile(cand)
 		if err != nil || bytes.Equal(old, cur) {
 			continue
 		}
-		rc.Diff = trimLines(e.R.Read(ctx, "diff", "-u", cand, file).Out, 30)
 		rc.How = strings.Replace(rc.How, "size/mtime differ", "content differs", 1)
-		return rc
+		if checker != nil {
+			if tested >= 10 {
+				break
+			}
+			tested++
+			res, skip := e.runChecker(ctx, checker, map[string]string{file: cand})
+			switch {
+			case skip != "":
+				// The copies cannot be tested: back to the start-time rule.
+				rejected = append(rejected, fmt.Sprintf("snapshot copies of %s not tested with `%s`: %s", file, cmd, skip))
+				checker = nil
+				if newer {
+					continue
+				}
+			case res.Err != nil || res.Code != 0:
+				rejected = append(rejected, fmt.Sprintf("snapshot %d (%s): its copy of %s fails `%s` too: %s",
+					s.Number, s.Date, file, cmd, lastLine(res.Out)))
+				continue
+			default:
+				rc.How = "content differs; passes `" + cmd + "` in place of the current file"
+				rc.Checked = cmd
+			}
+		}
+		rc.Diff = trimLines(e.R.Read(ctx, "diff", "-u", cand, file).Out, 30)
+		return rc, rejected
 	}
-	return nil
+	if checker != nil && tested > 0 {
+		rejected = append(rejected, fmt.Sprintf("no snapshot copy of %s passes `%s`", file, cmd))
+	}
+	return nil, rejected
+}
+
+func lastLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndexByte(s, '\n'); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 // unitPlan turns the cause into an explanation and actions.
@@ -713,11 +790,22 @@ func (e *Env) unitPlan(rep *UnitReport) {
 		}
 		rep.Explanation = u + " does not start because of an error in " + where + "."
 		if rep.Restore != nil {
-			rep.Explanation += fmt.Sprintf(" Snapshot %d (%s) has a different copy of %s (%s); restoring it and restarting is proposed.",
-				rep.Restore.Snapshot, rep.Restore.Date, rep.Restore.Path, rep.Restore.How)
-			rep.Actions = []action.Action{
+			acts := []action.Action{
 				{Kind: action.FileRestore, Params: map[string]string{"path": rep.Restore.Path, "snapshot": strconv.Itoa(rep.Restore.Snapshot)}},
 				{Kind: action.UnitRestart, Params: map[string]string{"unit": u}},
+			}
+			if e.Confined {
+				// The daemon saw metadata only: whether that copy works is
+				// for the root view to check.
+				rep.Explanation += fmt.Sprintf(" Snapshot %d (%s) has a different copy of %s (%s). This view cannot check its contents, "+
+					"so restoring it is only a hint: confirm it as root (`basalt confirm ID`, or `basalt why %s`).",
+					rep.Restore.Snapshot, rep.Restore.Date, rep.Restore.Path, rep.Restore.How, u)
+				rep.Hints = []action.Hint{{Actions: acts, Reason: fmt.Sprintf("snapshot %d holds a different copy of %s (%s)",
+					rep.Restore.Snapshot, rep.Restore.Path, rep.Restore.How)}}
+			} else {
+				rep.Explanation += fmt.Sprintf(" Snapshot %d (%s) has a different copy of %s (%s); restoring it and restarting is proposed.",
+					rep.Restore.Snapshot, rep.Restore.Date, rep.Restore.Path, rep.Restore.How)
+				rep.Actions = acts
 			}
 		} else {
 			rep.Explanation += " No snapshot holds another version of the file; fix it by hand, then restart the unit."
@@ -756,14 +844,33 @@ func (e *Env) unitPlan(rep *UnitReport) {
 	case "missing_file":
 		rep.Explanation = u + " refers to a file that does not exist; see the journal lines."
 	case "crashed":
+		if rep.Features["oom_killed"] {
+			// A restart would run into the same limit: nothing is proposed.
+			rep.Explanation = u + " was killed by the out-of-memory killer" + oomLimit(rep.OOM) +
+				". A restart would most likely end the same way, so none is proposed. Inspect its memory limits and use " +
+				"(`systemctl show " + u + " -p MemoryMax,MemoryHigh,MemorySwapMax,MemoryPeak`); if the limit is too low, raise it " +
+				"(`systemctl set-property " + u + " MemoryMax=SIZE`), otherwise find out why the program needs that much memory."
+			break
+		}
 		rep.Explanation = u + " was killed (" + rep.State["Result"] + "); a restart is proposed, but the crash itself needs review."
 		rep.Actions = []action.Action{{Kind: action.UnitRestart, Params: map[string]string{"unit": u}}}
 	default:
+		if rep.Features["dac_denied"] && len(rep.DAC) > 0 && !rep.Healthy {
+			rep.Explanation = u + " failed with \"Permission denied\" from file permissions (DAC), not SELinux: " + rep.DAC[0].Explanation +
+				". Fix the owner or mode of that path, or the unit's User= and Group=; nothing is changed automatically."
+			break
+		}
 		if rep.Healthy {
 			rep.Explanation = u + " is running normally."
 		} else {
 			rep.Explanation = u + ": no known cause found; read the journal lines below."
 		}
+	}
+	if len(rep.Errors) > 0 {
+		// A probe that could not answer must not pass for a negative
+		// answer: no change is proposed from an incomplete diagnosis.
+		rep.Explanation += " The diagnosis is incomplete: " + rep.Errors[0] + "; run it again."
+		rep.Actions, rep.Hints = nil, nil
 	}
 	if !rep.Decision.Confident && !rep.Healthy {
 		rep.Explanation += fmt.Sprintf(" (Confidence %.2f is below the threshold %.2f: review before applying.)",

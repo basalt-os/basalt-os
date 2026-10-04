@@ -1,0 +1,3 @@
+{"MESSAGE":"/bin/sh: line 1: /var/lib/basalt-lab-dac/state: Permission denied","PRIORITY":"6","_SYSTEMD_UNIT":"basalt-lab-dac.service","__REALTIME_TIMESTAMP":"1791037389500000"}
+{"MESSAGE":"basalt-lab-dac.service: Main process exited, code=exited, status=1/FAILURE","PRIORITY":"5","UNIT":"basalt-lab-dac.service","_PID":"1","__REALTIME_TIMESTAMP":"1791037389600000"}
+{"MESSAGE":"basalt-lab-dac.service: Failed with result 'exit-code'.","PRIORITY":"4","UNIT":"basalt-lab-dac.service","_PID":"1","MESSAGE_ID":"d9b373ed55a64feb8242e02dbe79a49c","__REALTIME_TIMESTAMP":"1791037389700000"}

@@ -25,6 +25,7 @@ type DnfReport struct {
 	Explanation string          `json:"explanation"`
 	Evidence    []string        `json:"evidence"`
 	Actions     []action.Action `json:"actions,omitempty"`
+	Hints       []action.Hint   `json:"hints,omitempty"` // the confined view's rollback (see action.Hint)
 }
 
 // DnfLog is dnf5's log file.
@@ -167,6 +168,14 @@ func (e *Env) DiagnoseDnf(ctx context.Context, pre int, at time.Time) *DnfReport
 	switch {
 	case r.Pre == nil && len(r.Failed) == 0:
 		r.Explanation = "No failed package transaction found."
+	case r.Decision.Answer.Top == "rollback" && r.Pre != nil && e.Confined:
+		// The daemon cannot compare the package databases: the rollback is
+		// a hint until the root view confirms the snapshot.
+		r.Explanation = fmt.Sprintf("The transaction %q failed after changing packages; rolling the root back to snapshot %d (taken just before it) "+
+			"may fix it. This view cannot compare the packages, so it is only a hint: confirm it as root (`basalt confirm ID`, "+
+			"or `basalt snapshots diff %d` then `basalt snapshots rollback %d`).", r.Command, r.Pre.Number, r.Pre.Number, r.Pre.Number)
+		r.Hints = []action.Hint{{Actions: []action.Action{{Kind: action.SnapshotRollback, Params: map[string]string{"snapshot": strconv.Itoa(r.Pre.Number)}}},
+			Reason: fmt.Sprintf("snapshot %d was taken just before the failed transaction %q", r.Pre.Number, r.Command)}}
 	case r.Decision.Answer.Top == "rollback" && r.Pre != nil:
 		r.Explanation = fmt.Sprintf("The transaction %q failed after changing packages; rolling the root back to snapshot %d (taken just before it) is proposed.",
 			r.Command, r.Pre.Number)

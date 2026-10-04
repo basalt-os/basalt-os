@@ -349,6 +349,9 @@ func (g *Engine) publish(ctx context.Context, p *proposal.Proposal, sevFeatures 
 	if !g.allow(p.Key) {
 		return
 	}
+	// The daemon proposes no change that rests on a snapshot it cannot
+	// check (the diagnosers already make those hints; this is the backstop).
+	p.HoldForRoot("found by the confined daemon, which cannot check the snapshot")
 	// Severity and notification are decisions too.
 	sev := g.Decide.Ask(ctx, decide.Severity(p.Key, sevFeatures))
 	ft := decide.SeverityFeatures(sev.Answer)
@@ -384,7 +387,7 @@ func (g *Engine) publish(ctx context.Context, p *proposal.Proposal, sevFeatures 
 		// basalt-notify reads these records from the journal: "notify" is the
 		// decision layer's choice for desktop sessions and the webhook.
 		_, _ = g.Audit.Append("finding", p.ID+": "+p.Title, map[string]any{"proposal": p.ID, "kind": p.Kind,
-			"title": p.Title, "subject": p.Subject, "actions": p.Actions, "needs_review": p.NeedsReview,
+			"title": p.Title, "subject": p.Subject, "actions": p.Actions, "hints": p.Hints, "needs_review": p.NeedsReview,
 			"severity": p.Severity, "notify": nAct == "notify"})
 	}
 	prefix := ""

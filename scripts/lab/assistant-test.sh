@@ -9,16 +9,22 @@
 #             directory, fixture package, stored proposals)
 #   setup     install basalt-assistant and nginx from the repositories, lab
 #             timings for the daemon (disk check every 30 s), daemon started
-#   config    break nginx.conf: the daemon proposes restoring it from a
-#             snapshot; confirmed apply; nginx answers; then the apply is
-#             undone with `basalt snapshots rollback --before ID` and a reboot
+#   config    break nginx.conf: the daemon hints at restoring it from a
+#             snapshot (it cannot check the copy); `basalt confirm` checks the
+#             copy as root and stores the proposal; confirmed apply; nginx
+#             answers; then the apply is undone with
+#             `basalt snapshots rollback --before ID` and a reboot
+#   sandbox   `basalt why nginx` as root with log paths that do not exist:
+#             the config checker runs in a throwaway overlay, nothing is
+#             created on the system
 #   selinux   nginx logs to a directory moved from /root (wrong label, the
 #             denial is hidden by a dontaudit rule): semanage fcontext +
 #             restorecon proposed and applied; nginx up, no new denials
 #   port      nginx on an unlabeled port (logged AVC): semanage port proposed,
 #             applied, verified
-#   dnf       a package whose %post fails: the daemon proposes rolling back
-#             to the pre snapshot; applied; after the reboot the package is gone
+#   dnf       a package whose %post fails: the daemon hints at rolling back
+#             to the pre snapshot; confirmed as root; applied; after the
+#             reboot the package is gone
 #   disk      a large file held only by a snapshot fills the disk: the daemon
 #             reports it, `basalt disk` (root) finds the snapshot, its
 #             deletion is applied and the space is back
@@ -59,6 +65,17 @@ wait_proposal() {
 }
 
 code_of() { vm "basalt show $1" | sed -n 's/.*--confirm \([0-9a-f]\{8\}\)).*/\1/p' | head -1; }
+
+# confirm_hint ID: `basalt confirm` as root; prints the id of the proposal it
+# stores (the daemon's restores and rollbacks are hints).
+confirm_hint() {
+  local out new
+  out="$(vm "basalt confirm $1")" || { printf '%s\n' "$out" >&2; die "hint $1 not confirmed"; }
+  printf '%s\n' "$out" >&2
+  new="$(sed -n 's/.*stored as proposal \(p-[0-9a-f]*\).*/\1/p' <<<"$out" | head -1)"
+  [[ -n "$new" ]] || die "basalt confirm $1 stored no proposal"
+  echo "$new"
+}
 
 # apply_proposal ID: show it, apply it with its confirmation code.
 apply_proposal() {
@@ -134,7 +151,9 @@ step_config() {
   mark
   log "config: a broken nginx.conf"
   vm 'sed -i "s/^\(\s*\)server_name .*;/&\n\1bogus_directive on;/" /etc/nginx/nginx.conf; systemctl restart nginx || true'
-  local id; id="$(wait_proposal unit 'config error')"
+  local hint id; hint="$(wait_proposal unit 'config error')"
+  vm "basalt show $hint" | grep -q 'basalt confirm' || die "$hint: the daemon proposed a restore instead of a hint"
+  id="$(confirm_hint "$hint")"
   apply_proposal "$id"
   vm 'curl -s -o /dev/null -w "nginx answers: HTTP %{http_code}\n" http://localhost/; nginx -t 2>&1 | tail -1'
   log "undo the apply through its pre snapshot"
@@ -185,12 +204,28 @@ step_dnf() {
   log "dnf: a package whose %post scriptlet fails"
   "$L/vm.sh" scp-to "$FIX/basalt-lab-postfail-1-1.noarch.rpm" /root/
   vm 'dnf -y install /root/basalt-lab-postfail-1-1.noarch.rpm 2>&1 | tail -4; rpm -q basalt-lab-postfail'
-  local id; id="$(wait_proposal dnf 'basalt-lab-postfail')"
+  local hint id; hint="$(wait_proposal dnf 'basalt-lab-postfail')"
+  id="$(confirm_hint "$hint")"
   apply_proposal "$id"
   reboot_vm
   if vm 'rpm -q basalt-lab-postfail'; then die "the package is still installed after the rollback"; fi
   log "after the rollback the half-installed package is gone"
   vm 'basalt status'
+}
+
+step_sandbox() {
+  log "sandbox: the config checker of a root diagnosis changes nothing"
+  # nginx -t opens (and so creates) the log files its configuration names:
+  # an empty log directory must stay empty after `basalt why nginx`.
+  vm 'rm -rf /var/log/basalt-lab-sandbox; mkdir /var/log/basalt-lab-sandbox
+      sed -i "s#access_log  /var/log/nginx/access.log  main;#access_log  /var/log/basalt-lab-sandbox/access.log  main;#" /etc/nginx/nginx.conf
+      sed -i "s#^error_log .*#error_log /var/log/basalt-lab-sandbox/error.log;#" /etc/nginx/nginx.conf
+      basalt why nginx --json | python3 -c "import json,sys; c=json.load(sys.stdin).get(\"config_check\") or {}; print(\"checker:\", c.get(\"command\"), \"passed\" if c.get(\"ok\") else \"failed\")"
+      ls -A /var/log/basalt-lab-sandbox'
+  if [[ -n "$(vm 'ls -A /var/log/basalt-lab-sandbox')" ]]; then die "the config checker created files in /var/log/basalt-lab-sandbox"; fi
+  log "nothing created by the config checker"
+  vm 'rm -rf /var/log/basalt-lab-sandbox'
+  restore_nginx
 }
 
 step_disk() {
@@ -255,7 +290,7 @@ step_audit() {
 }
 
 steps=("$@")
-[[ ${#steps[@]} -gt 0 ]] || steps=(setup selinux port config dnf disk confine mcp audit)
+[[ ${#steps[@]} -gt 0 ]] || steps=(setup selinux port config sandbox dnf disk confine mcp audit)
 for s in "${steps[@]}"; do
   declare -F "step_$s" >/dev/null || die "unknown step $s"
   "step_$s"

@@ -355,7 +355,10 @@ func (s *Server) auditTail(_ context.Context, args map[string]any) (string, any,
 // --- proposal tools --------------------------------------------------------------
 
 func (s *Server) store(ctx context.Context, p *proposal.Proposal) (string, any, error) {
-	if len(p.Actions) == 0 {
+	// The MCP server sees the system through the confined view: a file
+	// restore or a rollback is stored as a hint for the root view to confirm.
+	p.HoldForRoot("proposed through MCP; the confined view cannot check the snapshot")
+	if len(p.Actions) == 0 && len(p.Hints) == 0 {
 		return report.Render(p) + "\nNo change to propose; nothing was stored.\n", map[string]any{"stored": false}, nil
 	}
 	if open := s.Store.FindOpen(p.Key); open != nil {
@@ -375,6 +378,11 @@ func (s *Server) store(ctx context.Context, p *proposal.Proposal) (string, any, 
 	text := report.Render(p)
 	// The confirmation code is for the person at the CLI, not for the client.
 	text = stripConfirm(text)
+	if len(p.Actions) == 0 {
+		text += "\nStored as " + p.ID + " as a hint. Nothing was executed. A person confirms the snapshot as root with: sudo basalt confirm " +
+			p.ID + " (it becomes a proposal they can apply)\n"
+		return text, map[string]any{"stored": true, "id": p.ID, "hint": true, "needs_review": true}, nil
+	}
 	text += "\nStored as " + p.ID + ". Nothing was executed. A person reviews and applies it with: sudo basalt apply " + p.ID + "\n"
 	return text, map[string]any{"stored": true, "id": p.ID, "commands": cmds, "needs_review": p.NeedsReview}, nil
 }
