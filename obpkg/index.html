@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>obpkg.org: OpenBasalt packages</title>
+    <meta
+      name="description"
+      content="obpkg.org is the download domain for OpenBasalt packages: Basalt OS repositories, Samba Conductor packages and the OpenBasalt release key."
+    />
+    <link rel="canonical" href="https://obpkg.org/" />
+    <meta name="theme-color" content="#14171b" />
+    <meta name="robots" content="index, nofollow" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%2314171B'/%3E%3Cg transform='translate(76 76) scale(0.703125)'%3E%3Cpath d='M445.44 143.36L460.8 343.04L286.72 471.04L71.68 378.88L56.32 163.84L266.24 46.08' fill='none' stroke='%23E3E6EA' stroke-width='56.32' stroke-linejoin='round' stroke-linecap='round'/%3E%3Cpolygon points='256 179.2 327.68 235.52 302.08 322.56 204.8 317.44 184.32 230.4' fill='%23A3472E'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <!-- Static, self-contained page served from the obpkg R2 bucket. No scripts, no web fonts, no analytics. -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #14171b;
+        --surface: #1b1f24;
+        --ink: #e3e6ea;
+        --muted: #9aa1aa;
+        --line: #2c3239;
+        --core: #a3472e;
+        --accent-ink: #e08a72;
+        --focus: #e08a72;
+        --radius: 14px;
+        --max: 46rem;
+        --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--font);
+        font-size: 1.0625rem;
+        line-height: 1.6;
+      }
+      a {
+        color: var(--accent-ink);
+        text-underline-offset: 0.18em;
+        text-decoration-thickness: 1px;
+      }
+      a:hover {
+        text-decoration-thickness: 2px;
+      }
+      :focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 3px;
+        border-radius: 4px;
+      }
+      .wrap {
+        width: 100%;
+        max-width: var(--max);
+        margin: 0 auto;
+        padding-inline: 1rem;
+      }
+      header {
+        padding-block: 2.5rem 1rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .brand svg {
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: none;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .lede {
+        color: var(--muted);
+        margin: 1rem 0 0;
+      }
+      section {
+        margin-block: 2rem;
+      }
+      h2 {
+        font-size: 1.15rem;
+        font-weight: 600;
+        margin: 0 0 0.6rem;
+      }
+      p {
+        margin: 0 0 0.85rem;
+      }
+      code,
+      pre {
+        font-family: var(--mono);
+        font-size: 0.9rem;
+      }
+      p code,
+      td code,
+      li code {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0.05em 0.35em;
+        overflow-wrap: anywhere;
+      }
+      pre {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 0.9rem 1rem;
+        margin: 0 0 0.85rem;
+        overflow-x: auto;
+        line-height: 1.5;
+      }
+      .fpr {
+        display: block;
+        font-family: var(--mono);
+        font-size: 0.95rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--core);
+        border-radius: 8px;
+        padding: 0.6rem 0.85rem;
+        margin: 0 0 0.85rem;
+        overflow-wrap: anywhere;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        margin: 0 0 0.85rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid var(--line);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .soon {
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      ul {
+        padding-left: 1.2rem;
+        margin: 0 0 0.85rem;
+      }
+      footer {
+        border-top: 1px solid var(--line);
+        margin-top: 2.5rem;
+        padding-block: 1.25rem 2.5rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="wrap">
+      <div class="brand">
+        <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+          <rect width="512" height="512" rx="112" fill="#1b1f24" />
+          <g transform="translate(76 76) scale(0.703125)">
+            <path
+              d="M445.44 143.36L460.8 343.04L286.72 471.04L71.68 378.88L56.32 163.84L266.24 46.08"
+              fill="none"
+              stroke="#E3E6EA"
+              stroke-width="56.32"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+            />
+            <polygon points="256 179.2 327.68 235.52 302.08 322.56 204.8 317.44 184.32 230.4" fill="#A3472E" />
+          </g>
+        </svg>
+        <h1>obpkg.org</h1>
+      </div>
+      <p class="lede">
+        The download domain for OpenBasalt packages: the Basalt OS package repositories, Samba Conductor packages
+        and the OpenBasalt release key. Everything published here is signed with that key.
+      </p>
+    </header>
+
+    <main class="wrap">
+      <section aria-labelledby="key">
+        <h2 id="key">Release key</h2>
+        <p>
+          Public key:
+          <a href="/keys/openbasalt-release-key.asc">https://obpkg.org/keys/openbasalt-release-key.asc</a>
+        </p>
+        <p>Primary key fingerprint (OpenBasalt release key &lt;openbasalt@openbasalt.org&gt;):</p>
+        <code class="fpr">3601 7348 42BD 4E48 2D19&nbsp; DE4A E4EE D5EC A395 B302</code>
+        <p>Download the key and check that the fingerprint matches before you trust it:</p>
+        <pre><code>curl -fsSLO https://obpkg.org/keys/openbasalt-release-key.asc
+gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
+        <p>
+          To check packages with rpm on a system that does not have the key yet, import the file you just verified:
+        </p>
+        <pre><code>sudo rpm --import openbasalt-release-key.asc</code></pre>
+        <p>
+          Basalt OS already ships this key in its <code>basalt-release</code> package, so there is nothing to import
+          there. Packages and repository metadata are both signature checked.
+        </p>
+      </section>
+
+      <section aria-labelledby="repos">
+        <h2 id="repos">Repositories</h2>
+        <p>
+          No repository is published yet. Each one will appear at its path below, and this page will carry the setup
+          instructions once it is live.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Path</th>
+                <th scope="col">Content</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>/basalt/</code></td>
+                <td>Basalt OS packages. Required, enabled by default.</td>
+                <td class="soon">Coming soon</td>
+              </tr>
+              <tr>
+                <td><code>/basalt-tools/</code></td>
+                <td>OpenBasalt tools for Basalt OS. Enabled by default.</td>
+                <td class="soon">Coming soon</td>
+              </tr>
+              <tr>
+                <td><code>/basalt-testing/</code></td>
+                <td>Packages on their way to <code>/basalt/</code>. Opt-in, off by default.</td>
+                <td class="soon">Coming soon</td>
+              </tr>
+              <tr>
+                <td><code>/apt/</code></td>
+                <td>Samba Conductor packages for Debian and Ubuntu.</td>
+                <td class="soon">Coming soon</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="mirrors">
+        <h2 id="mirrors">Mirrors</h2>
+        <p>
+          Mirrors are not offered. obpkg.org is the single official download location. Because every package and
+          every repository index is signed, a copy you host yourself can be checked against the release key above.
+        </p>
+      </section>
+
+      <section aria-labelledby="more">
+        <h2 id="more">More</h2>
+        <ul>
+          <li><a href="https://basalt-os.org/">basalt-os.org</a>: Basalt OS, a secure, light Linux distribution.</li>
+          <li><a href="https://openbasalt.org/">openbasalt.org</a>: the OpenBasalt open source organization.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      <p>OpenBasalt. This page sets no cookies and runs no scripts.</p>
+    </footer>
+  </body>
+</html>
