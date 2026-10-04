@@ -4,7 +4,9 @@
 #
 #   scripts/release/upload.sh [--dry-run] TREE_DIR
 #
-# TREE_DIR is sign.sh's OUT_DIR: SIGNED-OK and basalt/<releasever>/{<arch>,source}/.
+# TREE_DIR is sign.sh's OUT_DIR: SIGNED-OK and <repo>/<releasever>/{<arch>,source}/,
+# where <repo> (basalt, basalt-tools or basalt-testing) is the "repo:" line
+# of SIGNED-OK (basalt when the line is missing).
 # Every file is checked against SIGNED-OK before anything is sent, and a
 # tree signed with a test key is refused for the obpkg bucket.
 #
@@ -41,13 +43,16 @@ mode="$(awk '/^mode: / {print $2}' "$tree/SIGNED-OK")"
 if [[ "$mode" == test-key && "$OB_R2_BUCKET" == obpkg ]]; then
   die "this tree was signed with a throwaway test key; it never goes to the obpkg bucket"
 fi
-listed="$(grep -E '^[0-9a-f]{64}  basalt/' "$tree/SIGNED-OK")"
+repo="$(awk '/^repo: / {print $2}' "$tree/SIGNED-OK")"
+repo="${repo:-basalt}"
+case "$repo" in basalt | basalt-tools | basalt-testing) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
+listed="$(grep -E "^[0-9a-f]{64}  $repo/" "$tree/SIGNED-OK")"
 (cd "$tree" && sha256sum -c --quiet <<<"$listed") || die "the tree changed after it was verified"
-[[ "$(awk '{print $2}' <<<"$listed" | sort)" == "$(cd "$tree" && find basalt -type f | sort)" ]] ||
-  die "files in $tree/basalt and SIGNED-OK differ"
+[[ "$(awk '{print $2}' <<<"$listed" | sort)" == "$(cd "$tree" && find "$repo" -type f | sort)" ]] ||
+  die "files in $tree/$repo and SIGNED-OK differ"
 
 # 2. Upload plan.
-mapfile -t repos < <(cd "$tree" && find basalt -type f -path '*/repodata/repomd.xml' -printf '%h\n' | xargs -n1 dirname | sort)
+mapfile -t repos < <(cd "$tree" && find "$repo" -type f -path '*/repodata/repomd.xml' -printf '%h\n' | xargs -n1 dirname | sort)
 [[ ${#repos[@]} -gt 0 ]] || die "no repositories in $tree"
 plan=()
 for r in "${repos[@]}"; do [[ "$r" == */source ]] && mapfile -t -O "${#plan[@]}" plan < <(cd "$tree" && find "$r" -maxdepth 1 -name '*.rpm' | sort); done

@@ -6,12 +6,16 @@
 #   scripts/release/sign.sh --key-file IN_DIR OUT_DIR   key from files (OB_SIGNING_KEY_FILE, OB_SIGNING_PASSPHRASE_FILE)
 #   scripts/release/sign.sh --test-key IN_DIR OUT_DIR   throwaway key made here (dry run, never published)
 #
-# IN_DIR is the output of scripts/release/build.sh (RPMs and SHA256SUMS).
+# IN_DIR is the output of scripts/release/build.sh (RPMs and SHA256SUMS), or
+# any directory of unsigned RPMs with a SHA256SUMS that lists exactly them.
 # OUT_DIR gets the tree as it appears under https://obpkg.org/:
-#   basalt/<releasever>/<arch>/    binary RPMs + repodata (repomd.xml.asc)
-#   basalt/<releasever>/source/    source RPMs + repodata (repomd.xml.asc)
-# which is what basalt-release's basalt.repo expects
-# ($basalt_repo_url/$releasever/$basearch/ with basalt_repo_url = https://obpkg.org/basalt).
+#   <repo>/<releasever>/<arch>/    binary RPMs + repodata (repomd.xml.asc)
+#   <repo>/<releasever>/source/    source RPMs + repodata (repomd.xml.asc),
+#                                  only when IN_DIR has source RPMs
+# <repo> is OB_REPO: basalt (default), basalt-tools or basalt-testing. This
+# is what basalt-release's repository files expect
+# ($basalt_repo_url/$releasever/$basearch/ with basalt_repo_url =
+# https://obpkg.org/basalt, likewise basalt_tools_url and basalt_testing_url).
 #
 # Key material
 # - --op reads from 1Password the ASCII armored export of the packages
@@ -44,10 +48,12 @@ source "$(dirname "$0")/../lib.sh"
 : "${OB_OP_VAULT:=OpenBasalt}"
 : "${SIGN_PODMAN:=podman}"
 SIGNER_IMAGE="localhost/basalt-signer:$FEDORA_RELEASE"
+: "${OB_REPO:=basalt}"
+case "$OB_REPO" in basalt | basalt-tools | basalt-testing) ;; *) die "OB_REPO must be basalt, basalt-tools or basalt-testing" ;; esac
 export OP_ACCOUNT
 
 mode="${1:-}"
-case "$mode" in --op | --key-file | --test-key) shift ;; *) sed -n '2,37p' "$0"; exit 2 ;; esac
+case "$mode" in --op | --key-file | --test-key) shift ;; *) sed -n '2,41p' "$0"; exit 2 ;; esac
 in="${1:?IN_DIR}"
 out="${2:?OUT_DIR}"
 in="$(cd "$in" && pwd)" || die "no $in"
@@ -156,10 +162,11 @@ grep -q 'BEGIN PGP PRIVATE KEY BLOCK' "$secret/key.asc" || die "the key material
 fpr="${OB_SIGNING_SUBKEY^^}"
 
 # 5. Repository tree.
-bin="$out/basalt/$FEDORA_RELEASE/$ARCH"
-src="$out/basalt/$FEDORA_RELEASE/source"
-[[ ! -e "$out/basalt" ]] || die "$out/basalt exists; sign into a new directory"
-mkdir -p "$bin" "$src"
+bin="$out/$OB_REPO/$FEDORA_RELEASE/$ARCH"
+src="$out/$OB_REPO/$FEDORA_RELEASE/source"
+[[ ! -e "$out/$OB_REPO" ]] || die "$out/$OB_REPO exists; sign into a new directory"
+mkdir -p "$bin"
+printf '%s\n' "${rpms[@]}" | grep -q '\.src\.rpm$' && mkdir -p "$src"
 for f in "${rpms[@]}"; do
   case "$f" in
     *.src.rpm) cp -p "$in/$f" "$src/" ;;
@@ -171,8 +178,9 @@ out="$(cd "$out" && pwd)"
 # 6. Sign: import the subkey into the container's tmpfs keyring, sign every
 # RPM with exactly that subkey, index, sign repomd.xml.
 log "signing ${#rpms[@]} packages with subkey $fpr"
-signer -v "$secret:/secret:ro" -v "$out:/repo" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
+signer -v "$secret:/secret:ro" -v "$out/$OB_REPO:/repo/basalt" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
   "$SIGNER_IMAGE" bash -euc '
+  shopt -s nullglob
   gpg --batch --quiet --import /secret/key.asc 2>/dev/null || { echo "key import failed" >&2; exit 1; }
   # The primary secret key must be a stub (sec#), the subkey present (ssb).
   gpg --batch --with-colons --list-secret-keys >/gnupg/list
@@ -195,6 +203,7 @@ signer -v "$secret:/secret:ro" -v "$out:/repo" -e FPR="$fpr" -e REL="$FEDORA_REL
       { echo "rpmsign did not sign $(basename "$f")" >&2; exit 1; }
   done
   for d in /repo/basalt/$REL/$ARCH /repo/basalt/$REL/source; do
+    [ -d "$d" ] || continue
     createrepo_c -q "$d"
     gpg $gpgopts --local-user "$FPR!" --detach-sign --armor -o "$d/repodata/repomd.xml.asc" "$d/repodata/repomd.xml"
   done
@@ -214,8 +223,9 @@ log "key material shredded"
 # 8. Verify with the public key only, in a container that never saw a secret.
 verify() {
   local key="$1"
-  signer -v "$out:/repo:ro" -v "$key:/pub/key.asc:ro" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
-    "$SIGNER_IMAGE" bash -euc '
+  signer -v "$out/$OB_REPO:/repo/basalt:ro" -v "$key:/pub/key.asc:ro" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
+    -e PKG="$verify_pkg" "$SIGNER_IMAGE" bash -euc '
+    shopt -s nullglob
     db=$(mktemp -d)
     rpmkeys --dbpath "$db" --import /pub/key.asc
     long=$(echo "$FPR" | tr A-F a-f)
@@ -230,6 +240,7 @@ verify() {
     done
     gpg --batch --quiet --import /pub/key.asc 2>/dev/null
     for d in /repo/basalt/$REL/$ARCH /repo/basalt/$REL/source; do
+      [ -d "$d" ] || continue
       gpg --batch --status-fd 1 --verify "$d/repodata/repomd.xml.asc" "$d/repodata/repomd.xml" 2>/dev/null |
         grep -q "^\[GNUPG:\] VALIDSIG $FPR " || { echo "BAD metadata signature: $d" >&2; bad=1; }
     done
@@ -243,11 +254,19 @@ repo_gpgcheck=1
 gpgkey=file:///pub/key.asc
 EOF
     dnf -q -y --disablerepo="*" --enablerepo=verify makecache >/dev/null 2>&1 || { echo "dnf rejected the repository metadata" >&2; bad=1; }
-    dnf -q -y --disablerepo="*" --enablerepo=verify download --destdir /tmp/dl basalt-release >/dev/null 2>&1 ||
-      { echo "dnf could not fetch basalt-release" >&2; bad=1; }
-    echo "verified: $n packages, 2 repomd.xml.asc, failures: $bad"
+    dnf -q -y --disablerepo="*" --enablerepo=verify download --destdir /tmp/dl "$PKG" >/dev/null 2>&1 ||
+      { echo "dnf could not fetch $PKG" >&2; bad=1; }
+    echo "verified: $n packages, $(ls /repo/basalt/$REL/*/repodata/repomd.xml.asc | wc -l) repomd.xml.asc, failures: $bad"
     [ "$bad" = 0 ]'
 }
+# The package dnf fetches end to end: basalt-release in the basalt
+# repository, otherwise the first binary package.
+if [[ "$OB_REPO" == basalt ]]; then
+  verify_pkg=basalt-release
+else
+  first="$(printf '%s\n' "${rpms[@]}" | grep -v '\.src\.rpm$' | head -1)"
+  verify_pkg="$(rpm -qp --qf '%{NAME}' "$in/$first" 2>/dev/null)" || die "cannot read the name of $first"
+fi
 verify "$pubkey" || die "verification failed; do not publish $out"
 
 # 9. Marker for upload.sh: what was verified, with which key.
@@ -255,7 +274,8 @@ verify "$pubkey" || die "verification failed; do not publish $out"
   echo "signed and verified $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "mode: ${mode#--}"
   echo "subkey: $fpr"
+  echo "repo: $OB_REPO"
   [[ -f "$in/BUILD-INFO.txt" ]] && sed 's/^/build: /' "$in/BUILD-INFO.txt"
-  (cd "$out" && find basalt -type f | sort | xargs -d '\n' sha256sum)
+  (cd "$out" && find "$OB_REPO" -type f | sort | xargs -d '\n' sha256sum)
 } >"$out/SIGNED-OK"
-log "signed repository: $out/basalt/$FEDORA_RELEASE ($(find "$bin" -name '*.rpm' | wc -l) binary, $(find "$src" -name '*.rpm' | wc -l) source)"
+log "signed repository: $out/$OB_REPO/$FEDORA_RELEASE ($(find "$bin" -name '*.rpm' | wc -l) binary, $( [[ -d "$src" ]] && find "$src" -name '*.rpm' | wc -l || echo 0) source)"

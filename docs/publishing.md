@@ -27,6 +27,35 @@ This is what `basalt.repo` in `basalt-release` reads:
 https://obpkg.org/keys/openbasalt-release-key.asc and shipped by
 `basalt-release` as `RPM-GPG-KEY-basalt`.
 
+### Other repositories
+
+The same scripts publish the `basalt-tools` repository (OpenBasalt tools
+such as Samba Conductor, built in their own repositories) and
+`basalt-testing`: set `OB_REPO=basalt-tools` (or `basalt-testing`) for
+`sign.sh` and `client-test.sh`. The tree is then
+
+```
+basalt-tools/<releasever>/<arch>/   binary and noarch RPMs, repodata/, repodata/repomd.xml.asc
+basalt-tools/<releasever>/source/   only when the input has source RPMs
+```
+
+matching `baseurl=$basalt_tools_url/$releasever/$basearch/` with
+`basalt_tools_url=https://obpkg.org/basalt-tools`, written by the
+installer in `basalt-tools.repo` with `gpgcheck=1`, `repo_gpgcheck=1` and
+the same key (one packages signing subkey signs every repository).
+`sign.sh` takes any directory of unsigned RPMs with a `SHA256SUMS` that
+lists exactly them, so a tools build (for Samba Conductor:
+`planning/release/build-all.sh --formats rpm --arch amd64` in its own
+family) is signed the same way. `sign.sh` records the repository in
+`SIGNED-OK` (`repo:`) and `upload.sh` publishes that repository only.
+`client-test.sh` needs the package names for a repository other than
+`basalt`; dependencies come from Fedora's repositories in the test
+container, as on an installed system.
+Where rootless podman cannot reach the network while building (pasta
+sandbox errors), build the signer image once by hand with
+`podman build --network=host -t localhost/basalt-signer:<releasever>`;
+`sign.sh` reuses an existing image.
+
 ## Build
 
 `build.sh` builds every package from a clean checkout of a commit:

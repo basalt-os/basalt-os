@@ -7,9 +7,12 @@
 #
 # SOURCE  a tree from scripts/release/sign.sh (served over HTTP on
 #         127.0.0.1:$CLIENT_TEST_PORT for the test), or a base URL such as
-#         https://obpkg.org/basalt
+#         https://obpkg.org/basalt or https://obpkg.org/basalt-tools
 # KEY     the armored public key (a file, or an https URL)
-# PACKAGE default: basalt-release basalt-logos
+# PACKAGE default: basalt-release basalt-logos (required for other repositories)
+# OB_REPO the repository in a local tree: basalt (default), basalt-tools or
+#         basalt-testing. Other repositories are enabled too (Fedora's), so
+#         dependencies resolve as on an installed system.
 #
 # It also checks the failure modes: dnf must refuse to install when the
 # metadata signature does not match (a tampered repomd.xml, local trees
@@ -22,7 +25,12 @@ source_arg="${1:?usage: $0 SOURCE KEY [PACKAGE...]}"
 key="${2:?KEY}"
 shift 2
 pkgs=("$@")
-[[ ${#pkgs[@]} -gt 0 ]] || pkgs=(basalt-release basalt-logos)
+: "${OB_REPO:=basalt}"
+case "$OB_REPO" in basalt | basalt-tools | basalt-testing) ;; *) die "OB_REPO must be basalt, basalt-tools or basalt-testing" ;; esac
+if [[ ${#pkgs[@]} -eq 0 ]]; then
+  [[ "$OB_REPO" == basalt ]] || die "name the packages to install from $OB_REPO"
+  pkgs=(basalt-release basalt-logos)
+fi
 
 work="$(mktemp -d)"
 server=""
@@ -38,7 +46,8 @@ chmod 644 "$work/key.asc"
 if [[ -d "$source_arg" ]]; then
   tree="$(cd "$source_arg" && pwd)"
   # Served copy, so the tamper test below never touches the signed tree.
-  cp -a "$tree/basalt" "$work/www"
+  [[ -d "$tree/$OB_REPO" ]] || die "$tree/$OB_REPO missing (set OB_REPO)"
+  cp -a "$tree/$OB_REPO" "$work/www"
   chmod -R a+rX "$work/www"
   python3 -m http.server -d "$work/www" -b 127.0.0.1 "$CLIENT_TEST_PORT" >/dev/null 2>&1 &
   server=$!
@@ -82,7 +91,7 @@ if [[ -d "$source_arg" ]]; then
   fi
   grep -q 'repomd.xml GPG signature verification error' "$work/neg.log" || { cat "$work/neg.log" >&2; die "unexpected failure"; }
   log "refused, as expected: $(grep -m1 'signature verification error' "$work/neg.log")"
-  cp "$tree/basalt/$FEDORA_RELEASE/$ARCH/repodata/repomd.xml" "$work/www/$FEDORA_RELEASE/$ARCH/repodata/repomd.xml"
+  cp "$tree/$OB_REPO/$FEDORA_RELEASE/$ARCH/repodata/repomd.xml" "$work/www/$FEDORA_RELEASE/$ARCH/repodata/repomd.xml"
 fi
 
 log "negative: another key must be refused"
