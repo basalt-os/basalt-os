@@ -55,6 +55,9 @@ Ask in your own words (optional: needs the local model service basalt-llm
 and [translator] enabled = yes in /etc/basalt/assistant.conf):
   basalt ask "why did nginx stop?"    read-only requests run; a change is printed, never run
 
+Other Basalt tools: basalt NAME ... runs basalt-NAME from /usr/libexec/basalt
+or /usr/bin (never from PATH), e.g. basalt ledger summary --since today.
+
 Options: --json (machine-readable), --verbose (all evidence and decisions),
 --plain (template text even when [humanize] is on), --config FILE.
 Run as root, a diagnosis that finds a fix stores it as a pending proposal.

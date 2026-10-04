@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.6.2
+Version:        0.6.3
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -167,6 +167,15 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.3-1
+- basalt NAME ... runs basalt-NAME for a NAME the command does not have,
+  so basalt ledger works: only an executable regular file in
+  /usr/libexec/basalt or /usr/bin (never PATH), lower-case names, the
+  built-in commands and the assistant's own helpers excluded.
+- Audit log: files sealed within the same second (audit-TS.jsonl,
+  audit-TS-2.jsonl, ...) are read in sealing order, so verify no longer
+  fails after rotations in the same second.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.2-1
 - A denial's fix is proposed only when the decision is confident in the
   class the fix was built for, never for a confident "unknown" or another

@@ -23,7 +23,18 @@ func Files(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(sealed)
+	// Order by seal time, then by the counter of files sealed in the same
+	// second (<stem>-TS.jsonl, <stem>-TS-2.jsonl, ...). A plain string
+	// sort puts "-2" before ".jsonl" and breaks the chain order.
+	key := func(p string) string {
+		rest := strings.TrimPrefix(strings.TrimSuffix(filepath.Base(p), ".jsonl"), stem+"-")
+		ts, n, _ := strings.Cut(rest, "-")
+		if n == "" {
+			n = "1"
+		}
+		return fmt.Sprintf("%s-%06s", ts, n)
+	}
+	sort.SliceStable(sealed, func(i, j int) bool { return key(sealed[i]) < key(sealed[j]) })
 	out := make([]string, 0, len(sealed)+1)
 	for _, p := range sealed {
 		if p != path {

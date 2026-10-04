@@ -155,6 +155,20 @@ Changes (root):
 | `basalt snapshots rollback N` or `--before ID` | proposes and runs `basalt-rollback N`; `--before` uses the snapshot `basalt apply` took before proposal ID |
 | `basalt why UNIT --apply`, `basalt fix selinux --apply`, `basalt disk --apply` | store the proposal and go straight to the confirmation |
 
+Other Basalt tools through `basalt`: a first word that is not one of the
+commands above runs the program `basalt-<word>` with the rest of the
+command line, so `basalt ledger summary --since today` is `basalt-ledger
+summary --since today` (docs/ledger.md). Only an executable regular file
+named `basalt-<word>` in `/usr/libexec/basalt` or `/usr/bin` (searched in
+that order) is run; `PATH` is never consulted, so a program a user or an
+agent puts on its own `PATH` cannot be reached this way. The word must be
+lower case letters, digits and single hyphens. The commands above always
+win, and the assistant's own helpers in `/usr/libexec/basalt`
+(`basalt-assistantd`, `basalt-notify`, `basalt-policy-query`) are not
+offered. The program replaces the `basalt` process (same user, same
+environment, no privilege change); `basalt-ledger` decides what you may
+read, exactly as when you call it by its own name.
+
 
 ## Proposals are typed actions
 
@@ -324,7 +338,9 @@ it acts once the file reaches `[audit] rotate_size`, 32 MiB by default;
 file, a seal as the last record of every rotated file with a matching
 SHA-256 and record count, and a `continue` record linked to that seal at
 the start of the next file. A sealed file that is edited, truncated,
-removed from the middle or swapped breaks it. Removing the oldest files on
+removed from the middle or swapped breaks it. Files sealed within the same
+second are named `audit-<time>.jsonl`, `audit-<time>-2.jsonl` and so on,
+and are read in that order. Removing the oldest files on
 purpose (they are immutable: `chattr -i` first) leaves a chain that starts
 with a `continue` record; verify reports that the earlier records cannot be
 checked. A rotation interrupted after the seal leaves a file ending with
