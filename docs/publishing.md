@@ -161,4 +161,26 @@ https://obpkg.org/basalt, then checks that dnf refuses a tampered
 
 The metadata from `sign.sh` lists only the packages of its input. A later
 publish that keeps older versions available starts from the whole
-published package set.
+published package set: `merge-published.sh` runs between the build and
+the signature.
+
+```sh
+scripts/release/build.sh /tmp/release-in
+OB_REPO=basalt scripts/release/merge-published.sh /tmp/release-in
+scripts/release/sign.sh --op /tmp/release-in /tmp/release-out
+```
+
+It reads `<repo>/<releasever>/{<arch>,source}/` from https://obpkg.org,
+checks the signature of each `repomd.xml` (packages subkey, release key)
+and every file against the checksums of that signed metadata, and puts
+each published RPM, already signed, byte-identical into the input. A
+built RPM with the same file name as a published one is replaced by the
+published file (a published file is never replaced, so a changed package
+needs a new release number; the script warns). `IN_DIR/PUBLISHED` lists
+the published RPMs and `SHA256SUMS` is rewritten. `sign.sh` keeps those
+RPMs as they are (no new signature), checks their signature with the
+release key and indexes them with the new ones; `upload.sh` skips them as
+already published and identical. A repository that is not published yet
+adds nothing. In a `--test-key` dry run the tree then carries two keys:
+client tests take both (`cat OUT_DIR.test-pubkey.asc
+packages/basalt-release/RPM-GPG-KEY-basalt`).

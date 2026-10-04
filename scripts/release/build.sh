@@ -5,7 +5,7 @@
 #
 # Runs on a build host (never the signer). It builds from a clean checkout
 # with no site configuration: lab overrides (development repository key,
-# lab module certificates, lab repository URLs) are refused, so the
+# lab module certificates, lab repository URLs, a lab knowledge manifest) are refused, so the
 # packages carry the OpenBasalt release key and https://obpkg.org.
 #
 # Packages: scripts/build-rpms.sh (basalt-release, -logos, -snapshots,
@@ -22,7 +22,7 @@ source "$(dirname "$0")/../lib.sh"
 
 out="${1:?usage: $0 OUT_DIR}"
 for var in BASALT_GPG_PUBKEY BASALT_DEFAULT_REPO_URL BASALT_DEFAULT_TOOLS_URL BASALT_DEFAULT_TESTING_URL \
-  BASALT_MODULE_CA_CERT BASALT_MODULE_SIGNING_CERT; do
+  BASALT_MODULE_CA_CERT BASALT_MODULE_SIGNING_CERT BASALT_SOURCES_MANIFEST; do
   [[ -z "${!var:-}" ]] || die "$var is set: a release build ships the OpenBasalt defaults, unset it"
 done
 [[ -z "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]] || die "the checkout has local changes; release builds come from a clean commit"
@@ -42,6 +42,7 @@ in_fedora -v "$RPM_DIR:/rpms:ro" -v "$REPO_ROOT/scripts/ci:/ci:ro" "$FEDORA_IMAG
 
 mkdir -p "$out"
 find "$out" -maxdepth 1 -name '*.rpm' -delete
+rm -f "$out/PUBLISHED"
 find "$RPM_DIR" -maxdepth 1 -name '*.rpm' -exec cp -p {} "$out/" \;
 
 # basalt-release must carry the release key and the obpkg.org URLs.

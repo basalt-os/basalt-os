@@ -8,6 +8,9 @@
 #
 # IN_DIR is the output of scripts/release/build.sh (RPMs and SHA256SUMS), or
 # any directory of unsigned RPMs with a SHA256SUMS that lists exactly them.
+# RPMs listed in IN_DIR/PUBLISHED (scripts/release/merge-published.sh: the
+# packages already on obpkg.org) are already signed: they are kept
+# byte-identical, not signed again, and verified with the release key.
 # OUT_DIR gets the tree as it appears under https://obpkg.org/:
 #   <repo>/<releasever>/<arch>/    binary RPMs + repodata (repomd.xml.asc)
 #   <repo>/<releasever>/source/    source RPMs + repodata (repomd.xml.asc),
@@ -39,6 +42,9 @@
 # clean rpm database, gpg --verify of every repomd.xml.asc, and dnf with
 # gpgcheck=1 and repo_gpgcheck=1 against the tree. On success it writes
 # OUT_DIR/SIGNED-OK, which upload.sh requires.
+# With --test-key and a PUBLISHED list, the tree mixes two keys (the test key
+# and the release key of the published RPMs): client tests then need both,
+# for example cat OUT_DIR.test-pubkey.asc packages/basalt-release/RPM-GPG-KEY-basalt.
 source "$(dirname "$0")/../lib.sh"
 
 : "${OB_SIGNING_SUBKEY:=302461D26520E077D07FFCA9AA27C62C36CCFC4B}"
@@ -89,6 +95,16 @@ mapfile -t rpms < <(cd "$in" && find . -maxdepth 1 -name '*.rpm' -printf '%P\n' 
 [[ ${#rpms[@]} -gt 0 ]] || die "no RPMs in $in"
 [[ "$(awk '{print $2}' "$in/SHA256SUMS" | sort)" == "$(printf '%s\n' "${rpms[@]}")" ]] ||
   die "the RPMs in $in and SHA256SUMS differ"
+# Published RPMs (already signed, kept as they are): each must be in
+# SHA256SUMS with the same checksum.
+release_subkey="${OB_SIGNING_SUBKEY^^}"
+presigned=()
+if [[ -f "$in/PUBLISHED" ]]; then
+  while read -r psum name; do
+    grep -qxF "$psum  $name" "$in/SHA256SUMS" || die "$name in PUBLISHED does not match SHA256SUMS"
+    presigned+=("$name")
+  done <"$in/PUBLISHED"
+fi
 
 # 2. The public key the tree is verified with.
 if [[ "$mode" != --test-key ]]; then
@@ -174,11 +190,15 @@ for f in "${rpms[@]}"; do
   esac
 done
 out="$(cd "$out" && pwd)"
+presigned_list="$(mktemp)"
+printf '%s\n' "${presigned[@]}" | grep -v '^$' >"$presigned_list" || true
+chmod 644 "$presigned_list"
+trap 'cleanup; rm -f "$presigned_list"' EXIT
 
 # 6. Sign: import the subkey into the container's tmpfs keyring, sign every
 # RPM with exactly that subkey, index, sign repomd.xml.
-log "signing ${#rpms[@]} packages with subkey $fpr"
-signer -v "$secret:/secret:ro" -v "$out/$OB_REPO:/repo/basalt" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
+log "signing $((${#rpms[@]} - ${#presigned[@]})) packages with subkey $fpr (${#presigned[@]} published ones kept as they are)"
+signer -v "$secret:/secret:ro" -v "$out/$OB_REPO:/repo/basalt" -v "$presigned_list:/presigned.list:ro" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
   "$SIGNER_IMAGE" bash -euc '
   shopt -s nullglob
   gpg --batch --quiet --import /secret/key.asc 2>/dev/null || { echo "key import failed" >&2; exit 1; }
@@ -190,15 +210,19 @@ signer -v "$secret:/secret:ro" -v "$out/$OB_REPO:/repo/basalt" -e FPR="$fpr" -e 
     { echo "secret subkey $FPR not in the export" >&2; exit 1; }
   rm -f /gnupg/list
   gpgopts="--batch --pinentry-mode loopback --passphrase-file /secret/passphrase"
+  # Published RPMs (/presigned.list) are kept as they are; the others are signed here.
+  tosign=()
   for f in /repo/basalt/$REL/$ARCH/*.rpm /repo/basalt/$REL/source/*.rpm; do
+    grep -qxF "$(basename "$f")" /presigned.list && continue
+    tosign+=("$f")
     if rpm -qp --qf "%{SIGPGP:pgpsig}%{RSAHEADER:pgpsig}%{OPENPGP:pgpsig}\n" "$f" 2>/dev/null | grep -q "Key ID"; then
       echo "already signed: $(basename "$f")" >&2; exit 1
     fi
   done
-  rpmsign --define "_gpg_name $FPR!" --define "_gpg_path /gnupg" \
+  [ ${#tosign[@]} -gt 0 ] && rpmsign --define "_gpg_name $FPR!" --define "_gpg_path /gnupg" \
     --define "_gpg_sign_cmd_extra_args $gpgopts" \
-    --addsign /repo/basalt/$REL/$ARCH/*.rpm /repo/basalt/$REL/source/*.rpm 2>&1 >/dev/null | grep -v "GPG_TTY" >&2 || true
-  for f in /repo/basalt/$REL/$ARCH/*.rpm /repo/basalt/$REL/source/*.rpm; do
+    --addsign "${tosign[@]}" 2>&1 >/dev/null | grep -v "GPG_TTY" >&2 || true
+  for f in "${tosign[@]}"; do
     rpm -qp --qf "%{OPENPGP:pgpsig}%{RSAHEADER:pgpsig}\n" "$f" 2>/dev/null | grep -q "Key ID" ||
       { echo "rpmsign did not sign $(basename "$f")" >&2; exit 1; }
   done
@@ -217,26 +241,31 @@ if [[ "$mode" == --test-key ]]; then
   pubkey="$out.test-pubkey.asc"
 fi
 cleanup
-trap - EXIT
+trap 'rm -f "$presigned_list"' EXIT
 log "key material shredded"
 
 # 8. Verify with the public key only, in a container that never saw a secret.
 verify() {
   local key="$1"
-  signer -v "$out/$OB_REPO:/repo/basalt:ro" -v "$key:/pub/key.asc:ro" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
+  signer -v "$out/$OB_REPO:/repo/basalt:ro" -v "$key:/pub/key.asc:ro" -v "$OB_RELEASE_PUBKEY:/pub/release.asc:ro" \
+    -v "$presigned_list:/presigned.list:ro" -e FPR="$fpr" -e RFPR="$release_subkey" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
     -e PKG="$verify_pkg" "$SIGNER_IMAGE" bash -euc '
     shopt -s nullglob
     db=$(mktemp -d)
     rpmkeys --dbpath "$db" --import /pub/key.asc
-    long=$(echo "$FPR" | tr A-F a-f)
+    # Published RPMs carry the release key (the same key, except in a test-key dry run).
+    [ -s /presigned.list ] && rpmkeys --dbpath "$db" --import /pub/release.asc
     bad=0 n=0
     for f in /repo/basalt/$REL/$ARCH/*.rpm /repo/basalt/$REL/source/*.rpm; do
       n=$((n+1))
+      want="$FPR"
+      grep -qxF "$(basename "$f")" /presigned.list && want="$RFPR"
+      long=$(echo "$want" | tr A-F a-f)
       rpmkeys --dbpath "$db" --checksig "$f" 2>&1 | grep -q ": digests signatures OK$" ||
         { echo "BAD signature: $(basename "$f")" >&2; bad=1; continue; }
       # The signature names the signing key by its id: the packages subkey.
       rpm -qp --qf "%{OPENPGP:pgpsig}|%{RSAHEADER:pgpsig}\n" "$f" 2>/dev/null | grep -q "Key ID ${long: -16}" ||
-        { echo "not signed by $FPR: $(basename "$f")" >&2; bad=1; }
+        { echo "not signed by $want: $(basename "$f")" >&2; bad=1; }
     done
     gpg --batch --quiet --import /pub/key.asc 2>/dev/null
     for d in /repo/basalt/$REL/$ARCH /repo/basalt/$REL/source; do
@@ -251,7 +280,7 @@ name=verify
 baseurl=file:///repo/basalt/$REL/$ARCH/
 gpgcheck=1
 repo_gpgcheck=1
-gpgkey=file:///pub/key.asc
+gpgkey=file:///pub/key.asc file:///pub/release.asc
 EOF
     dnf -q -y --disablerepo="*" --enablerepo=verify makecache >/dev/null 2>&1 || { echo "dnf rejected the repository metadata" >&2; bad=1; }
     dnf -q -y --disablerepo="*" --enablerepo=verify download --destdir /tmp/dl "$PKG" >/dev/null 2>&1 ||
@@ -275,6 +304,7 @@ verify "$pubkey" || die "verification failed; do not publish $out"
   echo "mode: ${mode#--}"
   echo "subkey: $fpr"
   echo "repo: $OB_REPO"
+  echo "published kept: ${#presigned[@]}"
   [[ -f "$in/BUILD-INFO.txt" ]] && sed 's/^/build: /' "$in/BUILD-INFO.txt"
   (cd "$out" && find "$OB_REPO" -type f | sort | xargs -d '\n' sha256sum)
 } >"$out/SIGNED-OK"

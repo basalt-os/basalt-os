@@ -39,6 +39,7 @@ in_fedora -v "$stage:/rpms:ro" -v "$REPO_ROOT/scripts/ci:/ci:ro" "$FEDORA_IMAGE"
 
 mkdir -p "$out"
 find "$out" -maxdepth 1 -name '*.rpm' -delete
+rm -f "$out/PUBLISHED"
 find "$stage" -maxdepth 1 -name '*.rpm' -exec cp -p {} "$out/" \;
 
 cat >"$out/BUILD-INFO.txt" <<INFO
