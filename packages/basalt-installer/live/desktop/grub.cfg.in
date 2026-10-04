@@ -3,8 +3,9 @@
 set default="0"
 set timeout=@TIMEOUT@
 serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
-terminal_input serial console
-terminal_output serial console
+# The menu on the firmware console only (see the installer image's grub.cfg.in).
+terminal_input console
+terminal_output console
 # The serial console gets the text installer, as on the installer image.
 search --no-floppy --set=root -l '@LABEL@'
 # The Basalt GRUB theme on the screen (basalt-grub2-theme); the serial

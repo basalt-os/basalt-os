@@ -20,7 +20,9 @@ const demoLsblk = `{"blockdevices":[
  {"name":"nvme0n1","path":"/dev/nvme0n1","size":512110190592,"type":"disk","rm":false,"ro":false,"rota":false,"model":"Example NVMe SSD 512GB","serial":"D1","tran":"nvme","fstype":null,"mountpoints":[null],"label":null},
  {"name":"sda","path":"/dev/sda","size":2000398934016,"type":"disk","rm":false,"ro":false,"rota":true,"model":"Example HDD 2TB","serial":"D2","tran":"sata","fstype":null,"mountpoints":[null],"label":null,
   "children":[{"name":"sda1","path":"/dev/sda1","size":2000397885440,"type":"part","rm":false,"ro":false,"rota":true,"model":null,"serial":null,"tran":"sata","fstype":"linux_raid_member","mountpoints":[null],"label":"old:0"}]},
- {"name":"sdb","path":"/dev/sdb","size":15376318464,"type":"disk","rm":true,"ro":false,"rota":false,"model":"USB stick","serial":"D3","tran":"usb","fstype":"iso9660","mountpoints":["/run/basalt/media"],"label":"BASALT-INST"}]}`
+ {"name":"sdb","path":"/dev/sdb","size":15376318464,"type":"disk","rm":true,"ro":false,"rota":false,"model":"USB stick","serial":"D3","tran":"usb","fstype":"iso9660","mountpoints":["/run/basalt/media"],"label":"BASALT-INST"},
+ {"name":"sdc","path":"/dev/sdc","size":8012345344,"type":"disk","rm":true,"ro":false,"rota":false,"model":"Key stick","serial":"D4","tran":"usb","fstype":null,"mountpoints":[null],"label":null,
+  "children":[{"name":"sdc1","path":"/dev/sdc1","size":8011296768,"type":"part","rm":true,"ro":false,"rota":false,"model":null,"serial":null,"tran":"usb","fstype":"vfat","mountpoints":[null],"label":"KEYS"}]}]}`
 
 func demoProber() probe.Prober {
 	root, _ := os.MkdirTemp("", "basalt-installer-demo-machine-")

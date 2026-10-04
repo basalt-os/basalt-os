@@ -72,11 +72,20 @@ func (s *Session) Suggest(ctx context.Context) (plan.Plan, probe.Facts, error) {
 		}
 	}
 	if src != "" {
+		// A plan from the network may need a moment: the link comes up
+		// while the installer starts.
 		loaded, err := loadPlan(ctx, src)
-		if err != nil {
-			return p, f, fmt.Errorf("basalt.inst.plan=%s: %w", src, err)
+		for i := 0; err != nil && isURL(src) && i < 10 && ctx.Err() == nil; i++ {
+			time.Sleep(3 * time.Second)
+			loaded, err = loadPlan(ctx, src)
 		}
-		return loaded, f, nil
+		s.mu.Lock()
+		s.planSrc, s.planErr = src, err
+		s.mu.Unlock()
+		if err == nil {
+			return loaded, f, nil
+		}
+		// The wizard starts from the defaults and says why.
 	}
 	if v := c["repo"]; v != "" {
 		p.Repos.Basalt.URL = v
@@ -101,7 +110,7 @@ func (s *Session) Suggest(ctx context.Context) (plan.Plan, probe.Facts, error) {
 
 // loadPlan reads a plan from a file or an http(s) URL (at most 1 MiB).
 func loadPlan(ctx context.Context, src string) (plan.Plan, error) {
-	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
+	if isURL(src) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, src, nil)
@@ -126,3 +135,13 @@ func loadPlan(ctx context.Context, src string) (plan.Plan, error) {
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+func isURL(s string) bool { return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") }
+
+// PlanSource returns the plan file the suggestion came from ("" for the
+// defaults) and the error that kept it from loading, if any.
+func (s *Session) PlanSource() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.planSrc, s.planErr
+}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/engine"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
@@ -52,6 +53,9 @@ type Options struct {
 	// Cmdline is the kernel command line file read for basalt.inst.*
 	// defaults (default /proc/cmdline).
 	Cmdline string
+	// KeyWriter writes the recovery key to removable media (default
+	// MountAndWrite).
+	KeyWriter KeyWriter
 }
 
 // Session is safe for concurrent use.
@@ -71,6 +75,12 @@ type Session struct {
 	lastErr  string
 	logPath  string
 	cancel   context.CancelFunc
+	keySaved []string
+	auto     AutoStatus
+	planSrc  string
+	planErr  error
+	started  time.Time
+	ended    time.Time
 }
 
 // New returns a session.
@@ -188,6 +198,7 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 	runCtx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	s.state, s.history, s.recKey, s.acked, s.lastErr, s.cancel = Installing, nil, "", false, "", cancel
+	s.keySaved, s.started, s.ended = nil, time.Now(), time.Time{}
 	s.mu.Unlock()
 
 	eopt := s.opt.Engine
@@ -199,9 +210,18 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 	}
 	eng := engine.New(eopt)
 	go func() {
-		err := eng.Run(runCtx, pv.Steps, s.dispatch)
+		err := eng.Run(runCtx, pv.Steps, func(e engine.Event) {
+			// The plan's removable medium gets the key before the frontends
+			// hear that the installation is done, so none of them asks for
+			// an acknowledgement that the copy already gave.
+			if e.Type == engine.EvDone && e.OK {
+				s.autoSaveKey(context.Background(), *pv)
+			}
+			s.dispatch(e)
+		})
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		s.ended = time.Now()
 		if err != nil {
 			// The volume the recovery key opened was rolled back with
 			// the rest: the key is worthless and is not kept.
@@ -295,17 +315,37 @@ type Status struct {
 	PreviewToken   string `json:"preview_token,omitempty"`
 	CanFinish      bool   `json:"can_finish"`
 	FinishBlockers string `json:"finish_blockers,omitempty"`
+	// Disk and Summary describe the plan of the preview.
+	Disk    string `json:"disk,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	// KeySaved lists where copies of the recovery key were written.
+	KeySaved []string `json:"recovery_key_saved,omitempty"`
+	// Seconds is how long the installation ran (so far).
+	Seconds int `json:"seconds,omitempty"`
+	// Unattended is the state of an installation started from the boot
+	// menu (basalt.inst.plan with basalt.inst.confirm).
+	Unattended AutoStatus `json:"unattended"`
 }
 
 // Status reports the session state.
 func (s *Session) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := Status{State: s.state, Error: s.lastErr, LogPath: s.logPath, RecoveryKey: s.recKey != "" && !s.acked, RecoveryAcked: s.acked}
+	st := Status{State: s.state, Error: s.lastErr, LogPath: s.logPath, RecoveryKey: s.recKey != "" && !s.acked, RecoveryAcked: s.acked,
+		KeySaved: append([]string(nil), s.keySaved...), Unattended: s.auto}
 	if s.preview != nil {
 		st.Encrypted = s.preview.Resolved.Plan.Encrypted()
 		st.Finish = s.preview.Resolved.Plan.Finish
 		st.PreviewToken = s.preview.Token
+		st.Disk = s.preview.Resolved.Disk.Path
+		st.Summary = s.preview.Resolved.Plan.Summary()
+	}
+	if !s.started.IsZero() {
+		end := s.ended
+		if end.IsZero() {
+			end = time.Now()
+		}
+		st.Seconds = int(end.Sub(s.started).Seconds())
 	}
 	st.CanFinish, st.FinishBlockers = s.canFinishLocked()
 	return st
@@ -339,7 +379,7 @@ func (s *Session) AckRecoveryKey(proof string) error {
 	}
 	s.acked = true
 	s.recKey = ""
-	s.broadcast(engine.Event{Type: "recovery_key_acknowledged"})
+	s.broadcast(engine.Event{Type: EvKeyAcked})
 	return nil
 }
 

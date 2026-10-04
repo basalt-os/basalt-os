@@ -1,11 +1,14 @@
-// Package i18n is the installer's translation catalog: GNU gettext
-// message catalogs (.mo), domain "basalt-installer", looked up in
+// Package i18n is the installer's translation catalog: GNU gettext message
+// catalogs (.mo), domain "basalt-installer", looked up in
 // /usr/share/locale/<lang>/LC_MESSAGES/ for the language of LANGUAGE,
 // LC_ALL, LC_MESSAGES or LANG. English is the reference language: the
 // msgid is the English text and is returned when no translation exists.
 //
-// Every user-facing string goes through T (whole sentences, never
-// concatenated pieces); logs and machine output stay English.
+// Every user-facing string goes through T or N (whole sentences, with
+// placeholders for values, never concatenated pieces); logs, the install log,
+// the plan format and machine output stay English. The sources of the catalogs
+// are po/basalt-installer.pot and po/<lang>.po in the package; a test
+// checks that every T and N call is in the template and translated.
 package i18n
 
 import (
@@ -23,23 +26,65 @@ const Domain = "basalt-installer"
 // LocaleDir is where compiled catalogs are installed.
 var LocaleDir = "/usr/share/locale"
 
+// Catalog is one loaded language.
+type Catalog struct {
+	Lang     string
+	Messages map[string][]string // msgid -> forms (one, or one per plural form)
+	Plural   func(n int) int     // index of the plural form for n
+}
+
 var (
-	once    sync.Once
-	catalog map[string]string
+	mu      sync.Mutex
+	current *Catalog
 )
+
+func get() *Catalog {
+	mu.Lock()
+	defer mu.Unlock()
+	if current == nil {
+		current = Load(LocaleDir, Languages())
+	}
+	return current
+}
+
+// Reset forgets the loaded catalog (tests, or after a locale change).
+func Reset() {
+	mu.Lock()
+	current = nil
+	mu.Unlock()
+}
 
 // T returns the translation of msgid in the current language, or msgid.
 func T(msgid string) string {
-	once.Do(func() { catalog = load(LocaleDir, languages()) })
-	if s, ok := catalog[msgid]; ok && s != "" {
-		return s
+	if f := get().Messages[msgid]; len(f) > 0 && f[0] != "" {
+		return f[0]
 	}
 	return msgid
 }
 
-// languages lists the candidate catalogs for the environment, most
+// N returns the singular or plural form for n, translated with the
+// catalog's plural rule (English: one for 1, other otherwise).
+func N(singular, plural string, n int) string {
+	c := get()
+	if f := c.Messages[singular]; len(f) > 0 {
+		i := c.Plural(n)
+		if i >= 0 && i < len(f) && f[i] != "" {
+			return f[i]
+		}
+	}
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// Lang is the language of the loaded catalog ("" for the reference
+// English text).
+func Lang() string { return get().Lang }
+
+// Languages lists the candidate catalogs for the environment, most
 // specific first ("pt_BR.UTF-8" gives "pt_BR", then "pt").
-func languages() []string {
+func Languages() []string {
 	var raw []string
 	if v := os.Getenv("LANGUAGE"); v != "" {
 		raw = strings.Split(v, ":")
@@ -64,22 +109,58 @@ func languages() []string {
 	return out
 }
 
-func load(dir string, langs []string) map[string]string {
+// Load returns the first catalog found for langs, or an empty one.
+func Load(dir string, langs []string) *Catalog {
 	for _, l := range langs {
+		if strings.HasPrefix(l, "en") {
+			break // English is the reference text
+		}
 		b, err := os.ReadFile(filepath.Join(dir, l, "LC_MESSAGES", Domain+".mo"))
 		if err != nil {
 			continue
 		}
-		if m, err := ParseMO(b); err == nil {
-			return m
+		if c, err := ParseMO(b); err == nil {
+			c.Lang = l
+			return c
 		}
 	}
-	return map[string]string{}
+	return &Catalog{Messages: map[string][]string{}, Plural: english}
 }
 
-// ParseMO reads a GNU .mo catalog into msgid -> msgstr (for plural
-// entries, the singular msgid and the first form).
-func ParseMO(b []byte) (map[string]string, error) {
+func english(n int) int {
+	if n == 1 {
+		return 0
+	}
+	return 1
+}
+
+// pluralRule understands the Plural-Forms expressions of the languages we
+// ship or expect; anything else falls back to the English rule.
+func pluralRule(header string) func(int) int {
+	for _, line := range strings.Split(header, "\n") {
+		k, v, ok := strings.Cut(line, ":")
+		if !ok || !strings.EqualFold(strings.TrimSpace(k), "Plural-Forms") {
+			continue
+		}
+		_, expr, _ := strings.Cut(v, "plural=")
+		expr = strings.NewReplacer(" ", "", ";", "", "(", "", ")", "").Replace(expr)
+		switch expr {
+		case "n>1": // pt_BR, fr
+			return func(n int) int {
+				if n > 1 {
+					return 1
+				}
+				return 0
+			}
+		case "0": // ja, zh, ko
+			return func(int) int { return 0 }
+		}
+	}
+	return english
+}
+
+// ParseMO reads a GNU .mo catalog.
+func ParseMO(b []byte) (*Catalog, error) {
 	if len(b) < 28 {
 		return nil, errors.New("short .mo file")
 	}
@@ -105,7 +186,7 @@ func ParseMO(b []byte) (map[string]string, error) {
 		}
 		return string(b[p : p+l]), nil
 	}
-	m := make(map[string]string, n)
+	c := &Catalog{Messages: make(map[string][]string, n), Plural: english}
 	for i := 0; i < n; i++ {
 		id, err := str(orig, i)
 		if err != nil {
@@ -116,9 +197,10 @@ func ParseMO(b []byte) (map[string]string, error) {
 			return nil, err
 		}
 		if id == "" {
-			continue // header
+			c.Plural = pluralRule(s)
+			continue
 		}
-		m[strings.SplitN(id, "\x00", 2)[0]] = strings.SplitN(s, "\x00", 2)[0]
+		c.Messages[strings.SplitN(id, "\x00", 2)[0]] = strings.Split(s, "\x00")
 	}
-	return m, nil
+	return c, nil
 }

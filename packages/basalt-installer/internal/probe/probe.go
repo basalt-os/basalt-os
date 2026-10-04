@@ -31,6 +31,79 @@ type Facts struct {
 	Release    int      `json:"release"`
 	Disks      []Disk   `json:"disks"`
 	Interfaces []string `json:"interfaces"`
+	// KeyMedia are the file systems on removable media (USB sticks, SD
+	// cards) that can take a copy of the recovery key.
+	KeyMedia []KeyMedium `json:"key_media"`
+}
+
+// KeyMedium is a writable file system on a removable disk.
+type KeyMedium struct {
+	Path   string `json:"path"`
+	Disk   string `json:"disk"`
+	Label  string `json:"label,omitempty"`
+	FSType string `json:"fstype"`
+	Size   int64  `json:"size_bytes"`
+	Model  string `json:"model,omitempty"`
+	// Mountpoint is set when the file system is mounted already.
+	Mountpoint string `json:"mountpoint,omitempty"`
+}
+
+// Describe is a one-line description for pickers.
+func (m KeyMedium) Describe() string {
+	parts := []string{m.Path, HumanSize(m.Size), m.FSType}
+	if m.Label != "" {
+		parts = append(parts, "\""+m.Label+"\"")
+	}
+	if m.Model != "" {
+		parts = append(parts, m.Model)
+	}
+	return strings.Join(parts, "  ")
+}
+
+// keyMediaTypes are the file systems the live system can write a key file
+// to.
+var keyMediaTypes = map[string]bool{"vfat": true, "exfat": true, "ext4": true, "ext3": true, "ext2": true, "btrfs": true, "xfs": true}
+
+// InstallerMediaLabel is the volume label of the Basalt OS installer media.
+const InstallerMediaLabel = "BASALT-INST"
+
+// ParseKeyMedia finds the file systems on removable disks (removable flag
+// or USB, MMC transport) that can hold the recovery key: a known writable
+// file system, not read-only, not the installer media.
+func ParseKeyMedia(data []byte) ([]KeyMedium, error) {
+	var doc struct {
+		Blockdevices []lsblkDev `json:"blockdevices"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("parsing lsblk: %w", err)
+	}
+	var out []KeyMedium
+	for _, d := range doc.Blockdevices {
+		tran := strings.ToLower(str(d.Tran))
+		if d.Type != "disk" || bool(d.RO) || !(bool(d.RM) || tran == "usb" || tran == "mmc") {
+			continue
+		}
+		cands := []lsblkDev{d}
+		cands = append(cands, d.Children...)
+		for _, c := range cands {
+			fs := str(c.FSType)
+			if !keyMediaTypes[fs] || bool(c.RO) || str(c.Label) == InstallerMediaLabel {
+				continue
+			}
+			m := KeyMedium{Path: c.Path, Disk: d.Path, Label: str(c.Label), FSType: fs, Size: int64(c.Size), Model: str(d.Model)}
+			if m.Path == "" {
+				m.Path = "/dev/" + c.Name
+			}
+			for _, mp := range c.Mountpoints {
+				if mp != nil && *mp != "" {
+					m.Mountpoint = *mp
+					break
+				}
+			}
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 // Disk is one whole disk.
@@ -153,6 +226,7 @@ func (p Prober) Probe(ctx context.Context) (Facts, error) {
 		}
 	}
 	f.Disks = disks
+	f.KeyMedia, _ = ParseKeyMedia([]byte(out))
 	return f, nil
 }
 

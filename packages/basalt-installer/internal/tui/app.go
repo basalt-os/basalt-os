@@ -3,12 +3,16 @@
 // and the recovery key with its acknowledgement. Built on tui-kit, so it
 // looks and behaves like every tui-tools program; it works on a serial
 // console (80x24 when the terminal reports no size).
+//
+// It runs the installation in process, or follows one that the engine
+// service runs (an unattended installation from the boot menu, or
+// `basalt-installer tui --attach`).
 package tui
 
 import (
 	"context"
 	"fmt"
-	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -17,6 +21,8 @@ import (
 	"github.com/tui-tools/tui-kit/theme"
 	"github.com/tui-tools/tui-kit/ui"
 
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/client"
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/earlyterm"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/engine"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
@@ -41,6 +47,21 @@ type Options struct {
 	// ASCII draws borders and bars with ASCII only (serial terminals
 	// without UTF-8).
 	ASCII bool
+	// Attach follows the installation of the engine service on Socket
+	// instead of running a wizard. It is chosen by itself when the boot
+	// line asks for an unattended installation.
+	Attach bool
+	Socket string
+}
+
+// backend is what the screens after the confirmation need: the session in
+// process, or the engine service through its socket.
+type backend interface {
+	AckRecoveryKey(proof string) error
+	Cancel() error
+	Finish(ctx context.Context, action string) error
+	KeyMedia(ctx context.Context) ([]probe.KeyMedium, error)
+	SaveRecoveryKey(ctx context.Context, device string) (string, error)
 }
 
 type screen int
@@ -65,6 +86,7 @@ const (
 	scProgress
 	scDone
 	scFailed
+	scWaiting
 )
 
 type model struct {
@@ -76,6 +98,14 @@ type model struct {
 	facts probe.Facts
 	p     plan.Plan
 	err   string
+	note  string // shown on the welcome screen (a plan was loaded, or why not)
+
+	be     backend
+	remote *client.Client
+	// autoPlan and autoDisk describe the unattended installation followed.
+	autoPlan, autoDisk string
+	finishAuto         string // the end action the engine service runs by itself
+	initCmd            tea.Cmd
 
 	diskPicker kit.RowPicker
 	picker     ui.Picker
@@ -85,16 +115,20 @@ type model struct {
 	confirm    ui.Input
 	progress   kit.Progress
 	ack        *kit.SecretAck
+	media      *kit.RowPicker
+	mediaList  []probe.KeyMedium
 	quit       *ui.Confirm
 	preview    session.Preview
 
-	events  <-chan engine.Event
-	stopSub func()
-	started time.Time
-	logPath string
-	result  string
-	acked   bool
-	output  []string
+	events     <-chan engine.Event
+	stopSub    func()
+	started    time.Time
+	logPath    string
+	result     string
+	acked      bool
+	pendingKey string // shown when the installation is done (plan writes it to media)
+	keyMedia   string // the plan's encryption.recovery_key_media
+	saved      []string
 }
 
 // Run starts the TUI and returns when the person leaves it.
@@ -103,22 +137,71 @@ func Run(opt Options) error {
 	if opt.ASCII {
 		t.Dialog = t.Dialog.Border(lipgloss.NormalBorder())
 	}
-	m := &model{opt: opt, t: t}
-	p, f, err := opt.Session.Suggest(context.Background())
-	if err != nil {
-		return fmt.Errorf("probing the machine: %w", err)
+	if opt.Socket == "" {
+		opt.Socket = client.DefaultSocket
 	}
-	m.p, m.facts = p, f
+	m := &model{opt: opt, t: t, be: opt.Session}
+	if opt.Attach || opt.Session.UnattendedRequested() {
+		m.remote = &client.Client{Socket: opt.Socket}
+		m.be = m.remote
+		c := opt.Session.Cmdline()
+		m.autoPlan, m.autoDisk = c["plan"], strings.TrimPrefix(c["confirm"], "/dev/")
+		m.scr, m.started = scWaiting, time.Now()
+		m.initCmd = tea.Batch(m.pollAuto(0), ui.RunningTick())
+	} else {
+		s := suggest(opt.Session)
+		if s.err != nil {
+			return s.err
+		}
+		m.p, m.facts, m.note = s.p, s.f, s.note
+	}
 	prog := tea.NewProgram(m, tea.WithAltScreen())
-	_, err = prog.Run()
+	_, err := prog.Run()
 	if m.stopSub != nil {
 		m.stopSub()
 	}
 	return err
 }
 
+// suggest loads the starting plan (the boot line's or the media's plan, or
+// the defaults) and notes where it came from for the welcome screen.
+func suggest(ss *session.Session) suggestedMsg {
+	p, f, err := ss.Suggest(context.Background())
+	if err != nil {
+		return suggestedMsg{err: fmt.Errorf("probing the machine: %w", err)}
+	}
+	out := suggestedMsg{p: p, f: f}
+	switch src, perr := ss.PlanSource(); {
+	case src != "" && perr != nil:
+		out.note = fmt.Sprintf(i18n.T("The plan %s could not be read (%v). The wizard starts from the defaults."), src, perr)
+	case src != "":
+		out.note = fmt.Sprintf(i18n.T("Plan loaded from %s. Every screen shows its values; nothing is written until you type the disk name."), src)
+	}
+	return out
+}
+
 type eventMsg engine.Event
 type eventsClosed struct{}
+type autoMsg struct {
+	st  session.Status
+	err error
+}
+type suggestedMsg struct {
+	p    plan.Plan
+	f    probe.Facts
+	note string
+	err  error
+}
+type mediaMsg struct {
+	list []probe.KeyMedium
+	err  error
+}
+type savedMsg struct {
+	where string
+	err   error
+}
+type keyMsg struct{ key string }
+type netDoneMsg struct{}
 
 func (m *model) waitEvent() tea.Cmd {
 	ch := m.events
@@ -131,7 +214,22 @@ func (m *model) waitEvent() tea.Cmd {
 	}
 }
 
-func (m *model) Init() tea.Cmd { return nil }
+// pollAuto asks the engine service how the unattended installation goes.
+func (m *model) pollAuto(delay time.Duration) tea.Cmd {
+	c := m.remote
+	return func() tea.Msg {
+		time.Sleep(delay)
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		if err := c.Wait(ctx); err != nil {
+			return autoMsg{err: err}
+		}
+		st, err := c.Status(ctx)
+		return autoMsg{st: st, err: err}
+	}
+}
+
+func (m *model) Init() tea.Cmd { return m.initCmd }
 
 func (m *model) size() (int, int) {
 	w, h := m.w, m.h
@@ -156,6 +254,23 @@ func (m *model) goBack() {
 	s := m.back[len(m.back)-1]
 	m.back = m.back[:len(m.back)-1]
 	m.enter(s)
+}
+
+// Choices of the pickers (translated once; compared by value).
+func encLabels() (tpm, recovery, tang, tpmTang, off string) {
+	return i18n.T("TPM: opens by itself while Secure Boot is unchanged"),
+		i18n.T("Recovery key: typed at every boot"),
+		i18n.T("Tang: opens when a Tang server answers"),
+		i18n.T("TPM and Tang: both are required"),
+		i18n.T("Do not encrypt (not recommended)")
+}
+
+func netLabels() (dhcp, static string) {
+	return i18n.T("Automatic (DHCP) on every wired interface"), i18n.T("Static address on one interface")
+}
+
+func layoutLabels() (auto, manual string) {
+	return i18n.T("Automatic: the Basalt layout on the whole disk"), i18n.T("Manual: the sizes and the optional subvolumes")
 }
 
 // enter builds the widget of a screen from the current plan.
@@ -184,10 +299,12 @@ func (m *model) enter(s screen) {
 			}
 		}
 	case scLayout:
-		m.picker = ui.NewPicker("Partitioning", []string{
-			"Automatic: the Basalt layout on the whole disk (recommended)",
-			"Manual: choose the sizes and the optional subvolumes"},
-			map[string]string{"automatic": "Automatic: the Basalt layout on the whole disk (recommended)", "manual": "Manual: choose the sizes and the optional subvolumes"}[p.Layout.Mode])
+		auto, manual := layoutLabels()
+		cur := auto
+		if p.Layout.Mode == "manual" {
+			cur = manual
+		}
+		m.picker = ui.NewPicker(i18n.T("Partitioning (automatic is recommended)"), []string{auto, manual}, cur)
 	case scLayoutSizes:
 		root := ""
 		if p.Layout.RootGiB > 0 {
@@ -204,23 +321,23 @@ func (m *model) enter(s screen) {
 				On: contains(p.Layout.Subvolumes, sv.Name), Locked: sv.Required})
 		}
 	case scEncryption:
-		opts := []string{encTPM, encRecovery, encTang, encTPMTang, encOff}
-		cur := encTPM
+		tpm, recovery, tang, tpmTang, off := encLabels()
+		cur := tpm
 		switch {
 		case !p.Encrypted():
-			cur = encOff
+			cur = off
 		case p.Encryption.Unlock == "recovery-only":
-			cur = encRecovery
+			cur = recovery
 		case p.Encryption.Unlock == "tang":
-			cur = encTang
+			cur = tang
 		case p.Encryption.Unlock == "tpm2+tang":
-			cur = encTPMTang
+			cur = tpmTang
 		}
-		title := "Disk encryption (LUKS2)"
+		title := i18n.T("Disk encryption (LUKS2); the TPM is recommended")
 		if !m.facts.TPM2 {
-			title += ": no TPM 2.0 found on this machine"
+			title = i18n.T("Disk encryption (LUKS2); no TPM 2.0 on this machine")
 		}
-		m.picker = ui.NewPicker(title, opts, cur)
+		m.picker = ui.NewPicker(title, []string{tpm, recovery, tang, tpmTang, off}, cur)
 	case scTang:
 		u, th := kit.TextField("Tang URL", p.Encryption.Tang.URL, "http://tang.example:7500"), kit.TextField("Thumbprint", p.Encryption.Tang.Thumbprint, "tang-show-keys on the server")
 		th.Optional = true
@@ -233,36 +350,25 @@ func (m *model) enter(s screen) {
 		opts := []string{"auto", "minimal", "standard"}
 		m.picker = ui.NewPicker(fmt.Sprintf("Package profile (auto picks %s on this machine)", autoProfile(m.facts)), opts, p.Profile)
 	case scAccounts:
-		rootKey := kit.TextField("Root SSH key", strings.Join(p.Accounts.Root.SSHKeys, " "), "ssh-ed25519 AAAA... (paste)")
-		rootKey.Optional = true
-		rootKey.Help = "Root can only log in with a key. Leave empty to keep root locked."
-		user := kit.TextField("Admin user", "", "optional, member of wheel")
-		user.Optional = true
-		pw1, pw2 := kit.SecretField("Password"), kit.SecretField("Repeat password")
-		pw1.Optional, pw2.Optional = true, true
-		ukey := kit.TextField("User SSH key", "", "optional")
-		ukey.Optional = true
-		if u := p.Accounts.User; u != nil {
-			user.Input.SetValue(u.Name)
-			ukey.Input.SetValue(strings.Join(u.SSHKeys, " "))
-		}
-		m.form = kit.NewForm("Accounts", "Give root an SSH key, or create an administrator, or both. SSH accepts keys only.", rootKey, user, pw1, pw2, ukey)
-		m.form.Check = func(v []string) string {
-			if v[2] != v[3] {
-				return "the passwords do not match"
-			}
-			if v[1] == "" && (v[2] != "" || v[4] != "") {
-				return "give the user a name"
-			}
-			if v[0] == "" && v[1] == "" {
-				return "nobody could log in: add a root key or an administrator"
-			}
-			return ""
-		}
+		m.form = m.accountsForm()
 	case scNetwork:
-		m.picker = ui.NewPicker("Network", []string{netDHCP, netStatic}, map[string]string{"dhcp": netDHCP, "static": netStatic}[p.Network.Mode])
+		dhcp, static := netLabels()
+		cur := dhcp
+		if p.Network.Mode == "static" {
+			cur = static
+		}
+		m.picker = ui.NewPicker("Network", []string{dhcp, static}, cur)
 	case scStatic:
-		iface := kit.TextField("Interface", p.Network.Interface, strings.Join(m.facts.Interfaces, ", "))
+		// The detected interface is filled in (the first one when there are
+		// several); the hint lists them all.
+		name := p.Network.Interface
+		if name == "" && len(m.facts.Interfaces) > 0 {
+			name = m.facts.Interfaces[0]
+		}
+		iface := kit.TextField(i18n.T("Interface"), name, strings.Join(m.facts.Interfaces, ", "))
+		if len(m.facts.Interfaces) > 1 {
+			iface.Help = fmt.Sprintf(i18n.T("Detected: %s"), strings.Join(m.facts.Interfaces, ", "))
+		}
 		addr, gw, dns := kit.TextField("Address/prefix", p.Network.Address, "192.0.2.10/24"), kit.TextField("Gateway", p.Network.Gateway, ""), kit.TextField("DNS servers", strings.Join(p.Network.DNS, " "), "space separated")
 		gw.Optional, dns.Optional = true, true
 		m.form = kit.NewForm("Static network", "", iface, addr, gw, dns)
@@ -276,8 +382,9 @@ func (m *model) enter(s screen) {
 	case scRepoURL:
 		u := kit.TextField("Install from", p.Repos.Basalt.URL, "media")
 		u.Help = "\"media\" is the repository on this installer image; or an http(s) URL"
-		iu := kit.TextField("Installed system uses", p.Repos.Basalt.InstalledURL, "default: the URL above when it is http(s)")
+		iu := kit.TextField(i18n.T("Installed system uses"), p.Repos.Basalt.InstalledURL, i18n.T("empty: the default"))
 		iu.Optional = true
+		iu.Help = fmt.Sprintf(i18n.T("Empty: the URL above when it is http(s), otherwise %s."), plan.DefaultRepoURL)
 		m.form = kit.NewForm("Basalt repository", "", u, iu)
 	case scReview:
 		pv, err := m.opt.Session.MakePreview(context.Background(), m.p)
@@ -290,8 +397,10 @@ func (m *model) enter(s screen) {
 			return
 		}
 		m.preview = pv
-		m.pager.Title = fmt.Sprintf("Review: %d steps, exactly what will run (%s)", len(pv.Steps), m.p.Summary())
-		m.pager.Text = issuesText(pv.Issues) + pv.Text
+		// The title stays short enough for 80 columns; the plan summary is
+		// the first line of the text, where it wraps.
+		m.pager.Title = fmt.Sprintf(i18n.N("Review: %d step, exactly what will run", "Review: %d steps, exactly what will run", len(pv.Steps)), len(pv.Steps))
+		m.pager.Text = "# " + m.p.Summary() + "\n\n" + issuesText(pv.Issues) + pv.Text
 	case scConfirm:
 		word := m.preview.ConfirmWord()
 		m.confirm = ui.NewInput(fmt.Sprintf("Erase %s and install Basalt OS?", m.preview.Resolved.Disk.Path), "", "")
@@ -299,30 +408,105 @@ func (m *model) enter(s screen) {
 	}
 }
 
-const (
-	encTPM      = "Encrypt, unlock with the TPM (Secure Boot state, PCR 7) (recommended)"
-	encRecovery = "Encrypt, unlock with the recovery key at every boot"
-	encTang     = "Encrypt, unlock from a Tang server on the network"
-	encTPMTang  = "Encrypt, unlock with the TPM and a Tang server, both required"
-	encOff      = "Do not encrypt (not recommended)"
-	netDHCP     = "Automatic (DHCP) on every wired interface"
-	netStatic   = "Static address on one interface"
-)
+// accountsForm keeps what a plan file set and the form cannot show: a
+// password hash stays unless a new password is typed.
+func (m *model) accountsForm() kit.Form {
+	p := &m.p
+	rootKey := kit.TextField("Root SSH key", strings.Join(p.Accounts.Root.SSHKeys, " "), "ssh-ed25519 AAAA... (paste)")
+	rootKey.Optional = true
+	rootKey.Help = "Root can only log in with a key. Leave empty to keep root locked."
+	if p.Accounts.Root.PasswordHash != "" || p.Accounts.Root.Password != "" {
+		rootKey.Help = i18n.T("Root also has a password from the plan file (console logins only).")
+	}
+	user := kit.TextField("Admin user", "", "optional, member of wheel")
+	user.Optional = true
+	pw1, pw2 := kit.SecretField("Password"), kit.SecretField("Repeat password")
+	pw1.Optional, pw2.Optional = true, true
+	ukey := kit.TextField("User SSH key", "", "optional")
+	ukey.Optional = true
+	keptHash := false
+	if u := p.Accounts.User; u != nil {
+		user.Input.SetValue(u.Name)
+		ukey.Input.SetValue(strings.Join(u.SSHKeys, " "))
+		if u.PasswordHash != "" && u.Password == "" {
+			keptHash = true
+			pw1.Help = i18n.T("The plan file sets this password (as a hash): leave both fields empty to keep it, or type a new one.")
+		}
+	}
+	rootHasPassword := p.Accounts.Root.PasswordHash != "" || p.Accounts.Root.Password != ""
+	f := kit.NewForm("Accounts", "Give root an SSH key, or create an administrator, or both. SSH accepts keys only.", rootKey, user, pw1, pw2, ukey)
+	f.Check = func(v []string) string {
+		if v[2] != v[3] {
+			return "the passwords do not match"
+		}
+		if v[1] == "" && (v[2] != "" || v[4] != "") {
+			return "give the user a name"
+		}
+		if v[0] == "" && v[1] == "" && !rootHasPassword {
+			return "nobody could log in: add a root key or an administrator"
+		}
+		if v[1] != "" && v[2] == "" && v[4] == "" && !(keptHash && m.sameUser(v[1])) {
+			return i18n.T("the administrator needs a password or an SSH key")
+		}
+		return ""
+	}
+	return f
+}
+
+// sameUser reports whether name is the plan's user (whose hash is kept).
+func (m *model) sameUser(name string) bool {
+	return m.p.Accounts.User != nil && m.p.Accounts.User.Name == name
+}
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 		return m, nil
+	case autoMsg:
+		return m, m.onAuto(msg)
+	case suggestedMsg:
+		if msg.err != nil {
+			m.err = msg.err.Error()
+		}
+		m.p, m.facts, m.note = msg.p, msg.f, strings.TrimSpace(m.note+" "+msg.note)
+		m.back = nil
+		m.enter(scWelcome)
+		return m, nil
 	case ui.RunningTickMsg:
-		if m.scr == scProgress {
+		if m.scr == scProgress || m.scr == scWaiting {
 			return m, ui.RunningTick()
 		}
 		return m, nil
 	case eventMsg:
-		m.onEvent(engine.Event(msg))
-		return m, m.waitEvent()
+		cmd := m.onEvent(engine.Event(msg))
+		return m, tea.Batch(m.waitEvent(), cmd)
 	case eventsClosed:
+		if m.remote != nil && m.scr == scProgress {
+			m.err = i18n.T("The connection to the installer engine was lost; reconnecting.")
+			return m, m.pollAuto(2 * time.Second)
+		}
+		return m, nil
+	case keyMsg:
+		m.showKey(msg.key)
+		return m, nil
+	case mediaMsg:
+		m.onMedia(msg)
+		return m, nil
+	case savedMsg:
+		if m.ack != nil {
+			if msg.err != nil {
+				m.ack.Error, m.ack.Note = fmt.Sprintf(i18n.T("The key was not saved: %v"), msg.err), ""
+			} else {
+				m.saved = append(m.saved, msg.where)
+				m.ack.Error, m.ack.Note = "", fmt.Sprintf(i18n.T("A copy is on %s. Keep that stick somewhere safe, then type the first group to confirm."), msg.where)
+			}
+		}
+		return m, nil
+	case netDoneMsg:
+		if f, err := m.opt.Session.Facts(context.Background(), true); err == nil {
+			m.facts = f
+		}
 		return m, nil
 	case tea.KeyMsg:
 		if m.quit != nil {
@@ -332,7 +516,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.quit = nil
 				if ok {
 					if m.scr == scProgress {
-						_ = m.opt.Session.Cancel()
+						_ = m.be.Cancel()
 						return m, nil
 					}
 					return m, tea.Quit
@@ -340,9 +524,36 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.media != nil {
+			m.media.Update(msg)
+			if m.media.Done {
+				ok, i := m.media.Accepted, m.media.Cursor
+				m.media = nil
+				if ok && i < len(m.mediaList) {
+					dev := m.mediaList[i].Path
+					if m.ack != nil {
+						m.ack.Note = fmt.Sprintf(i18n.T("Writing the key to %s."), dev)
+					}
+					be := m.be
+					return m, func() tea.Msg {
+						where, err := be.SaveRecoveryKey(context.Background(), dev)
+						return savedMsg{where, err}
+					}
+				}
+			}
+			return m, nil
+		}
 		if m.ack != nil {
-			if msg.String() == "ctrl+c" {
+			switch msg.String() {
+			case "ctrl+c":
 				return m, nil
+			case "ctrl+o":
+				be := m.be
+				m.ack.Error, m.ack.Note = "", i18n.T("Looking for USB sticks.")
+				return m, func() tea.Msg {
+					list, err := be.KeyMedia(context.Background())
+					return mediaMsg{list, err}
+				}
 			}
 			cmd, _ := m.ack.Update(msg)
 			if m.ack.Done {
@@ -368,6 +579,90 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// onAuto follows the unattended installation: wait while the engine
+// service prepares it, then show its progress, or start the wizard with a
+// note when it was refused.
+func (m *model) onAuto(a autoMsg) tea.Cmd {
+	if a.err != nil {
+		m.err = fmt.Sprintf(i18n.T("The installer engine does not answer (%v); trying again."), a.err)
+		return m.pollAuto(3 * time.Second)
+	}
+	st := a.st
+	if st.Disk != "" {
+		m.autoDisk = st.Disk
+	}
+	m.finishAuto = st.Finish
+	running := st.State == session.Installing || st.State == session.Succeeded || st.State == session.Failed
+	switch {
+	case st.Unattended.State == session.AutoRefused:
+		return m.toWizard(fmt.Sprintf(i18n.T("The unattended installation did not start: %s"), st.Unattended.Error))
+	case running:
+	case !st.Unattended.Requested && !m.opt.Attach:
+		return m.toWizard("")
+	default:
+		m.scr = scWaiting
+		return m.pollAuto(time.Second)
+	}
+	// Running, failed or done: follow the engine's events (history first).
+	ch, stop, err := m.remote.Subscribe(context.Background())
+	if err != nil {
+		m.err = err.Error()
+		return m.pollAuto(2 * time.Second)
+	}
+	if m.stopSub != nil {
+		m.stopSub()
+	}
+	m.events, m.stopSub, m.err = ch, stop, ""
+	m.scr, m.started = scProgress, time.Now().Add(-time.Duration(st.Seconds)*time.Second)
+	m.progress = kit.Progress{Title: fmt.Sprintf(i18n.T("Unattended installation of Basalt OS on %s"), m.autoDisk), TailSize: 12}
+	m.saved = st.KeySaved
+	cmds := []tea.Cmd{m.waitEvent(), ui.RunningTick()}
+	if st.RecoveryKey {
+		c := m.remote
+		cmds = append(cmds, func() tea.Msg {
+			k, _ := c.RecoveryKey(context.Background())
+			return keyMsg{k}
+		})
+	}
+	return tea.Batch(cmds...)
+}
+
+// toWizard leaves the attached mode for the wizard (the plan prefilled).
+func (m *model) toWizard(note string) tea.Cmd {
+	m.remote, m.be = nil, m.opt.Session
+	if m.stopSub != nil {
+		m.stopSub()
+		m.stopSub = nil
+	}
+	m.scr, m.note = scWaiting, note
+	ss := m.opt.Session
+	return func() tea.Msg { return suggest(ss) }
+}
+
+func (m *model) onMedia(msg mediaMsg) {
+	if m.ack == nil {
+		return
+	}
+	if msg.err != nil {
+		m.ack.Error, m.ack.Note = msg.err.Error(), ""
+		return
+	}
+	if len(msg.list) == 0 {
+		m.ack.Note = ""
+		m.ack.Error = i18n.T("No USB stick with a FAT, exFAT or ext4 file system was found. Plug one in and press ctrl+o again.")
+		return
+	}
+	m.ack.Note = ""
+	m.mediaList = msg.list
+	p := kit.RowPicker{Title: i18n.T("Save a copy of the recovery key"),
+		Body:    i18n.T("The key is written as a text file to the stick you choose. Keep the stick away from this machine."),
+		Columns: []ui.Column{{Title: i18n.T("Device"), Width: 12}, {Title: i18n.T("Size"), Width: 10}, {Title: i18n.T("Label"), Width: 14, Flex: true}, {Title: i18n.T("Model"), Width: 14, Flex: true}}}
+	for _, k := range msg.list {
+		p.Rows = append(p.Rows, kit.Row{Cells: []string{k.Path, probe.HumanSize(k.Size), k.Label + " (" + k.FSType + ")", k.Model}})
+	}
+	m.media = &p
+}
+
 func (m *model) askQuit() {
 	c := ui.Confirm{Title: "Leave the installer?", Body: "Nothing has been written to any disk.", Danger: false}
 	switch m.scr {
@@ -376,6 +671,8 @@ func (m *model) askQuit() {
 			Body: "The running step is stopped and what can be undone is undone (mounts, the open encrypted volume, the temporary key). The disk is already partitioned and will not boot."}
 	case scDone:
 		c.Body = "The system is installed."
+	case scWaiting:
+		c.Body = i18n.T("The unattended installation goes on in the installer engine; this screen only follows it.")
 	}
 	m.quit = &c
 }
@@ -387,6 +684,10 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch k.String() {
 		case "enter":
 			m.go_(scDisk)
+		case "n":
+			if path, err := exec.LookPath("nmtui"); err == nil {
+				return m, tea.ExecProcess(exec.Command(path), func(error) tea.Msg { return netDoneMsg{} })
+			}
 		case "q":
 			m.askQuit()
 		}
@@ -412,7 +713,7 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.goBack()
 				break
 			}
-			if strings.HasPrefix(m.picker.Selected(), "Manual") {
+			if _, manual := layoutLabels(); m.picker.Selected() == manual {
 				p.Layout.Mode = "manual"
 				m.go_(scLayoutSizes)
 			} else {
@@ -460,17 +761,19 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.goBack()
 				break
 			}
+			tpm, recovery, tang, tpmTang, off := encLabels()
+			_ = tpm
 			p.Encryption.Enabled = plan.Bool(true)
 			p.Encryption.Tang = plan.Tang{}
 			switch m.picker.Selected() {
-			case encOff:
+			case off:
 				p.Encryption.Enabled = plan.Bool(false)
 				m.go_(scSystem)
-			case encRecovery:
+			case recovery:
 				p.Encryption.Unlock = "recovery-only"
 				m.go_(scSystem)
-			case encTang, encTPMTang:
-				p.Encryption.Unlock = map[string]string{encTang: "tang", encTPMTang: "tpm2+tang"}[m.picker.Selected()]
+			case tang, tpmTang:
+				p.Encryption.Unlock = map[string]string{tang: "tang", tpmTang: "tpm2+tang"}[m.picker.Selected()]
 				m.go_(scTang)
 			default:
 				p.Encryption.Unlock = "tpm2"
@@ -518,9 +821,21 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			v := m.form.Values()
 			p.Accounts.Root.SSHKeys = splitKeys(v[0])
+			old := p.Accounts.User
 			p.Accounts.User = nil
 			if v[1] != "" {
-				p.Accounts.User = &plan.User{Name: v[1], Password: v[2], SSHKeys: splitKeys(v[4]), Admin: plan.Bool(true)}
+				u := &plan.User{Name: v[1], Password: v[2], SSHKeys: splitKeys(v[4]), Admin: plan.Bool(true)}
+				if old != nil && old.Name == v[1] {
+					// What the form does not show stays as the plan set it.
+					u.FullName, u.Admin = old.FullName, old.Admin
+					if u.Admin == nil {
+						u.Admin = plan.Bool(true)
+					}
+					if v[2] == "" {
+						u.PasswordHash = old.PasswordHash
+					}
+				}
+				p.Accounts.User = u
 			}
 			m.go_(scNetwork)
 		}
@@ -532,7 +847,7 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.goBack()
 				break
 			}
-			if m.picker.Selected() == netStatic {
+			if _, static := netLabels(); m.picker.Selected() == static {
 				p.Network.Mode = "static"
 				m.go_(scStatic)
 			} else {
@@ -608,12 +923,19 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.startInstall()
 		}
 		return m, cmd
-	case scProgress:
+	case scProgress, scWaiting:
 		// Keys do nothing while the installation runs (ctrl+c asks to cancel).
 	case scDone:
+		if m.remote != nil {
+			// The engine service runs the end action itself.
+			if k.String() == "q" {
+				return m, tea.Quit
+			}
+			break
+		}
 		switch k.String() {
 		case "enter":
-			if err := m.opt.Session.Finish(context.Background(), ""); err != nil {
+			if err := m.be.Finish(context.Background(), ""); err != nil {
 				m.err = err.Error()
 				break
 			}
@@ -624,6 +946,9 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case scFailed:
 		switch k.String() {
 		case "enter":
+			if m.remote != nil {
+				return m, m.toWizard(i18n.T("The unattended installation failed; its plan is loaded."))
+			}
 			m.back = nil
 			m.enter(scReview)
 		case "q":
@@ -644,11 +969,35 @@ func (m *model) startInstall() tea.Cmd {
 		return nil
 	}
 	m.scr, m.started = scProgress, time.Now()
+	m.keyMedia, m.pendingKey, m.saved = m.p.Encryption.RecoveryKeyMedia, "", nil
 	m.progress = kit.Progress{Title: "Installing Basalt OS on " + m.preview.Resolved.Disk.Path, TailSize: 12}
 	return tea.Batch(m.waitEvent(), ui.RunningTick())
 }
 
-func (m *model) onEvent(e engine.Event) {
+// showKey opens the recovery key dialog.
+func (m *model) showKey(key string) {
+	if key == "" || m.acked || m.ack != nil {
+		return
+	}
+	first, _, _ := strings.Cut(key, "-")
+	be := m.be
+	a := kit.NewSecretAck(i18n.T("Recovery key: write it down now"),
+		i18n.T("This key opens the disk when the TPM refuses (Secure Boot changed, the disk moved to another machine). It is shown only this once and is not stored on any disk unless you save a copy to a USB stick (ctrl+o). Keep it off this machine."),
+		key, fmt.Sprintf(i18n.T("Type the first group (%d characters) to confirm you stored it:"), len(first)),
+		func(answer string) string {
+			if err := be.AckRecoveryKey(answer); err != nil {
+				return err.Error()
+			}
+			return ""
+		})
+	a.Hints = []ui.KeyHint{{Key: "ctrl+o", Desc: i18n.T("save to a USB stick")}}
+	if len(m.saved) > 0 {
+		a.Note = fmt.Sprintf(i18n.T("A copy is on %s. Keep that stick somewhere safe, then type the first group to confirm."), m.saved[len(m.saved)-1])
+	}
+	m.ack = &a
+}
+
+func (m *model) onEvent(e engine.Event) tea.Cmd {
 	switch e.Type {
 	case engine.EvStarted:
 		m.logPath = e.LogPath
@@ -668,30 +1017,35 @@ func (m *model) onEvent(e engine.Event) {
 			m.progress.Add(e.Text)
 		}
 	case engine.EvSecret:
-		if e.Kind == engine.SecretRecKey {
-			key := e.Secret
-			first, _, _ := strings.Cut(key, "-")
-			a := kit.NewSecretAck("Recovery key: write it down now",
-				"This key opens the disk when the TPM refuses (Secure Boot changed, the disk moved to another machine). It is shown only this once and is not stored anywhere. Keep it off this machine.",
-				key, fmt.Sprintf("Type the first group (%d characters) to confirm you stored it:", len(first)),
-				func(answer string) string {
-					if err := m.opt.Session.AckRecoveryKey(answer); err != nil {
-						return err.Error()
-					}
-					return ""
-				})
-			m.ack = &a
+		if e.Kind == engine.SecretRecKey && e.Secret != "" {
+			if m.keyMedia != "" {
+				// The plan writes the key to removable media when the
+				// installation is done; ask only if that fails.
+				m.pendingKey = e.Secret
+				break
+			}
+			m.showKey(e.Secret)
 		}
+	case session.EvKeySaved:
+		m.saved = append(m.saved, e.Text)
+		m.progress.Add(fmt.Sprintf(i18n.T("recovery key written to %s"), e.Text))
+	case session.EvKeyAcked:
+		m.ack, m.media, m.acked, m.pendingKey = nil, nil, true, ""
 	case engine.EvDone:
 		m.logPath = e.LogPath
 		if e.OK {
 			m.scr = scDone
 			m.progress.Fraction = 1
+			if m.pendingKey != "" && !m.acked {
+				m.showKey(m.pendingKey)
+			}
+			m.pendingKey = ""
 		} else {
 			// A recovery key of a rolled-back volume opens nothing.
-			m.scr, m.result, m.ack = scFailed, e.Error, nil
+			m.scr, m.result, m.ack, m.media, m.pendingKey = scFailed, e.Error, nil, nil, ""
 		}
 	}
+	return nil
 }
 
 func (m *model) View() string {
@@ -700,35 +1054,58 @@ func (m *model) View() string {
 	subtitle := map[screen]string{scWelcome: "welcome", scDisk: "disk", scLayout: "layout", scLayoutSizes: "layout", scSubvols: "layout",
 		scEncryption: "encryption", scTang: "encryption", scSystem: "system", scProfile: "packages", scAccounts: "accounts",
 		scNetwork: "network", scStatic: "network", scRepos: "repositories", scRepoURL: "repositories", scReview: "review",
-		scConfirm: "confirm", scProgress: "installing", scDone: "done", scFailed: "failed"}[m.scr]
+		scConfirm: "confirm", scProgress: "installing", scDone: "done", scFailed: "failed", scWaiting: "unattended"}[m.scr]
 	f := m.facts
-	tpm := "none"
-	if f.TPM2 {
-		tpm = "2.0"
+	var facts []ui.Fact
+	if m.remote == nil {
+		tpm := "none"
+		if f.TPM2 {
+			tpm = "2.0"
+		}
+		machine := f.Virt
+		if machine == "" {
+			machine = "bare metal"
+		}
+		facts = []ui.Fact{
+			{Label: "firmware", Value: map[bool]string{true: "UEFI", false: "BIOS"}[f.UEFI]},
+			{Label: "Secure Boot", Value: f.SecureBoot}, {Label: "TPM", Value: tpm}, {Label: "machine", Value: machine},
+			{Label: "memory", Value: fmt.Sprintf("%d MiB", f.MemoryMiB)}}
+	} else {
+		facts = []ui.Fact{{Label: i18n.T("plan"), Value: ui.Truncate(m.autoPlan, max(w-24, 10))}, {Label: i18n.T("disk"), Value: m.autoDisk}}
 	}
-	machine := f.Virt
-	if machine == "" {
-		machine = "bare metal"
-	}
-	head := ui.Header{Title: "Basalt OS installer " + m.opt.Version, Subtitle: subtitle, Facts: []ui.Fact{
-		{Label: "firmware", Value: map[bool]string{true: "UEFI", false: "BIOS"}[f.UEFI]},
-		{Label: "Secure Boot", Value: f.SecureBoot}, {Label: "TPM", Value: tpm}, {Label: "machine", Value: machine},
-		{Label: "memory", Value: fmt.Sprintf("%d MiB", f.MemoryMiB)}}}.Render(t, w)
-	status := ui.StatusLine(t, ui.StatusError, m.err, statusHint(m.scr), w)
+	head := ui.Header{Title: "Basalt OS installer " + m.opt.Version, Subtitle: subtitle, Facts: facts}.Render(t, w)
+	status := ui.StatusLine(t, ui.StatusError, m.err, m.statusHint(), w)
 	bodyH := max(h-lipgloss.Height(head)-lipgloss.Height(status), 5)
 
 	var body string
 	switch m.scr {
 	case scWelcome:
-		lines := []string{t.Title.Render("Welcome"), ""}
+		width := min(78, max(w-4, 20))
+		lines := []string{t.Title.Render(i18n.T("Welcome")), ""}
 		// One translatable sentence, wrapped for the screen.
-		lines = append(lines, strings.Split(lipgloss.NewStyle().Width(min(78, max(w-4, 20))).Render(
-			i18n.T("This installs Basalt OS, a Fedora remix with server and desktop editions: SELinux enforcing, btrfs with snapshots before every update, LUKS2 disk encryption unlocked by the TPM, and a local assistant that only proposes changes.")), "\n")...)
+		lines = append(lines, wrap(i18n.T("This installs Basalt OS, a Fedora remix with server and desktop editions: SELinux enforcing, btrfs with snapshots before every update, LUKS2 disk encryption unlocked by the TPM, and a local assistant that only proposes changes."), width)...)
 		lines = append(lines, "",
 			"You choose a disk and a few settings, then review the exact list of commands",
-			"before anything is written. Nothing changes until you type the disk name.", "",
-			t.Muted.Render("Needs the network for the Fedora packages. Logs: /var/log/basalt-installer."), "",
-			t.Key.Render("enter")+t.KeyDesc.Render(" start    ")+t.Key.Render("q")+t.KeyDesc.Render(" quit"))
+			"before anything is written. Nothing changes until you type the disk name.", "")
+		if m.note != "" {
+			for _, l := range wrap(m.note, width) {
+				lines = append(lines, t.Accent.Render(l))
+			}
+			lines = append(lines, "")
+		}
+		lines = append(lines, t.Muted.Render("Needs the network for the Fedora packages. Logs: /var/log/basalt-installer."), "")
+		keys := t.Key.Render("enter") + t.KeyDesc.Render(" "+i18n.T("start")+"    ")
+		if _, err := exec.LookPath("nmtui"); err == nil {
+			keys += t.Key.Render("n") + t.KeyDesc.Render(" "+i18n.T("network and Wi-Fi")+"    ")
+		}
+		keys += t.Key.Render("q") + t.KeyDesc.Render(" "+i18n.T("quit"))
+		lines = append(lines, keys)
+		body = center(lines, w, bodyH)
+	case scWaiting:
+		width := min(78, max(w-4, 20))
+		lines := []string{t.Title.Render(i18n.T("Unattended installation")), ""}
+		lines = append(lines, wrap(fmt.Sprintf(i18n.T("The boot line names a plan (%s) and the disk it erases (%s). The installer engine reads the plan and starts on its own; this screen follows it."), m.autoPlan, m.autoDisk), width)...)
+		lines = append(lines, "", t.Muted.Render(ui.RunningMessage(i18n.T("Preparing"), time.Since(m.started))))
 		body = center(lines, w, bodyH)
 	case scDisk:
 		body = m.diskPicker.View(t, w, bodyH)
@@ -746,31 +1123,15 @@ func (m *model) View() string {
 		m.progress.Status = ui.RunningMessage("Installing", time.Since(m.started)) + "   log: " + m.logPath
 		body = m.progress.View(t, w, bodyH, m.opt.ASCII)
 	case scDone:
-		lines := []string{t.OK.Render("Basalt OS is installed on " + m.preview.Resolved.Disk.Path), "",
-			// Wrapped by hand to fit an 80 column serial console, like the welcome text.
-			"Install record on the new system: /var/log/basalt-installer/ (plan, summary,",
-			"log). The first boot takes the first snapshot and the disk unlocks by itself",
-			"while Secure Boot is unchanged. Keep the recovery key off this machine.", ""}
-		if fin := m.p.Finish; fin != "none" {
-			lines = append(lines, t.Key.Render("enter")+t.KeyDesc.Render(" "+fin+" now    ")+t.Key.Render("q")+t.KeyDesc.Render(" stay in the installer"))
-		} else {
-			lines = append(lines, t.Key.Render("q")+t.KeyDesc.Render(" leave"))
-		}
-		body = center(lines, w, bodyH)
+		body = m.doneView(w, bodyH)
 	case scFailed:
-		lines := []string{t.Danger.Render("The installation failed")}
-		for _, l := range ui.Wrap(m.result, min(w-8, 90)) {
-			lines = append(lines, t.Base.Render(l))
-		}
-		lines = append(lines, "", t.Muted.Render("Rolled back what could be undone. Log: "+m.logPath), "")
-		for _, l := range m.progress.Tail {
-			lines = append(lines, t.Muted.Render(ui.Truncate(l, min(w-8, 110))))
-		}
-		lines = append(lines, "", t.Key.Render("enter")+t.KeyDesc.Render(" back to the review    ")+t.Key.Render("q")+t.KeyDesc.Render(" quit"))
-		body = center(lines, w, bodyH)
+		body = m.failedView(w, bodyH)
 	}
 	if m.ack != nil {
 		body = m.ack.View(t, w, bodyH)
+	}
+	if m.media != nil {
+		body = m.media.View(t, w, bodyH)
 	}
 	if m.quit != nil {
 		body = m.quit.View(t, w, bodyH)
@@ -779,18 +1140,101 @@ func (m *model) View() string {
 	return head + "\n" + body + "\n" + status
 }
 
+func (m *model) doneView(w, h int) string {
+	t := m.t
+	width := min(78, max(w-4, 20))
+	disk := m.preview.Resolved.Disk.Path
+	if m.remote != nil {
+		disk = m.autoDisk
+	}
+	lines := []string{t.OK.Render(fmt.Sprintf(i18n.T("Basalt OS is installed on %s"), disk)), ""}
+	lines = append(lines, wrap(i18n.T("Install record on the new system: /var/log/basalt-installer/ (plan, summary, log). The first boot takes the first snapshot, and the disk unlocks by itself while Secure Boot is unchanged. Keep the recovery key off this machine."), width)...)
+	for _, s := range m.saved {
+		lines = append(lines, "")
+		lines = append(lines, wrap(fmt.Sprintf(i18n.T("A copy of the recovery key is on %s."), s), width)...)
+	}
+	lines = append(lines, "")
+	fin := m.p.Finish
+	if m.remote != nil {
+		fin = m.finishAuto
+	}
+	switch {
+	case m.remote != nil && fin != "none" && fin != "":
+		lines = append(lines, t.Muted.Render(i18n.T("The installer engine runs the plan's end action now.")))
+	case m.remote != nil:
+		lines = append(lines, t.Key.Render("q")+t.KeyDesc.Render(" "+i18n.T("leave")))
+	case fin != "none":
+		lines = append(lines, t.Key.Render("enter")+t.KeyDesc.Render(" "+fin+" now    ")+t.Key.Render("q")+t.KeyDesc.Render(" stay in the installer"))
+	default:
+		lines = append(lines, t.Key.Render("q")+t.KeyDesc.Render(" leave"))
+	}
+	return center(lines, w, h)
+}
+
+// failedView fits an 80x24 console: the error on a few lines, where the
+// log is, and as much of the last output as there is room for.
+func (m *model) failedView(w, h int) string {
+	t := m.t
+	width := max(w-4, 20)
+	errLines := wrap(strings.Join(strings.Fields(m.result), " "), width)
+	if len(errLines) > 4 {
+		// The whole message is in the log.
+		errLines = errLines[:4]
+	}
+	lines := []string{t.Danger.Render(i18n.T("The installation failed"))}
+	for _, l := range errLines {
+		lines = append(lines, t.Base.Render(l))
+	}
+	lines = append(lines, "")
+	for _, l := range wrap(fmt.Sprintf(i18n.T("What could be undone was rolled back. Log: %s"), m.logPath), width) {
+		lines = append(lines, t.Muted.Render(l))
+	}
+	keys := t.Key.Render("enter") + t.KeyDesc.Render(" "+i18n.T("back to the review")+"    ") + t.Key.Render("q") + t.KeyDesc.Render(" "+i18n.T("quit"))
+	if m.remote != nil {
+		keys = t.Key.Render("enter") + t.KeyDesc.Render(" "+i18n.T("open the wizard with this plan")+"    ") + t.Key.Render("q") + t.KeyDesc.Render(" "+i18n.T("quit"))
+	}
+	room := h - len(lines) - 3
+	tail := m.progress.Tail
+	if room < 1 {
+		tail = nil
+	} else if len(tail) > room {
+		tail = tail[len(tail)-room:]
+	}
+	if len(tail) > 0 {
+		lines = append(lines, "")
+		for _, l := range tail {
+			lines = append(lines, t.Muted.Render(ui.Truncate(l, width)))
+		}
+	}
+	lines = append(lines, "", keys)
+	return lipgloss.NewStyle().Padding(0, 2).Render(strings.Join(lines, "\n"))
+}
+
+// wrap breaks a text into lines of at most width cells.
+func wrap(s string, width int) []string {
+	return strings.Split(lipgloss.NewStyle().Width(width).Render(s), "\n")
+}
+
 // center places a left-aligned block of lines in the middle of the area.
 func center(lines []string, w, h int) string {
 	block := lipgloss.NewStyle().Align(lipgloss.Left).Render(strings.Join(lines, "\n"))
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, block)
 }
 
-func statusHint(s screen) string {
-	switch s {
-	case scReview:
-		return "Read the plan: every command and file is listed. enter continues to the confirmation."
-	case scProgress:
+func (m *model) statusHint() string {
+	switch {
+	case m.ack != nil:
+		return i18n.T("Write the key down, then type its first group.")
+	case m.scr == scReview:
+		return i18n.T("Every command and file is listed. enter: confirm")
+	case m.scr == scProgress && m.remote != nil:
+		return i18n.T("Unattended installation; ctrl+c cancels it")
+	case m.scr == scProgress:
 		return "ctrl+c cancels and rolls back"
+	case m.scr == scWaiting:
+		return i18n.T("Waiting for the installer engine")
+	case m.scr == scDone || m.scr == scFailed:
+		return ""
 	}
 	return "esc goes back; ctrl+c leaves the installer"
 }
@@ -858,15 +1302,4 @@ func autoProfile(f probe.Facts) string {
 
 // IsSerial reports whether the terminal is a serial line (ttyS*, ttyAMA*,
 // hvc*), where the TUI falls back to ASCII borders.
-func IsSerial() bool {
-	name, err := os.Readlink("/proc/self/fd/0")
-	if err != nil {
-		return false
-	}
-	for _, p := range []string{"/dev/ttyS", "/dev/ttyAMA", "/dev/hvc", "/dev/ttyUSB"} {
-		if strings.HasPrefix(name, p) {
-			return true
-		}
-	}
-	return false
-}
+func IsSerial() bool { return earlyterm.Serial() }

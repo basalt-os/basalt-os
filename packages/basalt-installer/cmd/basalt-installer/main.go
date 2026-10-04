@@ -30,7 +30,11 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/api"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/auditlog"
+	// Before Bubble Tea's initialization: no terminal queries on a serial
+	// console (see the package).
+	_ "github.com/basalt-os/basalt-os/packages/basalt-installer/internal/earlyterm"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/engine"
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/probe"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/session"
@@ -44,7 +48,8 @@ var Version = "dev"
 const usage = `basalt-installer: install Basalt OS on one disk from a declarative plan.
 
 Usage:
-  basalt-installer tui [--demo]                      text wizard (console or serial)
+  basalt-installer tui [--demo] [--attach]           text wizard (console or serial); --attach follows
+                                                     the installation of a running serve
   basalt-installer serve [--socket P] [--allow-user U] [--demo]
                                                      local JSON API for the GUI
   basalt-installer install --plan FILE --confirm DISK [--recovery-key-out FILE] [--no-finish]
@@ -65,6 +70,10 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "tui", "serve", "install":
+		if err := checkDomain(); err != nil {
+			fmt.Fprintln(os.Stderr, "basalt-installer:", err)
+			os.Exit(1)
+		}
 		privateMounts()
 	}
 	var err error
@@ -123,9 +132,17 @@ func newSession(demo bool) (*session.Session, func(), error) {
 		opt.Steps.Root, opt.Steps.Work, opt.Steps.MediaDir = filepath.Join(dir, "sysroot"), filepath.Join(dir, "work"), filepath.Join(dir, "media")
 		opt.Engine = engine.Options{Runner: &demoRunner{root: dir, fake: engine.FakeRunner{Delay: 120 * time.Millisecond,
 			Captured: "fjkldhgr-uvbntckr-hnilbvcj-ldiekgnb-rtfhduje-cvjgnbtr-ikluhdcb-nvrkrfdh",
-			Output: map[string][]string{"dnf --assumeyes": demoDNF()}}},
+			Output:   map[string][]string{"dnf --assumeyes": demoDNF()}}},
 			LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock")}
 		opt.Finisher = func(context.Context, string) error { return nil }
+		// The demo's USB stick is a directory of the demo.
+		opt.KeyWriter = func(ctx context.Context, m probe.KeyMedium, name string, content []byte) (string, error) {
+			m.Mountpoint = filepath.Join(dir, "usb-"+filepath.Base(m.Path))
+			if err := os.MkdirAll(m.Mountpoint, 0o700); err != nil {
+				return "", err
+			}
+			return session.MountAndWrite(ctx, m, name, content)
+		}
 		opt.Cmdline = filepath.Join(dir, "cmdline")
 		_ = os.WriteFile(opt.Cmdline, []byte("basalt.inst.repo=media basalt.inst.hostname=basalt-demo"), 0o644)
 	}
@@ -136,6 +153,8 @@ func cmdTUI(args []string) error {
 	fs := flag.NewFlagSet("tui", flag.ExitOnError)
 	demo := fs.Bool("demo", false, "fake machine and fake commands: nothing is written")
 	ascii := fs.Bool("ascii", false, "ASCII borders and bars (default on serial lines)")
+	attach := fs.Bool("attach", false, "follow the installation that `basalt-installer serve` runs")
+	sock := fs.String("socket", "/run/basalt-installer-api/api.sock", "Unix socket of serve (with --attach)")
 	_ = fs.Parse(args)
 	if !*demo && os.Geteuid() != 0 {
 		return errors.New("run as root (or try --demo)")
@@ -145,7 +164,7 @@ func cmdTUI(args []string) error {
 		return err
 	}
 	defer cleanup()
-	return tui.Run(tui.Options{Session: ss, Version: Version, ASCII: *ascii || tui.IsSerial()})
+	return tui.Run(tui.Options{Session: ss, Version: Version, ASCII: *ascii || tui.IsSerial(), Attach: *attach, Socket: *sock})
 }
 
 func cmdServe(args []string) error {
@@ -182,6 +201,15 @@ func cmdServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	fmt.Fprintf(os.Stderr, "basalt-installer %s: API on %s\n", Version, *sock)
+	if ss.UnattendedRequested() {
+		// basalt.inst.plan with basalt.inst.confirm on the boot line: this
+		// service runs the installation; the text installers follow it.
+		go func() {
+			ss.RunUnattended(ctx, 2*time.Minute)
+			st := ss.Status().Unattended
+			fmt.Fprintf(os.Stderr, "unattended installation: %s %s\n", st.State, st.Error)
+		}()
+	}
 	return srv.Listen(ctx, *sock, gid)
 }
 
@@ -202,8 +230,8 @@ func cmdInstall(args []string) error {
 	if err != nil {
 		return err
 	}
-	if p.Encrypted() && *keyOut == "" {
-		return errors.New("the disk is encrypted: give --recovery-key-out FILE (or - to print it) so the recovery key is not lost")
+	if p.Encrypted() && *keyOut == "" && p.Encryption.RecoveryKeyMedia == "" {
+		return errors.New(i18n.T("the disk is encrypted: give --recovery-key-out FILE (or - to print it), or name a USB stick in the plan (encryption.recovery_key_media), so the recovery key is not lost"))
 	}
 	ss, _, err := newSession(false)
 	if err != nil {
@@ -221,6 +249,7 @@ func cmdInstall(args []string) error {
 	fmt.Fprintf(os.Stderr, "plan %s: %d steps (preview: basalt-installer plan preview %s)\n", pv.Token, len(pv.Steps), *planFile)
 	events, unsub := ss.Subscribe()
 	defer unsub()
+	var keyWhere []string
 	if err := ss.Install(ctx, pv.Token, *confirm); err != nil {
 		return err
 	}
@@ -240,8 +269,15 @@ func cmdInstall(args []string) error {
 			fmt.Fprintf(os.Stderr, "warning: %s\n", e.Text)
 		case engine.EvRollback:
 			fmt.Fprintf(os.Stderr, "rollback: %s%s\n", e.Command, e.Text)
+		case session.EvKeySaved:
+			keyWhere = append(keyWhere, e.Text)
+			fmt.Fprintf(os.Stderr, i18n.T("recovery key written to %s")+"\n", e.Text)
 		case engine.EvSecret:
 			if e.Kind == engine.SecretRecKey {
+				if *keyOut == "" {
+					// The plan's USB stick gets it when the installation is done.
+					continue
+				}
 				if err := writeKey(*keyOut, e.Secret); err != nil {
 					fmt.Fprintf(os.Stderr, "error: could not store the recovery key: %v\n", err)
 					_ = ss.Cancel()
@@ -252,14 +288,26 @@ func cmdInstall(args []string) error {
 					return err
 				}
 				if *keyOut != "-" {
-					fmt.Fprintf(os.Stderr, "recovery key written to %s\n", *keyOut)
+					keyWhere = append(keyWhere, *keyOut)
+					fmt.Fprintf(os.Stderr, i18n.T("recovery key written to %s")+"\n", *keyOut)
+				} else {
+					keyWhere = append(keyWhere, i18n.T("printed on standard output"))
 				}
 			}
 		case engine.EvDone:
 			if !e.OK {
 				return errors.New(e.Error)
 			}
-			fmt.Fprintln(os.Stderr, "installed")
+			st := ss.Status()
+			fmt.Fprint(os.Stderr, installSummary(pv, st, keyWhere, e.LogPath))
+			if k := ss.RecoveryKey(); k != "" {
+				// The plan's USB stick could not take the key: rather than
+				// lose it, print it once.
+				fmt.Fprintln(os.Stderr, i18n.T("The recovery key could not be written to the USB stick the plan names. Store this key now:"))
+				fmt.Printf("RECOVERY KEY: %s\n", k)
+				first, _, _ := strings.Cut(k, "-")
+				_ = ss.AckRecoveryKey(first)
+			}
 			if *noFinish {
 				return nil
 			}
@@ -414,6 +462,7 @@ func template(disk string) string {
 # Check it:    basalt-installer plan validate plan.yaml
 # See it:      basalt-installer plan preview plan.yaml   (the exact commands)
 # Install it:  basalt-installer install --plan plan.yaml --confirm ` + strings.TrimPrefix(disk, "/dev/") + ` --recovery-key-out /path/key.txt
+# Unattended from the boot menu: basalt.inst.plan=URL basalt.inst.confirm=` + strings.TrimPrefix(disk, "/dev/") + `
 apiVersion: basalt-install-plan/v1
 edition: server
 target:
@@ -425,6 +474,7 @@ encryption:
   enabled: true
   unlock: tpm2            # tpm2 | tang | tpm2+tang | recovery-only
   # tang: {url: "http://tang.example:7500", thumbprint: "..."}
+  # recovery_key_media: KEYS    # label of a USB stick that gets a copy of the recovery key
   # store_recovery_key: false   # true leaves it in /root on the installed disk
 profile: auto             # auto (minimal on a VM, standard on bare metal) | minimal | standard
 hostname: basalt

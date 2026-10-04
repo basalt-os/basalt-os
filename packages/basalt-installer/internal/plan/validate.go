@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/probe"
 )
 
@@ -232,12 +233,19 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 		}
 	} else {
 		add(Warning, "encryption.enabled", "the disk is not encrypted (Basalt OS encrypts by default)")
-		if p.Encryption.Passphrase != "" || p.Encryption.StoreRecoveryKey || p.Encryption.Tang != (Tang{}) {
+		if p.Encryption.Passphrase != "" || p.Encryption.StoreRecoveryKey || p.Encryption.RecoveryKeyMedia != "" || p.Encryption.Tang != (Tang{}) {
 			add(Error, "encryption", "encryption settings given but encryption is off")
 		}
 	}
 	if p.Encryption.StoreRecoveryKey {
 		add(Warning, "encryption.store_recovery_key", "the recovery key stays in /root/basalt-recovery-key.txt on the disk it protects: move it off the machine")
+	}
+	if l := p.Encryption.RecoveryKeyMedia; l != "" && p.Encrypted() {
+		if l == probe.InstallerMediaLabel {
+			add(Error, "encryption.recovery_key_media", "%s", i18n.T("the installer media is read-only: name the label of a USB stick or another removable file system"))
+		} else if f != nil && findKeyMedium(f.KeyMedia, l) == nil {
+			add(Error, "encryption.recovery_key_media", i18n.T("no removable file system labeled %q was found (plug in the USB stick that should take the recovery key)"), l)
+		}
 	}
 
 	// --- system ----------------------------------------------------------------------
@@ -468,6 +476,21 @@ func sameSet(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// findKeyMedium returns the removable file system with this label.
+func findKeyMedium(media []probe.KeyMedium, label string) *probe.KeyMedium {
+	for i := range media {
+		if media[i].Label == label {
+			return &media[i]
+		}
+	}
+	return nil
+}
+
+// FindKeyMedium returns the removable file system with this label, or nil.
+func FindKeyMedium(media []probe.KeyMedium, label string) *probe.KeyMedium {
+	return findKeyMedium(media, label)
 }
 
 func contains(list []string, s string) bool {

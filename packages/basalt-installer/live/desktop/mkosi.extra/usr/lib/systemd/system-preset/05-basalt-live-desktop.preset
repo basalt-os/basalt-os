@@ -3,3 +3,5 @@
 enable greetd.service
 disable basalt-installer-ui.service
 enable basalt-live-owners.service
+# A login prompt on tty2 for the live user (no automatic root shell).
+enable getty@.service tty2

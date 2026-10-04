@@ -31,6 +31,27 @@ Item {
     property bool recoveryAcked: false
     property string ackError: ""
     property bool askCancel: false
+    // Copies of the recovery key on removable media.
+    property var keyMedia: []
+    property bool keyMediaShown: false
+    property string keySaveNote: ""
+
+    function findKeyMedia() {
+        root.keySaveNote = qsTr("Looking for USB sticks.");
+        Api.call("key_media", {}, (ok, res) => {
+            root.keyMediaShown = true;
+            if (!ok) { root.keySaveNote = res; return; }
+            root.keyMedia = res || [];
+            root.keySaveNote = root.keyMedia.length ? qsTr("Choose where to write the key:") : qsTr("No USB stick with a FAT, exFAT or ext4 file system was found. Plug one in and look again.");
+        });
+    }
+    function saveKey(dev) {
+        root.keySaveNote = qsTr("Writing the key.");
+        Api.call("save_recovery_key", { device: dev }, (ok, res) => {
+            root.keySaveNote = ok ? qsTr("A copy is on %1. Keep that stick somewhere safe, then type the first group to confirm.").arg(res.saved) : qsTr("The key was not saved: %1").arg(res);
+            if (ok) root.keyMediaShown = false;
+        });
+    }
 
     // Account fields that are not part of the plan until submitted.
     property string pw1: ""
@@ -112,7 +133,7 @@ Item {
         }
         case "progress": root.fraction = e.fraction; break;
         case "secret": if (e.kind === "recovery_key" && e.secret) root.recoveryKey = e.secret; break;
-        case "recovery_key_acknowledged": root.recoveryAcked = true; root.recoveryKey = ""; break;
+        case "recovery_key_acknowledged": root.recoveryAcked = true; root.recoveryKey = ""; root.keyMediaShown = false; root.keySaveNote = ""; break;
         case "done":
             root.running = false;
             root.finished = true;
@@ -317,11 +338,17 @@ Item {
                 Section {
                     title: "Network"
                     Choice { width: pageCol.width; title: "Automatic (DHCP)"; detail: "On every wired interface"; checked: root.plan && root.plan.network.mode === "dhcp"; onPicked: root.edit(p => { p.network = { mode: "dhcp" }; }) }
-                    Choice { width: pageCol.width; title: "Static address"; detail: root.facts ? "Interfaces: " + (root.facts.interfaces || []).join(", ") : ""; checked: root.plan && root.plan.network.mode === "static"; onPicked: root.edit(p => { p.network.mode = "static"; }) }
+                    Choice { width: pageCol.width; title: "Static address"; detail: root.facts ? "Interfaces: " + (root.facts.interfaces || []).join(", ") : ""; checked: root.plan && root.plan.network.mode === "static"
+                        onPicked: root.edit(p => {
+                            p.network.mode = "static";
+                            // The detected interface (the first of several) is filled in.
+                            if (!p.network.interface && root.facts && root.facts.interfaces && root.facts.interfaces.length) p.network.interface = root.facts.interfaces[0];
+                        }) }
                     Row {
                         visible: root.plan && root.plan.network.mode === "static"
                         width: parent.width; spacing: Theme.s3
-                        Field { width: (parent.width - 3 * Theme.s3) / 4; label: "Interface"; onTextChanged: root.edit(p => { p.network.interface = text; }) }
+                        Field { width: (parent.width - 3 * Theme.s3) / 4; label: qsTr("Interface"); text: root.plan && root.plan.network.interface ? root.plan.network.interface : ""
+                            onTextChanged: if (root.plan && text !== (root.plan.network.interface || "")) root.edit(p => { p.network.interface = text; }) }
                         Field { width: (parent.width - 3 * Theme.s3) / 4; label: "Address/prefix"; placeholder: "192.0.2.10/24"; onTextChanged: root.edit(p => { p.network.address = text; }) }
                         Field { width: (parent.width - 3 * Theme.s3) / 4; label: "Gateway"; onTextChanged: root.edit(p => { p.network.gateway = text; }) }
                         Field { width: (parent.width - 3 * Theme.s3) / 4; label: "DNS (spaces)"; onTextChanged: root.edit(p => { p.network.dns = text.split(/\s+/).filter(x => x !== ""); }) }
@@ -496,7 +523,7 @@ Item {
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: Theme.s6 }
                 spacing: Theme.s4
                 Txt { text: "Recovery key: write it down now"; role: "title"; color: Theme.warning; width: parent.width }
-                Txt { width: parent.width; text: "This key opens the disk when the TPM refuses (Secure Boot changed, the disk moved to another machine). It is shown only this once and is stored nowhere. Keep it off this machine." }
+                Txt { width: parent.width; text: qsTr("This key opens the disk when the TPM refuses (Secure Boot changed, the disk moved to another machine). It is shown only this once and is not stored on any disk unless you save a copy. Keep it off this machine.") }
                 Rectangle {
                     width: parent.width; implicitHeight: keyText.implicitHeight + Theme.s4 * 2; radius: Theme.radiusMd; color: Theme.bg
                     Text {
@@ -508,8 +535,20 @@ Item {
                 }
                 Field { id: proof; label: "Type the first group to confirm you stored it"; mono: true; onAccepted: ackBtn.clicked() }
                 Txt { width: parent.width; color: Theme.danger; text: root.ackError; visible: root.ackError !== "" }
-                Btn { id: ackBtn; text: "I stored the recovery key"; variant: "primary"
-                    onClicked: Api.call("ack_recovery_key", { proof: proof.text }, (ok, res) => { root.ackError = ok ? "" : res; }) }
+                Row {
+                    spacing: Theme.s3
+                    Btn { id: ackBtn; text: "I stored the recovery key"; variant: "primary"
+                        onClicked: Api.call("ack_recovery_key", { proof: proof.text }, (ok, res) => { root.ackError = ok ? "" : res; }) }
+                    Btn { text: qsTr("Save a copy to a USB stick"); variant: "outline"; onClicked: root.findKeyMedia() }
+                }
+                Txt { width: parent.width; color: Theme.textMuted; text: root.keySaveNote; visible: root.keySaveNote !== "" }
+                Repeater {
+                    model: root.keyMediaShown ? root.keyMedia : []
+                    Btn {
+                        text: modelData.path + "   " + root.human(modelData.size_bytes) + "   " + (modelData.label || modelData.fstype) + (modelData.model ? "   " + modelData.model : "")
+                        onClicked: root.saveKey(modelData.path)
+                    }
+                }
             }
         }
         Rectangle {

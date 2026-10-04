@@ -3,7 +3,7 @@
 # and a graphical frontend (Quickshell) in the -gui subpackage.
 
 Name:           basalt-installer
-Version:        0.1.3
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
@@ -23,6 +23,7 @@ ExclusiveArch:  x86_64
 # checksum-verified official Go first in PATH; nothing is downloaded here.
 # gcc: a position-independent, dynamically linked binary (Fedora policy).
 BuildRequires:  gcc
+BuildRequires:  gettext
 
 Requires:       util-linux
 Requires:       gdisk
@@ -75,6 +76,11 @@ tar -xzf %{SOURCE1}
 %build
 export GOFLAGS="-mod=vendor -trimpath" GOTOOLCHAIN=local GOPROXY=off
 go build -buildmode=pie -ldflags "-s -w -linkmode=external -X main.Version=%{version}" -o basalt-installer ./cmd/basalt-installer
+for po in po/*.po; do
+    lang=$(basename "$po" .po)
+    mkdir -p locale/$lang/LC_MESSAGES
+    msgfmt --check -o locale/$lang/LC_MESSAGES/%{name}.mo "$po"
+done
 
 %check
 export GOFLAGS="-mod=vendor" GOTOOLCHAIN=local GOPROXY=off
@@ -86,6 +92,9 @@ install -Dpm 0755 basalt-installer %{buildroot}%{_bindir}/basalt-installer
 install -d %{buildroot}%{_datadir}/basalt-installer/gui
 install -pm 0644 gui/*.qml %{buildroot}%{_datadir}/basalt-installer/gui/
 install -Dpm 0644 examples/server.yaml %{buildroot}%{_datadir}/basalt-installer/examples/server.yaml
+for mo in locale/*/LC_MESSAGES/%{name}.mo; do
+    install -Dpm 0644 "$mo" "%{buildroot}%{_datadir}/$mo"
+done
 install -d licenses
 install -pm 0644 LICENSE licenses/LICENSE
 for m in vendor/github.com/tui-tools/tui-kit vendor/github.com/charmbracelet/bubbletea \
@@ -98,11 +107,35 @@ done
 %{_bindir}/basalt-installer
 %dir %{_datadir}/basalt-installer
 %{_datadir}/basalt-installer/examples/
+%{_datadir}/locale/*/LC_MESSAGES/%{name}.mo
 
 %files gui
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- Owner decisions of 2026-10-04: the recovery key is never written to a
+  disk by default; the person can save a copy to a USB stick (text
+  installer ctrl+o, graphical installer button, plan field
+  encryption.recovery_key_media) and still acknowledges it.
+- Unattended installation from the boot menu only when the boot line
+  names the disk to erase (basalt.inst.confirm=DISK with
+  basalt.inst.plan=); the engine service runs it and the text installers
+  follow it (tui --attach). Without the confirmation the plan prefills the
+  wizard, and the welcome screen says which plan was loaded.
+- The engine refuses to start outside install_t on the live image (the
+  systemd debug shell runs in initrc_t) and says how to start it.
+- install --plan ends with a summary: disk, edition, encryption, TPM,
+  accounts, network, repositories, where the key went, time, log.
+- dnf5-plugins in the package set of both editions (dnf config-manager).
+- Text installer: a plan's password hash survives the accounts screen;
+  the static network form is filled with the detected interface; the
+  failure screen, the accounts form and the encryption, review and status
+  texts fit 80x24; no terminal queries on a serial console (no 5 s wait,
+  no swallowed keys); n on the welcome screen opens nmtui (network, Wi-Fi).
+- Translation catalogs (po/, Brazilian Portuguese) for the new and changed
+  texts; a test keeps the template current and the translations complete.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.3-1
 - The welcome text names the server and desktop editions, through a
   translation catalog (gettext in the text installer, qsTr in the

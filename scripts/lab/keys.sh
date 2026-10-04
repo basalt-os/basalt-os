@@ -57,8 +57,8 @@ cat >"$site/site.conf" <<EOF
 # Lab install choices (read by the kickstart's %pre).
 BASALT_ENCRYPT=1
 BASALT_FINISH=poweroff
-BASALT_SHOW_RECOVERY_KEY=0
-BASALT_RECOVERY_KEY_PAUSE=0
+# Lab only: the key stays in /root, scripts/lab/install.sh moves it off the VM.
+BASALT_RECOVERY_KEY=store
 BASALT_REPO_URL=$LAB_REPO_URL
 EOF
 {

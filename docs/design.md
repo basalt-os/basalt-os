@@ -234,8 +234,12 @@ default unlock method (`tpm2`) it has two key slots after the install:
   and which certificates verified the boot loaders. The disk unlocks without
   interaction as long as that is unchanged;
 - a recovery key (`systemd-cryptenroll --recovery-key`), shown on the console
-  at install time and left in `/root/basalt-recovery-key.txt` with a login
-  notice to move it off the machine.
+  at install time; the installation waits until the person types its first
+  group, and offers to write a copy to a USB stick first. It is never
+  written to a disk by default: `basalt.recovery-key=media:LABEL` writes it
+  to a USB stick without asking, and `basalt.recovery-key=store` (labs, CI)
+  leaves it in `/root/basalt-recovery-key.txt` with a login notice to move
+  it off the machine.
 
 `/etc/crypttab` gets `tpm2-device=auto` and no `headless=true`, so when the
 TPM refuses (Secure Boot disabled, keys changed, TPM cleared, disk moved to

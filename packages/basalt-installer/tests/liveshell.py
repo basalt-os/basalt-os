@@ -1,7 +1,9 @@
 """The root shell on the lab live ISO's second serial port.
 
-The lab ISO (tests/install-test.sh iso) starts systemd.debug_shell on
-ttyS1; QEMU exposes it as a Unix socket. The drivers use it to read the
+The lab ISO (tests/install-test.sh iso) boots with basalt.inst.debug-shell,
+which logs root in on ttyS1 (and tty2); QEMU exposes the port as a Unix
+socket. The shell runs in unconfined_t, so the installer started from it
+runs in install_t like the services. The drivers use it to read the
 installer's status and the live system's SELinux state. A release ISO has
 no such shell.
 """

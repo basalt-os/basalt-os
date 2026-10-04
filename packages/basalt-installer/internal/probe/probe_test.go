@@ -48,6 +48,29 @@ func TestParseLsblk(t *testing.T) {
 	}
 }
 
+func TestParseKeyMedia(t *testing.T) {
+	data, err := os.ReadFile("testdata/lsblk.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	media, err := ParseKeyMedia(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the USB stick's FAT partition: not the installer media (sr0,
+	// BASALT-INST), not fixed disks, not a whole disk without a file system.
+	if len(media) != 1 {
+		t.Fatalf("key media: %+v", media)
+	}
+	m := media[0]
+	if m.Path != "/dev/sdc1" || m.Disk != "/dev/sdc" || m.Label != "KEY" || m.FSType != "vfat" || m.Mountpoint != "/run/media/key" || m.Model != "USB Stick" {
+		t.Fatalf("key medium: %+v", m)
+	}
+	if !strings.Contains(m.Describe(), "\"KEY\"") {
+		t.Fatal(m.Describe())
+	}
+}
+
 func TestHumanSize(t *testing.T) {
 	for in, want := range map[int64]string{512: "512 B", 32212254720: "30.0 GiB", 1000204886016: "931.5 GiB"} {
 		if got := HumanSize(in); got != want {

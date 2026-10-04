@@ -48,7 +48,9 @@ func Packages(r Resolved) (install, exclude []string) {
 		"basalt-prompt",
 		"btrfs-progs", "cryptsetup", "tpm2-tss", "tpm2-tools", "mokutil", "keyutils", "efibootmgr", "audit",
 		"policycoreutils-python-utils", "setools-console", "compsize", "glibc-langpack-en", "snapper",
-		"libdnf5-plugin-actions", "selinux-policy-targeted"}
+		// dnf5-plugins: `dnf config-manager` and the other dnf commands
+		// the documentation (obpkg.org) uses.
+		"libdnf5-plugin-actions", "dnf5-plugins", "selinux-policy-targeted"}
 	if p := r.Plan.Assistant; p == nil || *p {
 		install = append(install, "basalt-assistant", "basalt-assistant-selinux")
 	}
@@ -62,6 +64,14 @@ func Packages(r Resolved) (install, exclude []string) {
 		exclude = append(exclude, "linux-firmware", "linux-firmware-whence", "*-firmware", "microcode_ctl", "fwupd*", "flashrom")
 	}
 	return install, exclude
+}
+
+// InstalledRepoURLs returns the base URLs of the Basalt and basalt-tools
+// repositories the installed system uses.
+func InstalledRepoURLs(r Resolved) (basalt, tools string) {
+	g := &gen{r: r}
+	basalt = g.installedRepoURL()
+	return basalt, g.installedToolsURL(basalt)
 }
 
 // Generate returns the steps that carry out the resolved plan, in order.
@@ -315,7 +325,7 @@ func (g *gen) all() error {
 	g.run("Flush writes to disk", "sync")
 	if p.Encrypted() {
 		g.run("Wait for device events to settle", "udevadm", "settle", "--timeout=30")
-		g.run("Show what still uses the file system (diagnostics)", "findmnt", "--source", dev).Optional = true
+		g.run("Show what still uses the file system (diagnostics)", "lsblk", "--output", "NAME,TYPE,MOUNTPOINTS", r.SystemDev).Optional = true
 		s := g.run("Close the encrypted volume", "cryptsetup", "close", r.CryptName())
 		s.Release, s.Retries = "luks-open", 10
 	}

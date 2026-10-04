@@ -27,12 +27,27 @@
 #                             it the first advertisement is trusted and logged
 #       basalt.lockdown=0     leave lockdown=integrity and module.sig_enforce=1 off
 #                             the kernel command line (default: 1, on)
+#       basalt.recovery-key=show|media:LABEL|store
+#                             what happens to the disk recovery key (default: show):
+#                               show         shown on the console; the installation
+#                                            waits until its first group is typed
+#                                            there, and the person can first write
+#                                            a copy to a USB stick (type "save")
+#                               media:LABEL  written to the file system labeled
+#                                            LABEL on a USB stick (checked before the
+#                                            disk is touched), no question asked
+#                               store        left in /root/basalt-recovery-key.txt
+#                                            on the installed disk (labs, CI: the
+#                                            key sits next to what it protects)
+#                             The key is never written to a disk unless one of the
+#                             last two is chosen.
 #   - a site file on the media, /basalt/site.conf (same names, shell syntax:
 #     BASALT_ENCRYPT, BASALT_DISK, BASALT_FINISH, BASALT_PROFILE, BASALT_UNLOCK,
-#     BASALT_TANG_URL, BASALT_TANG_THP, BASALT_LOCKDOWN, BASALT_SHOW_RECOVERY_KEY,
-#     BASALT_RECOVERY_KEY_PAUSE, BASALT_REPO_URL) and /basalt/site.ks (accounts:
-#     sshkey, user, rootpw). Without site.ks the installer asks for a root
-#     password or a user.
+#     BASALT_TANG_URL, BASALT_TANG_THP, BASALT_LOCKDOWN, BASALT_RECOVERY_KEY,
+#     BASALT_REPO_URL) and /basalt/site.ks (accounts: sshkey, user, rootpw).
+#     Without site.ks the installer asks for a root password or a user. The
+#     older BASALT_SHOW_RECOVERY_KEY=0 (key in /root, not shown) still means
+#     BASALT_RECOVERY_KEY=store.
 #
 # Layout (ADR "update model"): GPT, ESP, /boot (ext4), and one btrfs file
 # system, on LUKS2 unless disabled, with these subvolumes:
@@ -91,8 +106,8 @@ media=/run/install/repo/basalt
 BASALT_ENCRYPT=1
 BASALT_DISK=
 BASALT_FINISH=reboot
-BASALT_SHOW_RECOVERY_KEY=1
-BASALT_RECOVERY_KEY_PAUSE=30
+BASALT_RECOVERY_KEY=
+BASALT_SHOW_RECOVERY_KEY=
 BASALT_REPO_URL=
 BASALT_PROFILE=auto
 BASALT_UNLOCK=tpm2
@@ -110,8 +125,33 @@ for arg in $(cat /proc/cmdline); do
     basalt.tang=*) BASALT_TANG_URL="${arg#*=}" ;;
     basalt.tang-thp=*) BASALT_TANG_THP="${arg#*=}" ;;
     basalt.lockdown=*) BASALT_LOCKDOWN="${arg#*=}" ;;
+    basalt.recovery-key=*) BASALT_RECOVERY_KEY="${arg#*=}" ;;
   esac
 done
+# Recovery key: shown and acknowledged unless a site or the boot line
+# explicitly chooses a USB stick or the installed disk.
+if [ -z "$BASALT_RECOVERY_KEY" ]; then
+  BASALT_RECOVERY_KEY=show
+  if [ "$BASALT_SHOW_RECOVERY_KEY" = 0 ]; then
+    BASALT_RECOVERY_KEY=store
+    echo "basalt: BASALT_SHOW_RECOVERY_KEY=0 is deprecated, use BASALT_RECOVERY_KEY=store" >&2
+  fi
+fi
+case "$BASALT_RECOVERY_KEY" in
+  show|store) ;;
+  media:?*)
+    # The USB stick must be there before the disk is touched, and must be
+    # removable media, not a fixed disk.
+    klabel="${BASALT_RECOVERY_KEY#media:}"
+    kdev="$(blkid -L "$klabel" 2>/dev/null || :)"
+    [ -n "$kdev" ] || { echo "basalt.recovery-key=$BASALT_RECOVERY_KEY: no file system labeled $klabel (plug in the USB stick)" >&2; exit 1; }
+    kparent="$(lsblk -ndo PKNAME "$kdev" 2>/dev/null || :)"
+    [ -n "$kparent" ] || kparent="${kdev#/dev/}"
+    if [ "$(lsblk -ndo RM "/dev/$kparent" | tr -d ' ')" != 1 ] && [ "$(lsblk -ndo TRAN "/dev/$kparent" | tr -d ' ')" != usb ]; then
+      echo "basalt.recovery-key=$BASALT_RECOVERY_KEY: $kdev is not on removable media" >&2; exit 1
+    fi ;;
+  *) echo "unknown basalt.recovery-key=$BASALT_RECOVERY_KEY (show, media:LABEL or store)" >&2; exit 1 ;;
+esac
 case "$BASALT_PROFILE" in auto|standard|minimal) ;; *) echo "unknown basalt.profile=$BASALT_PROFILE" >&2; exit 1 ;; esac
 # auto: virtual machines and cloud instances get the minimal profile (no
 # hardware firmware), bare metal the standard one.
@@ -231,6 +271,7 @@ compsize
 glibc-langpack-en
 snapper
 libdnf5-plugin-actions
+dnf5-plugins
 PKG
   if [ "$network_unlock" = 1 ]; then
     printf '%s\n' clevis clevis-luks clevis-dracut
@@ -247,14 +288,13 @@ case "$BASALT_FINISH" in poweroff|reboot|halt) echo "$BASALT_FINISH" >/tmp/basal
 # Choices for %post (no secrets in this file).
 cat >/tmp/basalt-install.env <<EOF
 BASALT_ENCRYPT=$BASALT_ENCRYPT
-BASALT_SHOW_RECOVERY_KEY=$BASALT_SHOW_RECOVERY_KEY
-BASALT_RECOVERY_KEY_PAUSE=$BASALT_RECOVERY_KEY_PAUSE
+BASALT_RECOVERY_KEY=$BASALT_RECOVERY_KEY
 BASALT_REPO_URL=$BASALT_REPO_URL
 BASALT_UNLOCK=$BASALT_UNLOCK
 BASALT_TANG_URL=$BASALT_TANG_URL
 BASALT_TANG_THP=$BASALT_TANG_THP
 EOF
-echo "basalt: disk=$BASALT_DISK encrypt=$BASALT_ENCRYPT unlock=$BASALT_UNLOCK profile=$BASALT_PROFILE ($profile_from) lockdown=$BASALT_LOCKDOWN finish=$BASALT_FINISH"
+echo "basalt: disk=$BASALT_DISK encrypt=$BASALT_ENCRYPT unlock=$BASALT_UNLOCK profile=$BASALT_PROFILE ($profile_from) lockdown=$BASALT_LOCKDOWN finish=$BASALT_FINISH recovery-key=$BASALT_RECOVERY_KEY"
 %end
 
 # Hand the install choices and the temporary LUKS passphrase to the chroot.
@@ -274,6 +314,96 @@ cp /tmp/basalt-pre.log /mnt/sysroot/root/basalt-install-pre.log 2>/dev/null || :
 set -eu
 . /root/.basalt-install.env
 log() { echo "basalt-post: $*"; }
+
+# --- recovery key: a copy on a USB stick, or shown and acknowledged ----------
+# The file a USB stick receives: the key on a line of its own and what it is for.
+basalt_key_file() {
+  printf 'Basalt OS disk recovery key\n\n%s\n\nHost: %s\nDisk: %s\nCreated: %s\n\n' \
+    "$(tr -d '\n' <"$key")" "$(cat /etc/hostname 2>/dev/null || hostname)" "$dev" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'Type this key at the disk unlock prompt when the TPM does not open the disk\n(Secure Boot changed, the disk moved to another machine). Keep it off the\nmachine it protects, and keep this file somewhere safe.\n'
+}
+# Write the key file to the file system on device $1; prints where.
+basalt_key_write() {
+  local d="$1" mnt name
+  mnt="$(mktemp -d /run/basalt-key-media.XXXXXX)"
+  mount -o rw,nosuid,nodev,noexec "$d" "$mnt" || { rmdir "$mnt"; return 1; }
+  name="basalt-recovery-key-$(cat /etc/hostname 2>/dev/null || echo basalt)-$(date -u +%Y%m%d-%H%M%S).txt"
+  if ( umask 0277; basalt_key_file >"$mnt/$name" ) && sync -f "$mnt/$name"; then
+    umount "$mnt"; rmdir "$mnt"; echo "$d: $name"; return 0
+  fi
+  umount "$mnt"; rmdir "$mnt"; return 1
+}
+# basalt.recovery-key=media:LABEL: no question, the stick was checked in %pre.
+basalt_key_to_media() {
+  local d where
+  d="$(blkid -L "$1")" || { log "no file system labeled $1: the recovery key is shown instead"; basalt_key_ack; return; }
+  if where="$(basalt_key_write "$d")"; then
+    log "recovery key written to $where"
+  else
+    log "could not write the recovery key to $d: it is shown instead"; basalt_key_ack
+  fi
+}
+# Removable file systems a copy can go to: "device label fstype size".
+basalt_key_media() {
+  local name fs label size parent prm ptran
+  lsblk -rnpo NAME,FSTYPE,LABEL,SIZE | while read -r name fs label size; do
+    case "$fs" in vfat|exfat|ext4|ext3|ext2|btrfs|xfs) ;; *) continue ;; esac
+    [ "$label" = BASALT-INST ] && continue
+    parent="$(lsblk -ndo PKNAME "$name" 2>/dev/null)"; [ -n "$parent" ] || parent="${name#/dev/}"
+    prm="$(lsblk -ndo RM "/dev/${parent#/dev/}" | tr -d ' ')"; ptran="$(lsblk -ndo TRAN "/dev/${parent#/dev/}" | tr -d ' ')"
+    if [ "$prm" = 1 ] || [ "$ptran" = usb ]; then echo "$name ${label:--} $fs $size"; fi
+  done
+}
+# The default: show the key on every console, then wait on the main console
+# until its first group is typed; "save" writes a copy to a USB stick first.
+basalt_key_ack() {
+  local tty first answer n choice media where c
+  first="$(cut -d- -f1 "$key")"
+  tty="$(awk '$3 ~ /C/ {print $1; exit}' /proc/consoles 2>/dev/null)"
+  [ -n "$tty" ] || tty=console
+  [ "$tty" = tty0 ] && tty=tty1
+  exec 3<>"/dev/$tty" || { log "no console to show the recovery key on"; return 1; }
+  stty -F "/dev/$tty" icrnl echo icanon 2>/dev/null || :
+  for c in /dev/console "/dev/$tty"; do
+    { printf '\n\n================ Basalt OS disk recovery key ================\n\n  %s\n\n' "$(tr -d '\n' <"$key")"
+      printf 'This key opens the disk when the TPM refuses (Secure Boot changed, the\n'
+      printf 'disk moved to another machine). It is shown only this once and is not\n'
+      printf 'stored on any disk. Write it down, or type "save" to put a copy on a USB stick.\n'
+      printf 'The installation goes on when its first group is typed on %s.\n\n' "$tty"; } >"$c" 2>/dev/null || :
+  done
+  while :; do
+    printf 'First group of the recovery key (or "save"): ' >&3
+    IFS= read -r answer <&3 || { sleep 2; continue; }
+    answer="$(printf '%s' "$answer" | tr -d '\r ' | tr 'A-Z' 'a-z')"
+    if [ "$answer" = "$first" ]; then
+      printf 'Recovery key acknowledged.\n\n' >&3
+      log "recovery key shown and acknowledged on $tty"
+      break
+    fi
+    if [ "$answer" = save ]; then
+      media="$(basalt_key_media)"
+      if [ -z "$media" ]; then
+        printf 'No USB stick with a FAT, exFAT or ext4 file system found. Plug one in and type save again.\n' >&3
+        continue
+      fi
+      printf '%s\n' "$media" | awk '{printf "  %d. %s  %s  %s  %s\n", NR, $1, $2, $3, $4}' >&3
+      printf 'Number of the stick to write the key to: ' >&3
+      IFS= read -r choice <&3 || continue
+      choice="$(printf '%s' "$choice" | tr -dc '0-9')"
+      n="$(printf '%s\n' "$media" | sed -n "${choice:-0}p" | cut -d' ' -f1)"
+      [ -n "$n" ] || { printf 'No such stick.\n' >&3; continue; }
+      if where="$(basalt_key_write "$n")"; then
+        printf 'A copy is on %s. Keep that stick somewhere safe.\n' "$where" >&3
+        log "recovery key copy written to $where"
+      else
+        printf 'The key could not be written to %s.\n' "$n" >&3
+      fi
+      continue
+    fi
+    printf 'That is not the first group of the recovery key.\n' >&3
+  done
+  exec 3>&-
+}
 
 # Lab or private repository URL for the installed system (default: the
 # https://obpkg.org URLs basalt-release ships). Its tools repository is
@@ -342,10 +472,16 @@ if [ "$BASALT_ENCRYPT" = 1 ] && [ -s /root/.basalt-luks.pass ]; then
   if [ "$BASALT_UNLOCK" != tpm2 ] && [ -z "${BASALT_TANG_THP:-}" ]; then
     log "WARNING: Tang key trusted on first use; compare its thumbprint (clevis luks list -d $dev)"
   fi
+  # The recovery key lives in memory (a small tmpfs of its own) until it is
+  # shown and acknowledged, written to the USB stick, or, only when asked
+  # for (store), left in /root.
   umask 077
-  systemd-cryptenroll --unlock-key-file="$pass" --recovery-key "$dev" >/root/basalt-recovery-key.txt
-  chmod 0400 /root/basalt-recovery-key.txt
-  log "recovery key enrolled ($(wc -c </root/basalt-recovery-key.txt) bytes, stored in /root/basalt-recovery-key.txt)"
+  keydir=/run/basalt-recovery-key
+  mkdir -p "$keydir"
+  mount -t tmpfs -o size=1m,mode=0700 basalt-key "$keydir"
+  key="$keydir/key"
+  systemd-cryptenroll --unlock-key-file="$pass" --recovery-key "$dev" >"$key"
+  log "recovery key enrolled ($(tr -d '\n' <"$key" | wc -c) characters)"
   # Remove the installer's passphrase by its slot number: a Clevis key slot
   # also counts as a "password" slot for systemd-cryptenroll. Each slot is
   # tested on its own with token plugins off; otherwise cryptsetup unlocks
@@ -376,17 +512,23 @@ if [ "$BASALT_ENCRYPT" = 1 ] && [ -s /root/.basalt-luks.pass ]; then
          print $1, $2, ($3 == "" ? "none" : $3), out }' /etc/crypttab >/etc/crypttab.new
   cat /etc/crypttab.new >/etc/crypttab && rm -f /etc/crypttab.new
 
-  mkdir -p /etc/motd.d
-  cat >/etc/motd.d/basalt-recovery-key <<'EOF'
+  case "$BASALT_RECOVERY_KEY" in
+    store)
+      install -m 0400 "$key" /root/basalt-recovery-key.txt
+      mkdir -p /etc/motd.d
+      cat >/etc/motd.d/basalt-recovery-key <<'EOF'
 Basalt OS: the disk recovery key is in /root/basalt-recovery-key.txt.
 Store it somewhere safe, off this machine, then delete the file and this
 notice (rm /root/basalt-recovery-key.txt /etc/motd.d/basalt-recovery-key).
 EOF
-  if [ "${BASALT_SHOW_RECOVERY_KEY:-1}" = 1 ]; then
-    { echo; echo "Basalt OS disk recovery key (store it safely, it is shown once):";
-      cat /root/basalt-recovery-key.txt; echo; } >/dev/console 2>/dev/null || :
-    sleep "${BASALT_RECOVERY_KEY_PAUSE:-30}"
-  fi
+      log "recovery key left in /root/basalt-recovery-key.txt (basalt.recovery-key=store)" ;;
+    media:*)
+      basalt_key_to_media "${BASALT_RECOVERY_KEY#media:}" ;;
+    *)
+      basalt_key_ack ;;
+  esac
+  shred -u "$key"
+  umount "$keydir" && rmdir "$keydir"
 fi
 rm -f /root/.basalt-install.env
 

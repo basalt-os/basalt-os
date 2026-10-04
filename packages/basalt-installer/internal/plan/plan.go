@@ -88,6 +88,12 @@ type Encryption struct {
 	// /root/basalt-recovery-key.txt on the installed system (what the
 	// kickstart does). Default: false, the key is only shown once.
 	StoreRecoveryKey bool `json:"store_recovery_key,omitempty" yaml:"store_recovery_key,omitempty"`
+	// RecoveryKeyMedia is the label of a file system on removable media (a
+	// USB stick) that receives a copy of the recovery key when the
+	// installation has succeeded. Writing it there counts as the
+	// acknowledgement, so an unattended installation does not wait for a
+	// person. Default: none, the key is only shown.
+	RecoveryKeyMedia string `json:"recovery_key_media,omitempty" yaml:"recovery_key_media,omitempty"`
 }
 
 // Tang is a network unlock server (Clevis).

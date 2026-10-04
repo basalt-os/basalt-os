@@ -2,9 +2,12 @@
 # Which installer owns the screen (tty1): the graphical one when
 # basalt.inst.ui=gui, or when basalt.inst.ui=auto (the default) and a
 # display device exists; otherwise the text one. The graphical unit falls
-# back to the text one when it cannot start (OnFailure=).
+# back to the text one when it cannot start (OnFailure=). An unattended
+# installation (basalt.inst.confirm= on the boot line) shows its progress
+# in the text installer, which follows the engine service.
 ui="$(sed -n 's/.*basalt\.inst\.ui=\([a-z]*\).*/\1/p' /proc/cmdline)"
 ui="${ui:-auto}"
+if grep -q 'basalt\.inst\.confirm=' /proc/cmdline; then ui=tui; fi
 gui=0
 case "$ui" in
   gui) gui=1 ;;

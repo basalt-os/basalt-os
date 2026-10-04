@@ -1,6 +1,6 @@
 # Basalt OS installer
 
-Status: pre-alpha, version 0.1.0. The kickstart installer
+Status: pre-alpha, version 0.2.0. The kickstart installer
 (`kickstart/basalt-server.ks` on the Fedora netinst ISO, see
 [design.md](design.md#installer)) keeps working and remains the path for
 complex storage and fully unattended mass installs.
@@ -13,6 +13,7 @@ executes a declarative install plan, with three ways in.
 | Text wizard (`basalt-installer tui`) | the screen and the serial console | in process |
 | Graphical installer (Quickshell, `basalt-installer-gui`) | the screen, in the cage kiosk compositor | local JSON API (`basalt-installer serve`) on a Unix socket |
 | Plan file (`basalt-installer install --plan`) | scripts, CI | in process |
+| Boot menu (`basalt.inst.plan=` with `basalt.inst.confirm=`) | unattended installs | the engine service; the text installers follow it |
 
 Every frontend produces the same plan, shows the same preview and needs
 the same confirmation; the engine checks everything again.
@@ -30,7 +31,9 @@ the same confirmation; the engine checks everything again.
 - Secrets never reach a log or the preview: passwords travel on a
   command's standard input, the boot passphrase in its environment, and
   both are scrubbed from any output line. The recovery key is captured
-  from `systemd-cryptenroll --recovery-key` and goes to the frontend once.
+  from `systemd-cryptenroll --recovery-key` and goes to the frontend once;
+  it is never written to a disk unless the person or the plan asks for a
+  copy on a USB stick (see [The recovery key](#the-recovery-key)).
 - One installation at a time per machine (a lock), even with the text
   installer on the serial port and the graphical one on the screen.
 - The disk is probed again right before the first write; a disk that got
@@ -62,7 +65,8 @@ has one.
 | `encryption.enabled` | `true` | LUKS2 under btrfs (ADR 0002) |
 | `encryption.unlock` | `tpm2` | `tpm2` (sealed to PCR 7), `tang`, `tpm2+tang`, `recovery-only`; `tpm2_pcrs` must be `[7]` |
 | `encryption.passphrase` | none | an extra key slot typed at boot (desktops) |
-| `encryption.store_recovery_key` | `false` | `true` also leaves the key in `/root/basalt-recovery-key.txt`, as the kickstart does |
+| `encryption.store_recovery_key` | `false` | `true` also leaves the key in `/root/basalt-recovery-key.txt` on the disk it protects (labs; the kickstart's `basalt.recovery-key=store`) |
+| `encryption.recovery_key_media` | none | the label of a file system on a USB stick (removable or USB disk, FAT, exFAT, ext4, btrfs or XFS) that receives a copy of the key when the installation has succeeded; that counts as the acknowledgement, so nobody has to be there. The stick must be plugged in when the plan is validated |
 | `profile` | `auto` | `minimal` on a virtual machine, `standard` on bare metal (same rule as the kickstart) |
 | `hostname`, `timezone`, `locale`, `keymap` | `basalt`, `Etc/UTC`, `en_US.UTF-8`, `us` | |
 | `lockdown` | `true` | `lockdown=integrity module.sig_enforce=1` on the kernel command line |
@@ -108,7 +112,8 @@ lists them all. In order:
 5. Packages: `/dev`, `/proc`, `/sys` and a `/run` for the target, then one
    `dnf --installroot` transaction from the configured repositories:
    `@core`, the kernel, Fedora's signed shim and GRUB, the Basalt
-   packages and the assistant, without `fedora-release` and
+   packages and the assistant, `dnf5-plugins` (so `dnf config-manager`
+   works, as obpkg.org documents), without `fedora-release` and
    `fedora-logos`, and without firmware in the minimal profile. Packages
    and the Basalt repository metadata are signature checked.
 6. System: SELinux enforcing, accounts and SSH keys, the SSH and network
@@ -137,9 +142,27 @@ lists them all. In order:
 
 It is shown once, by the frontend, grouped for reading, and the person
 types its first group to confirm they stored it; only then can the
-installer reboot. Nothing writes it to disk unless the plan asks
-(`store_recovery_key`) or a non-interactive install names a file
-(`--recovery-key-out`). The engine forgets it after the acknowledgement.
+installer reboot. Before that, the person can write a copy to a USB stick:
+ctrl+o in the text installer, "Save a copy to a USB stick" in the
+graphical one. The file (`basalt-recovery-key-<host>-<time>.txt`, the key on
+a line of its own and what it is for) goes to a writable file system on a
+removable or USB disk, never to the installer media; a copy is not an
+acknowledgement, the first group is still typed.
+
+Nothing writes it to a disk otherwise. The exceptions are explicit: the
+plan names a USB stick (`encryption.recovery_key_media`, written when the
+installation has succeeded, and then no acknowledgement is asked), the plan
+asks for the old behavior (`store_recovery_key`, the key next to what it
+protects), or a non-interactive install names a file
+(`--recovery-key-out`, which takes precedence). The engine forgets the key
+after the acknowledgement.
+
+The kickstart installer follows the same rule (`basalt.recovery-key=` in
+`kickstart/basalt-server.ks`): by default the key is shown on the console
+and the installation waits until its first group is typed there, and
+`save` writes a copy to a USB stick first; `media:LABEL` writes it to a
+USB stick without asking (checked before the disk is touched); `store`
+(labs, CI) leaves it in `/root`.
 
 ## The live installer image
 
@@ -168,16 +191,24 @@ installer reboot. Nothing writes it to disk unless the plan asks
   one; the boot menu can force either (`basalt.inst.ui=tui|gui`). The
   graphical installer runs as an unprivileged session user that may only
   talk to the engine's socket (checked with `SO_PEERCRED`); the engine
-  runs as root. tty2 has a root shell, like Anaconda's.
+  runs as root. There is no root shell: root's password is locked and
+  nothing logs it in. For debugging only, `basalt.inst.debug-shell` on the
+  boot line logs root in on tty2 and on the second serial port (off by
+  default, never on a release image's boot menu).
 - The live system runs SELinux enforcing (targeted policy, `enforcing=1`
   on the command line: a live system that cannot load its policy does not
   boot). The engine, `/usr/bin/basalt-installer`, runs in `install_t`,
   the domain Fedora's policy gives Anaconda, bootc and rpm-ostree: it may
   write labels that only the installed system's policy knows (the
   assistant's types, for example), which a domain without `mac_admin`
-  could not. That label is set by a live-only `file_contexts.local`
-  entry; the graphical session (cage and Quickshell) runs as an ordinary
-  unconfined service of the unprivileged session user. The installed
+  could not. There is no Basalt policy module for the installer (owner
+  decision, 2026-10-04): the binary's `install_exec_t` label comes from a
+  live-only `file_contexts.local` entry, and Fedora's policy starts it in
+  `install_t` from a service (`init_t`) or a root login (`unconfined_t`).
+  From any other domain (the systemd debug shell runs in `initrc_t`) the
+  engine refuses to start and says to use `systemd-run --pty --wait`. The
+  graphical session (cage and Quickshell) runs as an ordinary unconfined
+  service of the unprivileged session user. The installed
   system is labeled with its own policy by `setfiles` and is enforcing
   from its first boot. Why not the earlier cpio-as-initramfs design: the
   kernel's initial root file system (`rootfs`) gets one fixed label for
@@ -193,12 +224,57 @@ xorriso around Fedora's signed boot files. Why not mkosi's own boot
 loader and UKI: they would need our own Secure Boot signature (shim
 review, ADR 0008); Fedora's signed chain needs none.
 
+Hardware and the boot menu:
+
+- Network firmware is on the image, so the network cards and Wi-Fi chips
+  whose drivers load firmware work during the installation:
+  `linux-firmware` (Broadcom NetXtreme, Chelsio, Intel ice, Marvell,
+  Mellanox and other wired cards) and the vendor packages
+  `realtek-firmware`, `iwlwifi-mvm-firmware`, `iwlwifi-mld-firmware`,
+  `iwlwifi-dvm-firmware`, `atheros-firmware`, `brcmfmac-firmware`,
+  `mt7xxx-firmware`, `nxpwireless-firmware` and `qed-firmware`, with
+  NetworkManager's Wi-Fi support. `n` on the text installer's welcome
+  screen opens `nmtui` to join a Wi-Fi network or set an address.
+- The GRUB menu uses the firmware console only, for keys and output. UEFI
+  firmware that copies its console to a serial port (OVMF, BMC serial over
+  LAN) showed every line twice when GRUB wrote to the port as well, and
+  garbled typed boot line edits when GRUB read the port as well. Firmware
+  that does not redirect shows the menu on the screen only; the default
+  entry boots after the timeout and the installer runs on the serial
+  console either way.
+
 Kernel command line options of the live image: `basalt.inst.repo=URL`,
 `basalt.inst.installed-repo=URL`, `basalt.inst.hostname=`,
 `basalt.inst.unlock=`, `basalt.inst.finish=`, `basalt.inst.plan=PATH|URL`
-(start from a plan file), `basalt.inst.ui=auto|tui|gui`. A plan at
+(start from a plan file), `basalt.inst.confirm=DISK` (see below),
+`basalt.inst.ui=auto|tui|gui`, `basalt.inst.debug-shell`. A plan at
 `basalt/plans/default.yaml` on the media (`LIVE_PLANS` when building) is
-the starting point; the person still reviews it and types the disk name.
+the starting point when the boot line names none.
+
+### A plan from the boot menu, and unattended installs
+
+`basalt.inst.plan=` alone fills in the wizard: every screen shows the
+plan's values (the welcome screen names the plan, or says why it could not
+be read), and the person still reviews the steps and types the disk name.
+
+An installation without questions needs the boot line to name the disk it
+erases as well, the way a person types it in the wizard:
+
+```
+basalt.inst.plan=http://192.0.2.1/plans/web01.yaml basalt.inst.confirm=vda
+```
+
+Then the engine service (`basalt-installer serve`) loads the plan,
+checks that `basalt.inst.confirm` names the plan's `target.disk`, makes the
+preview and installs; the screen and the serial console show the text
+installer following it (`basalt-installer tui --attach`). When the
+confirmation names another disk, or the plan cannot be read or is not
+valid, nothing is written: the wizard opens with the plan and says why.
+Without `basalt.inst.plan`, the confirmation applies to the plan on the
+media. The recovery key is still shown and must be acknowledged on one of
+the consoles, unless the plan writes it to a USB stick
+(`encryption.recovery_key_media`); then the plan's end action runs by
+itself.
 
 ## The live desktop image
 
@@ -216,7 +292,8 @@ the files in `packages/basalt-installer/live/desktop/`.
   session at boot (greetd's initial session); logging out leads to the
   login screen. The graphical installer is an app of the session
   ("Install Basalt OS"): the engine's API service allows that user. The
-  serial console still gets the text installer, tty2 a root shell.
+  serial console still gets the text installer, tty2 a login prompt (no
+  root shell).
 - It runs from the medium (no `rd.live.ram`, a desktop image is too large
   to copy to memory on modest machines), boots `quiet`, and keeps SELinux
   enforcing and Fedora's signed boot chain like the installer image.
@@ -269,8 +346,9 @@ Nothing is vendored into the repository.
   denials, LUKS slots and PCR 7, snapper around dnf, the rollback dry
   run, the assistant, sealed audit rotation, a reboot. Before the end
   action, the drivers read the live system's own SELinux state through
-  the lab ISO's debug shell (`tests/liveshell.py`): it must be enforcing
-  with 0 AVC denials for the whole installation, or the test fails.
+  the lab ISO's debug shell (`basalt.inst.debug-shell`,
+  `tests/liveshell.py`): it must be enforcing with 0 AVC denials for the
+  whole installation, or the test fails.
 
 ## Translations
 
@@ -282,12 +360,18 @@ in `/usr/share/locale/<lang>/LC_MESSAGES/`, language from `LANGUAGE`,
 with `qsTr`. Each message is a whole sentence, never pieces joined
 together. Logs, the audit log and the plan format stay in English.
 
-Only the welcome text goes through the catalog so far. Still to do:
-every other string of both front ends, plural forms (`Plural-Forms`
-evaluation and an `NT` call), extraction into a `.pot` and compiled
-catalogs in the package, a `QTranslator` loaded by the graphical
-installer, and the engine's step titles and error messages that both
-front ends show.
+`i18n.T` and `i18n.N` (plural forms) take literal English text;
+`po/basalt-installer.pot` is extracted from those calls by a test
+(`go test ./internal/i18n -update` rewrites it), and another test checks
+that every `po/<lang>.po` translates every message with the same
+placeholders. The package compiles the catalogs with `msgfmt`. Brazilian
+Portuguese is the first translation. New and changed texts go through the
+catalog (0.1.3: the welcome text; 0.2.0: the recovery key copy, the
+unattended mode, the summary of `install --plan` and the texts that were
+reworded to fit 80 columns). Still to do: the remaining strings of both
+front ends, a `QTranslator` loaded by the graphical installer, and the
+engine's step titles and the plan's validation messages that both front
+ends show.
 
 ## Complex storage
 
@@ -300,7 +384,8 @@ Basalt parts (encryption enrollment, snapshots setup, services) are in its
 ## Not yet
 
 - Offline installs (Fedora packages on the media).
-- Hardware firmware in the live image (some network cards need it).
+- Joining a Wi-Fi network from the graphical installer (the text
+  installer opens `nmtui`).
 - Several disks, existing partitions, dual boot; BIOS boot.
 - A desktop package set for `edition: desktop`.
 - The tui-tools repository file moves into `basalt-third-party` once it

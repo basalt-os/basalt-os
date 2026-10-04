@@ -14,7 +14,7 @@
 # make repo), lab keys in LAB_DIR (make lab-keys; the SSH key for root on
 # the VM). The lab ISO carries a plan (basalt/plans/default.yaml: the VM's
 # disk, TPM unlock, root's lab SSH key, install from the media, power off)
-# and a root shell on the second serial port (systemd.debug_shell=ttyS1)
+# and a root shell on the second serial port (basalt.inst.debug-shell)
 # that the GUI driver uses to read the installer's status; neither is in a
 # release ISO. Outputs: $BUILD_DIR/installer-test/<mode>/logs (serial
 # consoles, screenshots, summary). Loopback ports: SSH_PORT (2291), REPO_PORT
@@ -45,7 +45,7 @@ repos:
     installed_url: http://10.0.2.2:$REPO_PORT
 finish: poweroff
 EOF
-  LIVE_PLANS="$plans" LIVE_NAME=lab LIVE_TIMEOUT=3 LIVE_CMDLINE="systemd.debug_shell=ttyS1" \
+  LIVE_PLANS="$plans" LIVE_NAME=lab LIVE_TIMEOUT=3 LIVE_CMDLINE="basalt.inst.debug-shell" \
     "$REPO_ROOT/packages/basalt-installer/live/build-live.sh"
   rm -rf "$plans"
 }

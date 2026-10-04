@@ -243,6 +243,20 @@ func (s *Server) handle(ctx context.Context, req Request) (any, error) {
 			return nil, err
 		}
 		return nil, ss.AckRecoveryKey(a.Proof)
+	case "key_media":
+		return ss.KeyMedia(ctx)
+	case "save_recovery_key":
+		a, err := decode[struct {
+			Device string `json:"device"`
+		}](req.Args)
+		if err != nil {
+			return nil, err
+		}
+		where, err := ss.SaveRecoveryKey(ctx, a.Device)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"saved": where}, nil
 	case "finish":
 		a, err := decode[struct {
 			Action string `json:"action"`

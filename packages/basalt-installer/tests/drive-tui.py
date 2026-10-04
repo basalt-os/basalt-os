@@ -147,7 +147,10 @@ def main():
     if a.shell and a.selinux_out:
         Shell(a.shell).selinux_report(a.selinux_out)
     con.wait(r"enter (poweroff|reboot) now", 10, "the end action")
-    con.send(ENTER, 2)
+    try:
+        con.send(ENTER, 2)
+    except SystemExit:
+        pass  # the live system powered off before the pause ended: that is the end action
     print("--> end action confirmed", flush=True)
     return 0
 

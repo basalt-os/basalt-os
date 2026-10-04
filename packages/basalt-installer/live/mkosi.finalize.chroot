@@ -6,8 +6,9 @@
 # the kernel command line.
 set -euo pipefail
 
-# Root logs in only on tty2 (autologin, a rescue shell like Anaconda's);
-# the password stays locked.
+# Root's password stays locked: nobody logs in to the installer image. A
+# root shell exists only with basalt.inst.debug-shell on the boot line
+# (basalt-debug-shell@.service, for debugging).
 passwd -l root >/dev/null
 systemctl set-default multi-user.target
 rm -f /etc/machine-id

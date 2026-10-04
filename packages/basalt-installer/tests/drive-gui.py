@@ -7,7 +7,7 @@ Usage:
 Input goes through QEMU's QMP socket (absolute pointer on a USB tablet,
 keyboard keys); screenshots are QMP screendumps converted to PNG. The
 installer's state is read with `basalt-installer client status` on the lab
-ISO's root shell (systemd.debug_shell on the second serial port), which is
+ISO's root shell (basalt.inst.debug-shell, on the second serial port), which is
 also where the recovery key is read, so the driver can type its first group
 into the GUI like a person who copied it down.
 

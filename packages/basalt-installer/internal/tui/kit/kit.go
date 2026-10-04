@@ -208,8 +208,18 @@ func (f *Form) Update(msg tea.Msg) (tea.Cmd, bool) {
 	return cmd, true
 }
 
-// View renders the form centered in the area.
+// View renders the form centered in the area. When it does not fit the
+// height (a 24 line serial console), the blank lines between the fields go
+// first, so the dialog keeps its frame and its key hints.
 func (f *Form) View(t theme.Theme, width, height int) string {
+	lines := f.lines(t, width, true)
+	if height > 0 && len(lines)+t.Dialog.GetVerticalFrameSize() > height {
+		lines = f.lines(t, width, false)
+	}
+	return box(t, lines, contentWidth(t, width, 86), width, height)
+}
+
+func (f *Form) lines(t theme.Theme, width int, spaced bool) []string {
 	content := contentWidth(t, width, 86)
 	lines := styled(ui.Wrap(f.Title, content), t.Title)
 	if f.Body != "" {
@@ -223,14 +233,23 @@ func (f *Form) View(t theme.Theme, width, height int) string {
 	labelW = min(labelW, content/3)
 	for i := range f.Fields {
 		fl := &f.Fields[i]
-		fl.Input.Width = max(content-labelW-3, 8)
+		if w := max(content-labelW-3, 8); fl.Input.Width != w {
+			// The input scrolls a long value (an SSH key) inside its
+			// width; the window is computed when the cursor moves, so
+			// place the cursor again for the new width.
+			fl.Input.Width = w
+			fl.Input.SetCursor(fl.Input.Position())
+		}
 		marker := "  "
 		label := t.Muted.Render(ui.Pad(fl.Label, labelW))
 		if i == f.Focus {
 			marker = t.Accent.Render("> ")
 			label = t.Accent.Render(ui.Pad(fl.Label, labelW))
 		}
-		lines = append(lines, "", marker+label+" "+fl.Input.View())
+		if spaced || i == 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, marker+label+" "+fl.Input.View())
 		if fl.Help != "" && i == f.Focus {
 			for _, h := range ui.Wrap(fl.Help, max(content-labelW-3, 10)) {
 				lines = append(lines, strings.Repeat(" ", labelW+3)+t.Muted.Render(h))
@@ -244,7 +263,7 @@ func (f *Form) View(t theme.Theme, width, height int) string {
 	lines = append(lines, "")
 	lines = append(lines, hints(t, content, []ui.KeyHint{{Key: "tab/↑↓", Desc: "field"}, {Key: "enter", Desc: "next / done"},
 		{Key: "ctrl+s", Desc: "done"}, {Key: "esc", Desc: "back"}})...)
-	return box(t, lines, content, width, height)
+	return lines
 }
 
 // --- Checklist ------------------------------------------------------------------------------
@@ -628,8 +647,12 @@ type SecretAck struct {
 	Prompt string
 	Input  textinput.Model
 	// Check returns an error message for a wrong answer.
-	Check    func(answer string) string
-	Error    string
+	Check func(answer string) string
+	Error string
+	// Note is a message from the host (a copy of the secret was saved).
+	Note string
+	// Hints are extra keys the host handles (shown after "enter").
+	Hints    []ui.KeyHint
 	Done     bool
 	Accepted bool
 }
@@ -660,9 +683,24 @@ func (s *SecretAck) Update(msg tea.Msg) (tea.Cmd, bool) {
 	return cmd, true
 }
 
-// View renders the dialog centered in the area.
+// View renders the dialog centered in the area. When it does not fit the
+// height, the blank separator lines go first.
 func (s *SecretAck) View(t theme.Theme, width, height int) string {
 	content := contentWidth(t, width, 86)
+	lines := s.lines(t, content)
+	if height > 0 && len(lines)+t.Dialog.GetVerticalFrameSize() > height {
+		var tight []string
+		for _, l := range lines {
+			if l != "" {
+				tight = append(tight, l)
+			}
+		}
+		lines = tight
+	}
+	return box(t, lines, content, width, height)
+}
+
+func (s *SecretAck) lines(t theme.Theme, content int) []string {
 	lines := styled(ui.Wrap(s.Title, content), t.Danger)
 	if s.Body != "" {
 		lines = append(lines, "")
@@ -685,7 +723,10 @@ func (s *SecretAck) View(t theme.Theme, width, height int) string {
 	if s.Error != "" {
 		lines = append(lines, styled(ui.Wrap(s.Error, content), t.Danger)...)
 	}
+	if s.Note != "" {
+		lines = append(lines, styled(ui.Wrap(s.Note, content), t.OK)...)
+	}
 	lines = append(lines, "")
-	lines = append(lines, hints(t, content, []ui.KeyHint{{Key: "enter", Desc: "confirm"}})...)
-	return box(t, lines, content, width, height)
+	lines = append(lines, hints(t, content, append([]ui.KeyHint{{Key: "enter", Desc: "confirm"}}, s.Hints...))...)
+	return lines
 }

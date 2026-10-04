@@ -1,0 +1,30 @@
+[Unit]
+Description=Root shell for debugging the Basalt OS live installer on %I
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/installer.md
+# Off unless the boot line asks for it: basalt.inst.debug-shell (tty2 and
+# the second serial port). A release image has no root shell otherwise.
+ConditionKernelCommandLine=basalt.inst.debug-shell
+After=systemd-user-sessions.service
+Conflicts=getty@%i.service serial-getty@%i.service
+# The device of a second serial port exists only when the hardware has one.
+ConditionPathExists=/dev/%I
+
+[Service]
+# agetty logs root in through login and PAM, so the shell runs in
+# unconfined_t: from there the installer starts in install_t, its SELinux
+# domain (the systemd debug shell, in initrc_t, cannot start it there).
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud 115200,57600,38400,9600 %I $TERM
+Type=idle
+Restart=always
+UtmpIdentifier=%I
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/%I
+TTYReset=yes
+TTYVHangup=yes
+KillMode=process
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -8,6 +8,8 @@ enable basalt-installer-ui.service
 enable basalt-installer-tui@.service ttyS0
 enable NetworkManager.service
 enable systemd-resolved.service
-# tty1 belongs to the installer; tty2 is a root shell (getty with autologin).
-enable getty@.service tty2
+# tty1 belongs to the installer. There is no root shell: the root account
+# is locked, and basalt.inst.debug-shell on the boot line (debugging only)
+# starts one on tty2 and on the second serial port.
+enable basalt-debug-shell@.service tty2 ttyS1
 disable getty@.service
