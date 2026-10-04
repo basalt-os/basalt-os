@@ -26,6 +26,7 @@ Defaults from the first boot:
 | SSH | public keys only; root only with a key |
 | Firewall | firewalld on, zone `basalt`: only SSH allowed in |
 | Assistant | `basalt-assistant` installed, its confined daemon on: it diagnoses events and proposes fixes, never applies them; findings in the journal, desktop notifications where a graphical session exists, an optional signed webhook; hash-chained audit log with sealed rotation. The local language model is optional and not installed |
+| Egress and audit | `basalt-resolver` on: every confined agent session is default-deny in the kernel, with DNS-aware allowlists; `basalt-ledger` on: one append-only, hash-chained audit trail (agents, network decisions, SELinux denials, escalations, rollbacks, logins), plain-English views, exports signed with a TPM-held key, sealed files kept for a year |
 | Packages | minimal profile (no hardware firmware or microcode) on virtual machines, standard on bare metal, picked by the installer |
 | Other | auditd on; LLMNR and multicast DNS off; serial console first (GRUB and kernel) |
 
@@ -48,6 +49,8 @@ packages/basalt-snapshots/   snapper config, dnf5 hook, snapshot boot menu, setu
 packages/basalt-security/    basalt-tpm and basalt-secureboot: TPM2 unlock, MOK and module signing
 packages/basalt-assistant/   the system assistant: basalt CLI, basalt-assistantd, basalt-mcp, basalt-notify, SELinux module (Go)
 packages/basalt-agent/       run AI coding agents (Claude Code, Codex, Gemini, Aider) confined by SELinux: container and native modes, per-session egress allowlist and audit (Go)
+packages/basalt-resolver/    per-session default-deny egress: DNS-aware nftables sets by cgroup, own resolver per session (Go)
+packages/basalt-ledger/      the audit ledger: append-only hash chain, collectors, plain-English views, TPM-signed exports (Go)
 packages/basalt-llm/         optional local model service: llama.cpp server for the CPU, no network, own SELinux domain
 eval/                        shared evaluation suite: labeled decision cases, translator test set, generators
 packages/lab/                test fixtures for the lab (never published)

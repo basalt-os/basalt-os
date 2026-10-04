@@ -9,7 +9,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-agent
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Run AI coding agents confined by SELinux (container or native)
 License:        Apache-2.0
@@ -173,6 +173,14 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_agent.if
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
+- The session proxy may connect to any TCP port: the allowlist and the
+  kernel filter decide where it goes, so "private" entries on non-HTTP
+  ports (a model server on 11434) work through the proxy with direct
+  egress off. basalt_agent_direct_egress stays off by default.
+- Profile template: documents loopback = yes|no (default yes, which also
+  reaches the host's own addresses) and private entries on other ports.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
 - Sessions run in their own systemd slice; with basalt-resolver the slice
   is default-deny in the kernel (nftables by cgroup, DNS-aware sets), the

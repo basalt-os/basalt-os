@@ -3,7 +3,7 @@
 # and a graphical frontend (Quickshell) in the -gui subpackage.
 
 Name:           basalt-installer
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
@@ -103,5 +103,12 @@ done
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.1-1
+- Installs basalt-resolver and basalt-ledger (with their SELinux policy)
+  and enables both services, as the kickstart does.
+- basalt-release now ships the [basalt-tools] repository; the installer no
+  longer writes basalt-tools.repo and turns the repository off with a dnf
+  override only when the plan says repos.tools: false.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: plan engine, preview, rollback, install log, TUI, GUI API

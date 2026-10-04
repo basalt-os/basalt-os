@@ -49,6 +49,21 @@ type ContinueData struct {
 	SealHash string `json:"seal_hash"`
 }
 
+// RetentionData is the data of a retention record: a sealed file the
+// retention policy removed, with enough to tie the rest of the chain to
+// it (its seal record's sequence and hash, which the next file's continue
+// record carries too).
+type RetentionData struct {
+	File      string `json:"file"`
+	FirstSeq  int64  `json:"first_seq"`
+	LastSeq   int64  `json:"last_seq"` // the seal record
+	SealHash  string `json:"seal_hash"`
+	Records   int64  `json:"records"`
+	SHA256    string `json:"sha256"` // the whole file
+	Sealed    string `json:"sealed"` // the seal record's time
+	Retention string `json:"retention"`
+}
+
 // Store is the ledger's chain on disk.
 type Store struct {
 	Path  string // current file, e.g. /var/log/basalt-ledger/ledger.jsonl
@@ -352,6 +367,11 @@ type Summary struct {
 	Records   int64    `json:"records"`
 	Seals     int      `json:"seals"`
 	Truncated bool     `json:"truncated"`
+	// ExpiredUpTo is the last record of the files the retention policy
+	// removed (0: none), vouched for by a retention record in the chain.
+	ExpiredUpTo int64 `json:"expired_up_to,omitempty"`
+	// Retention counts the retention records found in the chain.
+	Retention int `json:"retention_records,omitempty"`
 }
 
 // Verify checks every file: sequence, prev links and hashes inside each
@@ -365,6 +385,8 @@ func Verify(path string) (Summary, error) {
 	}
 	s.Files = files
 	var prev *record.Record
+	var startCont *ContinueData // the first file starts with a continue record
+	retained := map[string]RetentionData{}
 	for i, file := range files {
 		isLast := i == len(files)-1
 		recs, offsets, data, err := readFile(file)
@@ -393,7 +415,14 @@ func Verify(path string) (Summary, error) {
 				return s, fmt.Errorf("%s: continues from %q, but the previous file is %s", name, cd.From, filepath.Base(files[i-1]))
 			}
 		case first.Event == record.EventContinue:
-			s.Truncated = true
+			// Earlier files are gone: fine only if a retention record
+			// (checked at the end) vouches for the file this one continues.
+			var cd ContinueData
+			_ = json.Unmarshal(first.Data, &cd)
+			if first.Prev != cd.SealHash || first.Seq != cd.SealSeq+1 {
+				return s, fmt.Errorf("%s: continue record %d is not chained to the seal it names", name, first.Seq)
+			}
+			startCont = &cd
 		default:
 			if first.Seq != 1 || first.Prev != record.ZeroHash {
 				return s, fmt.Errorf("%s: the chain does not start at record 1", name)
@@ -435,6 +464,13 @@ func Verify(path string) (Summary, error) {
 				}
 				s.Seals++
 			}
+			if r.Event == record.EventRetention && r.Producer == record.Producer {
+				var rd RetentionData
+				if json.Unmarshal(r.Data, &rd) == nil && rd.File != "" {
+					retained[rd.File] = rd
+					s.Retention++
+				}
+			}
 			s.Records++
 			s.LastSeq, s.LastHash = r.Seq, r.Hash
 		}
@@ -444,7 +480,133 @@ func Verify(path string) (Summary, error) {
 		}
 		prev = &last
 	}
+	if startCont != nil {
+		rd, ok := retained[startCont.From]
+		if ok && rd.SealHash == startCont.SealHash && rd.LastSeq == startCont.SealSeq {
+			s.ExpiredUpTo = rd.LastSeq
+		} else {
+			s.Truncated = true
+		}
+	}
 	return s, nil
+}
+
+// Expire removes the sealed files whose seal is older than before,
+// oldest first, and stops at the first newer one. For each file it first
+// appends a retention record (the file, its records, its seal's sequence
+// and hash, the SHA-256 of the whole file), then removes it: the chain
+// keeps the proof of what was removed and why, so Verify still passes
+// and a removal without such a record is still reported. policy is
+// recorded as given (e.g. "365d"). A file whose retention record exists
+// already (a removal interrupted before the unlink) is not recorded twice.
+func (s *Store) Expire(before time.Time, policy string) ([]RetentionData, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	files, err := Files(s.Path)
+	if err != nil {
+		return nil, err
+	}
+	type cand struct {
+		path string
+		rd   RetentionData
+	}
+	var cands []cand
+	for _, file := range files {
+		if file == s.Path {
+			break
+		}
+		rd, sealed, err := sealedFileInfo(file)
+		if err != nil {
+			return nil, err
+		}
+		if !sealed.Before(before) {
+			break
+		}
+		rd.Retention = policy
+		cands = append(cands, cand{file, rd})
+	}
+	if len(cands) == 0 {
+		return nil, nil
+	}
+	recorded := map[string]bool{}
+	if err := scanLocked(files, func(r record.Record) bool {
+		if r.Event == record.EventRetention && r.Producer == record.Producer {
+			var rd RetentionData
+			if json.Unmarshal(r.Data, &rd) == nil {
+				recorded[rd.File+" "+rd.SealHash] = true
+			}
+		}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	var done []RetentionData
+	for _, c := range cands {
+		if !recorded[c.rd.File+" "+c.rd.SealHash] {
+			data, _ := json.Marshal(c.rd)
+			if _, err := s.appendLocked(record.Record{Time: s.Now().UTC().Format(time.RFC3339Nano), Producer: record.Producer,
+				Event: record.EventRetention, Outcome: "ok", Severity: record.Severity(record.EventRetention, "ok"), Data: data}); err != nil {
+				return done, err
+			}
+		}
+		if s.Attrs {
+			if f, err := os.Open(c.path); err == nil {
+				err = setAttr(f, attrImmutable, false)
+				f.Close()
+				if err != nil {
+					return done, fmt.Errorf("clearing the immutable attribute of %s: %w", c.path, err)
+				}
+			}
+		}
+		if err := os.Remove(c.path); err != nil {
+			return done, err
+		}
+		syncDir(filepath.Dir(c.path))
+		done = append(done, c.rd)
+	}
+	return done, nil
+}
+
+// sealedFileInfo reads a sealed file's first record and its seal (the last
+// record) and hashes the whole file.
+func sealedFileInfo(path string) (RetentionData, time.Time, error) {
+	var rd RetentionData
+	f, err := os.Open(path)
+	if err != nil {
+		return rd, time.Time{}, err
+	}
+	defer f.Close()
+	first, err := firstRecord(f)
+	if err != nil {
+		return rd, time.Time{}, err
+	}
+	last, err := lastRecord(f)
+	if err != nil {
+		return rd, time.Time{}, err
+	}
+	if last.Event != record.EventSeal {
+		return rd, time.Time{}, fmt.Errorf("%s: a rotated file that does not end with a seal record", filepath.Base(path))
+	}
+	sealed, err := time.Parse(time.RFC3339Nano, last.Time)
+	if err != nil {
+		return rd, time.Time{}, fmt.Errorf("%s: seal record time: %w", filepath.Base(path), err)
+	}
+	st, err := f.Stat()
+	if err != nil {
+		return rd, time.Time{}, err
+	}
+	sum, err := fileSHA256(f, st.Size())
+	if err != nil {
+		return rd, time.Time{}, err
+	}
+	rd = RetentionData{File: filepath.Base(path), FirstSeq: first.Seq, LastSeq: last.Seq, SealHash: last.Hash,
+		Records: last.Seq - first.Seq + 1, SHA256: sum, Sealed: last.Time}
+	return rd, sealed, nil
+}
+
+// scanLocked calls fn for every record of files, in order.
+func scanLocked(files []string, fn func(record.Record) bool) error {
+	return scanFiles(files, time.Time{}, fn)
 }
 
 // Scan calls fn for every record in chain order, from the files that may
@@ -454,6 +616,10 @@ func Scan(path string, since time.Time, fn func(record.Record) bool) error {
 	if err != nil {
 		return err
 	}
+	return scanFiles(files, since, fn)
+}
+
+func scanFiles(files []string, since time.Time, fn func(record.Record) bool) error {
 	for i, file := range files {
 		if !since.IsZero() && i < len(files)-1 {
 			// A sealed file's name carries its seal time: skip files sealed

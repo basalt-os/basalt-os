@@ -1,4 +1,4 @@
-policy_module(basalt_agent, 0.1.0)
+policy_module(basalt_agent, 0.2.0)
 
 # basalt-agent: AI coding agent command lines (Claude Code, Codex CLI,
 # Gemini CLI, Aider, ...) confined by SELinux. Two domains:
@@ -21,7 +21,8 @@ policy_module(basalt_agent, 0.1.0)
 # capabilities (the helper also sets no_new_privs).
 #
 # basalt_agent_proxy_t, the per-session egress proxy. The only part of a
-# session that resolves names and reaches the network, on HTTP(S) ports.
+# session that resolves names and reaches the network, on the ports its
+# allowlist names.
 
 gen_require(`
 	type unconfined_t;
@@ -140,9 +141,15 @@ userdom_search_user_tmp_dirs(basalt_agent_proxy_t)
 allow basalt_agent_proxy_t basalt_agent_session_t:dir rw_dir_perms;
 manage_sock_files_pattern(basalt_agent_proxy_t, basalt_agent_session_t, basalt_agent_session_t)
 
-# Resolves names and connects to HTTP(S) ports only.
+# Resolves names and connects to any TCP port: which address and port a
+# session may reach is decided by the proxy's allowlist and enforced in
+# the kernel by basalt-resolver (the proxy runs inside the session's
+# filtered cgroup, whose sets hold only addresses that allowed names
+# resolved to, each with the ports its entry allows). So a "private" entry
+# on another port (a model server on 11434) works through the proxy, with
+# direct egress off.
 sysnet_dns_name_resolve(basalt_agent_proxy_t)
-corenet_tcp_connect_http_port(basalt_agent_proxy_t)
+corenet_tcp_connect_all_ports(basalt_agent_proxy_t)
 
 ########################################
 #

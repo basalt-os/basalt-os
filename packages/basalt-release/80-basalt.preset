@@ -25,6 +25,11 @@ enable basalt-assistantd.service
 enable basalt-notify.service
 enable basalt-audit-rotate.timer
 
+# Per-session default-deny egress for confined sessions (basalt-resolver)
+# and the system audit trail (basalt-ledger), installed by default.
+enable basalt-resolver.service
+enable basalt-ledger.service
+
 # Branding: keep the GRUB theme on /boot in sync with the package.
 enable basalt-grub-theme.service
 

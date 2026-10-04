@@ -32,6 +32,10 @@ try ip-literal-direct curl -fsS --noproxy '*' --connect-timeout 5 -o /dev/null h
 try ip-literal-proxy curl -fsS --max-time 10 -o /dev/null https://1.1.1.1
 NPM_IP=$(getent ahostsv4 registry.npmjs.org | awk 'NR==1{print $1}')
 try allowed-ip-other-port curl -fsS --noproxy '*' --connect-timeout 5 -o /dev/null "http://${NPM_IP:-104.16.0.34}:8443/"
+# The proxy may connect to any port now; its allowlist still decides.
+try allowed-name-other-port-proxy curl -fsS --max-time 10 -o /dev/null "http://registry.npmjs.org:8443/"
+try private-name-unlisted-port-proxy curl -fsS --max-time 10 -o /dev/null "http://model.basalt-lab.test:22/"
+try ip-literal-model-port-proxy curl -fsS --max-time 10 -o /dev/null "http://$(getent ahostsv4 model.basalt-lab.test | awk 'NR==1{print $1}'):11434/"
 try lan-gateway-direct curl -fsS --noproxy '*' --connect-timeout 5 -o /dev/null "http://${LAB_GW:-10.86.0.1}:8080/"
 # --- other DNS servers ---
 try direct-dns-udp dnsq udp 8.8.8.8 53 example.com

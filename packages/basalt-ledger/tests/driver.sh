@@ -10,6 +10,8 @@
 #   driver.sh ledger      append-only: rewrite/delete attempts, producer and reader rules
 #   driver.sh events      collectors: escalations, failed auth, snapshot, rollback
 #   driver.sh rotate      sealed rotation, chain verify, tamper on a copy, signed export
+#   driver.sh keys        export key: TPM-held by default, software fallback, tpm required
+#   driver.sh retention   sealed files expire after a retention record; verify passes
 #   driver.sh restart     resolver restart: rules stay (fail closed), session restored
 #   driver.sh avc EPOCH   SELinux denials since EPOCH (seconds)
 #   driver.sh report      today's ledger summary and chain verify
@@ -39,19 +41,22 @@ setup() {
   # basalt-lab.test domain to (not /etc/hosts: names found there never
   # reach a DNS resolver, so they never fill a session set).
   sed -i '/basalt-lab.test/d' /etc/hosts
-  systemctl stop lab-dns lab-http 2>/dev/null
+  systemctl stop lab-dns lab-http lab-http-model 2>/dev/null
   systemd-run --unit=lab-dns --collect python3 $T/labdns.py 127.0.0.77 "$ip" >/dev/null
   install -d /etc/systemd/resolved.conf.d
   printf '[Resolve]\nDNS=127.0.0.77\nDomains=~basalt-lab.test\n' >/etc/systemd/resolved.conf.d/basalt-lab.conf
   systemctl restart systemd-resolved
   install -d /srv/lab-www && echo "LAB-HTTP-OK" >/srv/lab-www/index.html
   systemd-run --unit=lab-http --collect python3 -m http.server 8008 --bind "$ip" --directory /srv/lab-www >/dev/null
+  # 11434 (a local model server's port) has no HTTP port type: the proxy
+  # reaches it only because its domain may connect to any port.
+  systemd-run --unit=lab-http-model --collect python3 -m http.server 11434 --bind "$ip" --directory /srv/lab-www >/dev/null
   install -Dm644 $T/labnet.conf /etc/basalt-agent/profiles/labnet.conf
   install -Dm644 $T/labnet2.conf /etc/basalt-agent/profiles/labnet2.conf
   install -d -m700 -o $U -g $U "$H/src/app" "$H/src/app2"
   setsebool basalt_agent_direct_egress off
   sleep 1
-  echo "setup done: *.basalt-lab.test -> $ip (lab DNS), HTTP on $ip:8008; resolves to $(resolvectl query model.basalt-lab.test 2>/dev/null | head -1)"
+  echo "setup done: *.basalt-lab.test -> $ip (lab DNS), HTTP on $ip:8008 and :11434; resolves to $(resolvectl query model.basalt-lab.test 2>/dev/null | head -1)"
 }
 
 # AVC denials in the journal since an epoch (auditd may not see them all).
@@ -91,6 +96,9 @@ proxyonly() {
   echo "=== NORMAL WORK (native, direct egress off: proxy only) ==="
   local t0; t0=$(date +%s); sleep 1
   session native labnet "-c" "'curl -fsS -o /dev/null https://registry.npmjs.org/left-pad && echo OK proxy; curl -fsS --noproxy \"*\" --connect-timeout 5 -o /dev/null https://registry.npmjs.org/left-pad 2>/dev/null && echo ESCAPED direct || echo DENIED direct-without-boolean'"
+  echo "=== PRIVATE ENTRY ON A NON-HTTP PORT THROUGH THE PROXY (direct egress off) ==="
+  check "boolean basalt_agent_direct_egress is off" sh -c 'getsebool basalt_agent_direct_egress | grep -q "off$"'
+  session native labnet "-c" "'curl -fsS http://model.basalt-lab.test:11434/ | grep -q LAB-HTTP-OK && echo OK private-11434-via-proxy || echo FAIL private-11434-via-proxy; curl -fsS --max-time 10 -o /dev/null http://model.basalt-lab.test:22/ && echo ESCAPED unlisted-port-via-proxy || echo DENIED unlisted-port-via-proxy'"
   sleep 1
   echo "AVC denials (only the denied direct attempt expected): $(avc_count "$t0")"
   avc_show "$t0"
@@ -184,9 +192,71 @@ rotate() {
   refused "a removed oldest file is detected" basalt-ledger verify --path /root/ledger-copy/ledger.jsonl
   echo "=== SIGNED EXPORT ==="
   as_dev "basalt-ledger export --since today -o /tmp/ledger-export.json"
-  check "dev's export verifies against the host key" as_dev "basalt-ledger verify-export /tmp/ledger-export.json --key /var/log/basalt-ledger/keys/export-ed25519.key.pub"
+  check "dev's export verifies against the host key" as_dev "basalt-ledger verify-export /tmp/ledger-export.json --key /var/log/basalt-ledger/keys/export.pub"
   as_dev "sed -i '0,/\"outcome\": \"denied\"/s//\"outcome\": \"allowed\"/' /tmp/ledger-export.json"
-  refused "an edited export is detected" as_dev "basalt-ledger verify-export /tmp/ledger-export.json --key /var/log/basalt-ledger/keys/export-ed25519.key.pub"
+  refused "an edited export is detected" as_dev "basalt-ledger verify-export /tmp/ledger-export.json --key /var/log/basalt-ledger/keys/export.pub"
+}
+
+conf_set() { # conf_set KEY VALUE: set (or with an empty value, remove) a ledger.conf key
+  sed -i "/^$1 *=/d" /etc/basalt-ledger/ledger.conf
+  [[ -n "$2" ]] && echo "$1 = $2" >>/etc/basalt-ledger/ledger.conf
+  return 0
+}
+
+keys() {
+  echo "=== EXPORT KEY: TPM-HELD BY DEFAULT ==="
+  conf_set export_key ""; conf_set tpm_device ""
+  systemctl restart basalt-ledger; sleep 2
+  basalt-ledger status
+  check "the export key is the TPM key" sh -c 'basalt-ledger status | grep -q "(tpm"'
+  # On a fresh install no software key is ever made (one from 0.1.0 would stay, for its exports).
+  check "no software key file was needed" test ! -e /var/log/basalt-ledger/keys/export-ed25519.key
+  as_dev "basalt-ledger export --since today -o /tmp/ledger-export-tpm.json"
+  check "the export is signed by the TPM key" as_dev "python3 -c 'import json,sys; e=json.load(open(\"/tmp/ledger-export-tpm.json\")); sys.exit(0 if e[\"key_kind\"]==\"tpm\" and e[\"key_alg\"]==\"ecdsa-p256-sha256\" else 1)'"
+  check "it verifies against keys/export.pub" as_dev "basalt-ledger verify-export /tmp/ledger-export-tpm.json --key /var/log/basalt-ledger/keys/export.pub"
+  check "export.pub is a standard PEM public key (openssl reads it)" openssl pkey -pubin -in /var/log/basalt-ledger/keys/export.pub -noout
+  as_dev "sed -i '0,/\"outcome\": \"ok\"/s//\"outcome\": \"denied\"/' /tmp/ledger-export-tpm.json"
+  refused "an edited TPM-signed export is detected" as_dev "basalt-ledger verify-export /tmp/ledger-export-tpm.json --key /var/log/basalt-ledger/keys/export.pub"
+  local tpmid; tpmid=$(basalt-ledger status | awk '/export key/{print $3}')
+  check "the same TPM gives the same key after a restart" sh -c "systemctl restart basalt-ledger && sleep 2 && basalt-ledger status | grep -q 'export key: $tpmid (tpm'"
+  echo "=== SOFTWARE FALLBACK (no usable TPM) ==="
+  conf_set tpm_device /dev/basalt-lab-no-tpm
+  systemctl restart basalt-ledger; sleep 2
+  basalt-ledger status
+  check "falls back to the software key, labeled" sh -c 'basalt-ledger status | grep -q "(software, no usable TPM"'
+  as_dev "basalt-ledger export --since 10m -o /tmp/ledger-export-sw.json"
+  check "the software export says so" as_dev "basalt-ledger verify-export /tmp/ledger-export-sw.json --key /var/log/basalt-ledger/keys/export.pub | grep -q 'software key'"
+  check "the TPM key's public file is kept for older exports" test -s "/var/log/basalt-ledger/keys/export-$tpmid.pub"
+  echo "=== TPM REQUIRED, NO TPM: EXPORTS REFUSED ==="
+  conf_set export_key tpm
+  systemctl restart basalt-ledger; sleep 2
+  check "status says there is no key" sh -c 'basalt-ledger status | grep -q "(none, export_key = tpm"'
+  refused "export without the required TPM key" as_dev "basalt-ledger export --since 10m -o /tmp/ledger-export-none.json"
+  conf_set export_key ""; conf_set tpm_device ""
+  systemctl restart basalt-ledger; sleep 2
+  check "back on the TPM key" sh -c "basalt-ledger status | grep -q 'export key: $tpmid (tpm'"
+  check "ledger.start records the key kind" sh -c "basalt-ledger --event ledger.start -n 1 | grep -q 'tpm key $tpmid'"
+}
+
+retention() {
+  echo "=== RETENTION: EXPIRY RECORDED IN THE CHAIN ==="
+  check "rotate (a file to expire)" basalt-ledger rotate
+  local sealed; sealed=$(ls /var/log/basalt-ledger/ledger-*.jsonl | wc -l)
+  conf_set retention 1m
+  sleep 65
+  systemctl restart basalt-ledger; sleep 3
+  check "the sealed files older than 1 minute are gone" sh -c '! ls /var/log/basalt-ledger/ledger-*.jsonl 2>/dev/null | grep -q .'
+  check "ledger has ledger.retention" ledger_has --since 5m --event ledger.retention
+  basalt-ledger --since 5m --event ledger.retention -n 10
+  check "the chain verifies after expiry" basalt-ledger verify
+  basalt-ledger verify
+  check "verify names the expired range" sh -c 'basalt-ledger verify | grep -q "removed by the retention policy"'
+  rm -rf /root/ledger-copy && mkdir /root/ledger-copy && cp /var/log/basalt-ledger/*.jsonl /root/ledger-copy/
+  check "an offline copy verifies too" basalt-ledger verify --path /root/ledger-copy/ledger.jsonl
+  echo "(sealed files before: $sealed)"
+  conf_set retention ""
+  systemctl restart basalt-ledger; sleep 2
+  check "default retention is 365d" sh -c 'basalt-ledger status | grep -q "retention: 365d"'
 }
 
 restart() {
@@ -229,8 +299,8 @@ report() {
 }
 
 case "${1:-}" in
-  setup|egress|proxyonly|container|ledger|events|rotate|restart) "$1" ;;
+  setup|egress|proxyonly|container|ledger|events|rotate|keys|retention|restart) "$1" ;;
   avc) avc "${2:-0}" ;;
   report) report ;;
-  *) echo "usage: driver.sh setup|egress|proxyonly|container|ledger|events|rotate|restart|avc|report"; exit 2 ;;
+  *) echo "usage: driver.sh setup|egress|proxyonly|container|ledger|events|rotate|keys|retention|restart|avc|report"; exit 2 ;;
 esac

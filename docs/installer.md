@@ -75,7 +75,7 @@ has one.
 | `repos.basalt.installed_tools_url` | `https://obpkg.org/basalt-tools` with the default repository, else `<installed_url>/tools` (a lab or mirror) | the basalt-tools repository of the installed system (`/etc/dnf/vars/basalt_tools_url`) |
 | `repos.basalt.gpg_key` | the media's key | the repository key used during the installation; the preview says whether it is the OpenBasalt release key (fingerprint `3601734842BD4E482D19DE4AE4EED5ECA395B302`) or another one, such as a lab key. The installed system trusts the key that `basalt-release` ships |
 | `repos.fedora.baseurl`, `updates_baseurl` | Fedora's mirrors | for a local mirror |
-| `repos.tools` | `true` | `basalt-tools` configured, metadata only (ADR 0005) |
+| `repos.tools` | `true` | the `basalt-tools` repository that `basalt-release` ships stays enabled (metadata only, nothing installed unless chosen, ADR 0005); `false` turns it off with a dnf repository override |
 | `repos.third_party.tui_tools` | `true` | the tui-tools repository with its key; the key's fingerprint is pinned in the installer and checked before it is written |
 | `assistant` | `true` | `basalt-assistant` installed and its daemon enabled |
 | `packages.extra` | none | more packages |
@@ -112,7 +112,8 @@ lists them all. In order:
    `fedora-logos`, and without firmware in the minimal profile. Packages
    and the Basalt repository metadata are signature checked.
 6. System: SELinux enforcing, accounts and SSH keys, the SSH and network
-   drop-ins, the `basalt-tools` and tui-tools repositories, the Basalt
+   drop-ins, the `basalt-tools` URL (and an override when the plan turns
+   it off) and the tui-tools repository, the Basalt
    boot splash, `multi-user.target` as the default target (what Anaconda
    sets for a server; systemd's own default is graphical), the same
    services the kickstart enables.
@@ -255,7 +256,7 @@ Basalt parts (encryption enrollment, snapshots setup, services) are in its
 - Hardware firmware in the live image (some network cards need it).
 - Several disks, existing partitions, dual boot; BIOS boot.
 - A desktop package set for `edition: desktop`.
-- The `basalt-tools` and tui-tools repository files move into
-  `basalt-release` and `basalt-third-party` once those exist; the
-  installer then only enables or disables them.
+- The tui-tools repository file moves into `basalt-third-party` once it
+  exists (`basalt-tools` is already in `basalt-release`); the installer
+  then only enables or disables it.
 - Translations and keyboard layouts in the frontends.

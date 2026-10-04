@@ -7,6 +7,7 @@ ok curl -fsS --noproxy '*' -o /dev/null https://registry.npmjs.org/left-pad
 ok getent hosts registry.npmjs.org
 ok sh -c 'curl -fsS --noproxy "*" http://model.basalt-lab.test:8008/ | grep -q LAB-HTTP-OK'
 ok sh -c 'curl -fsS http://model.basalt-lab.test:8008/ | grep -q LAB-HTTP-OK'
+ok sh -c 'curl -fsS http://model.basalt-lab.test:11434/ | grep -q LAB-HTTP-OK'
 ok sh -c 'cd "$(mktemp -d)" && npm install --no-audit --no-fund --silent left-pad && test -d node_modules/left-pad'
 ok python3 -c 'import socket; socket.create_connection(("registry.npmjs.org", 443), 10).close()'
 ok git status

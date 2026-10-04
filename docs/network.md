@@ -7,15 +7,25 @@ allowed names resolved to, on a port that name allows. The policy is
 enforced in the kernel with nftables, matched on the session's cgroup, and
 filled from DNS answers by `basalt-resolver`, a small resolver owned by
 Basalt. Everything else is dropped and recorded in the audit ledger
-(`docs/ledger.md`).
+(`docs/ledger.md`). Both services are installed and enabled by default on
+Basalt OS servers.
 
 ```
 basalt-resolver sessions          registered sessions (yours; all as root)
 basalt-agent egress PROFILE       a profile's effective allowlist
 basalt-agent egress propose PROFILE add|remove ENTRY [--system]
 basalt-agent grant SESSION host NAME[:PORTS]
-setsebool -P basalt_agent_direct_egress on    let native agents connect without the proxy
+setsebool -P basalt_agent_direct_egress on    let native agents connect without the proxy (default off)
 ```
+
+Defaults:
+
+| Setting | Default | Why |
+|---|---|---|
+| `basalt_agent_direct_egress` | off | native agents reach the network only through the session proxy; SELinux and the kernel filter both hold |
+| profile `loopback` | yes | dev servers the agent starts keep working; it also reaches the host's own addresses (below) |
+| proxy ports | any TCP port | the allowlist names the ports; the kernel sets enforce them |
+| basalt-resolver, basalt-ledger | installed, enabled | every agent session is default-deny and recorded from the first boot |
 
 ## How it works
 
@@ -110,11 +120,27 @@ registry.npmjs.org:443,80
 models.lab.example:11434 private
 ```
 
-A profile can also say `loopback = no` in `[egress]`: by default a session
-may reach unprivileged loopback ports (a dev server it started itself).
-Note that this includes the host's own addresses, which the kernel routes
-over loopback; profiles that do not need local services should turn it
-off.
+### Loopback
+
+By default (`loopback = yes`) a session may reach unprivileged ports
+(1024 and up) on loopback, so a dev server the agent started itself, or
+a test database, works. The kernel routes the host's own addresses over
+loopback too, so this also reaches services that listen on the host's LAN
+address on those ports, not only on 127.0.0.1. Privileged ports (below
+1024) and the resolver ports of other sessions stay closed either way.
+
+A profile that does not need local services should turn it off:
+
+```
+[egress]
+loopback = no
+```
+
+For a shipped profile, copy it to `~/.config/basalt-agent/profiles/` (your
+user) or `/etc/basalt-agent/profiles/` (every user) and change it there; a
+copy with the same name takes precedence. A local service an agent does
+need with loopback off is reached by name, through an allowlist entry
+marked `private`.
 
 ## What the resolver answers
 
@@ -135,7 +161,15 @@ Wildcard entries still let it choose labels under the allowed suffix.
 Native-mode agents (`basalt_agent_t`) reach the network only through the
 session proxy by default: SELinux lets them connect to the proxy port type
 and nothing else. The kernel filter adds default deny for the proxy and
-fail-closed behavior around it.
+fail-closed behavior around it. This is the default because it keeps two
+independent boundaries (SELinux and the kernel sets) in front of every
+connection, and the proxy's per-request records name the host and port.
+
+The proxy itself may connect to any TCP port: what it reaches is decided
+by the allowlist (the entry's ports) and enforced by the session's kernel
+sets, since the proxy runs inside the session's cgroup. A `private` entry
+on a port that is not an HTTP port (a model server on 11434) therefore
+works through the proxy, with direct egress off.
 
 With the SELinux boolean `basalt_agent_direct_egress` on, native agents may
 also resolve names and connect directly (tools that ignore proxy settings,
@@ -215,6 +249,10 @@ the stub resolver, run `nft` (as `iptables_t`), read nflog over netlink,
 look at cgroup directories and connect to the ledger. Users' domains may
 connect to the control socket; agent domains may not.
 
+The session proxy (`basalt_agent_proxy_t`) may resolve names and connect
+to any TCP port; native agents (`basalt_agent_t`) only to the proxy port
+type unless `basalt_agent_direct_egress` is on.
+
 ## Configuration
 
 `/etc/basalt-resolver/resolver.conf`: `upstream` (default the stub,
@@ -232,17 +270,18 @@ work with zero SELinux denials, then escape attempts (unlisted names
 through the proxy and directly, DNS names carrying data, IP literals,
 allowed addresses on other ports, other DNS servers over UDP, TCP and TLS,
 another session's resolver, rebinding, leaving the cgroup, starting a new
-scope, widening the allowlist, writing the ledger), a container session,
-and a resolver restart while a session runs.
+scope, widening the allowlist, writing the ledger, through the proxy an
+allowed name on a port its entry does not list, a private name on another
+port and an IP literal), a `private` entry on port 11434 through the proxy
+with direct egress off, a container session, and a resolver restart while
+a session runs.
 
 ## Limits (today)
 
-- The proxy's SELinux domain connects only to HTTP port types, so a
-  `private` entry on another port (a model server on 11434) works through
-  direct egress, not through the proxy.
 - IPv6 DNS to `::1` is dropped, not redirected (the C library tries
   127.0.0.1 first).
-- `loopback = yes` (the default) also covers the host's own addresses.
+- `loopback = yes` (the default) also covers the host's own addresses
+  (see Loopback).
 - One nflog group for all sessions; a flood is rate limited (10 records
   per second per session) and counted.
 - Per-process accounting inside a session (which program opened what) is

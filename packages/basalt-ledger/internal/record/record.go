@@ -27,6 +27,7 @@ const (
 	EventRefused     = "ledger.refused"
 	EventRateLimited = "ledger.ratelimited"
 	EventStart       = "ledger.start"
+	EventRetention   = "ledger.retention"
 )
 
 // Severities, in increasing order.
@@ -146,7 +147,7 @@ func Severity(event, outcome string) string {
 	case strings.HasPrefix(event, "snapshot.rollback"), strings.HasPrefix(event, "polkit."),
 		strings.HasPrefix(event, "escalation."), strings.HasSuffix(event, ".grant"), event == "grant.apply",
 		event == "agent.grant.helper", event == "assistant.apply", event == "assistant.confirm",
-		event == EventSeal, event == EventStart:
+		event == EventSeal, event == EventStart, event == EventRetention:
 		return "notice"
 	}
 	return "info"

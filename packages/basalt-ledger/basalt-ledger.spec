@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-ledger
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Append-only, hash-chained system audit service
 License:        Apache-2.0
@@ -35,7 +35,9 @@ Producers can only append; nobody can change history through the service,
 and edits to the files are detected. Users read their own records in plain
 English (basalt-ledger, basalt-ledger summary) with filters by agent,
 project, app, severity and time; administrators read everything; signed
-exports serve incident reports. A JSON API on the same socket serves the
+exports serve incident reports, signed with a key the host's TPM holds
+(a software key when there is no TPM). Sealed files are kept for a year
+by default; each removal is recorded in the chain first. A JSON API on the same socket serves the
 desktop shell's timeline.
 
 %package selinux
@@ -120,6 +122,16 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_ledger.if
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- Exports are signed with an ECDSA P-256 key held by the TPM (a primary
+  key under the owner hierarchy, never stored on disk); without a TPM the
+  per-host Ed25519 key is used and labeled "software". export_key = auto,
+  tpm or software; the current public key in keys/export.pub, every key
+  used in keys/export-<id>.pub. Exports from 0.1.0 still verify.
+- Retention: sealed files older than retention (default 365d) are
+  removed, each after a ledger.retention record, so verify still passes;
+  removals without such a record are still reported.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: socket producers with SELinux and SO_PEERCRED rules,
   hash chain with sealed rotation, journal and snapper collectors, plain

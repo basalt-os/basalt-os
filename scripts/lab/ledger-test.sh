@@ -7,7 +7,7 @@
 #
 #   scripts/lab/ledger-test.sh [PHASE...]   default: all phases
 #
-# Phases: setup egress proxyonly container ledger events rotate restart avc report.
+# Phases: setup egress proxyonly container ledger events rotate keys retention restart avc report.
 # The VM (VM_NAME/VM_HOST from .env) must have basalt-agent, basalt-resolver
 # and basalt-ledger installed and basalt-agent's lab setup done
 # (scripts/lab/agent-test.sh setup).
@@ -17,7 +17,7 @@ L="$REPO_ROOT/scripts/lab"
 vm() { "$L/vm.sh" ssh "$@"; }
 
 phases=("$@")
-[[ ${#phases[@]} -eq 0 ]] && phases=(setup egress proxyonly container ledger events rotate restart avc report)
+[[ ${#phases[@]} -eq 0 ]] && phases=(setup egress proxyonly container ledger events rotate keys retention restart avc report)
 
 log "syncing the test harness to the VM"
 tar -C "$REPO_ROOT/packages/basalt-ledger" -czf - tests |

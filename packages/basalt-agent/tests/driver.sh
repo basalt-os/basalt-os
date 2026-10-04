@@ -18,6 +18,8 @@ setup() {
   id $U >/dev/null 2>&1 || useradd -m $U
   id other >/dev/null 2>&1 || useradd -m other
   loginctl enable-linger $U other >/dev/null 2>&1
+  # On a fresh VM the user managers start with the linger: wait for dev's bus.
+  for _ in $(seq 30); do [ -S /run/user/1000/bus ] && break; sleep 1; done
   # Decoy credentials in the user's real home (never given to an agent).
   install -d -m700 "$H/.ssh" "$H/.gnupg/private-keys-v1.d" "$H/.local/share/keyrings" \
     "$H/.mozilla/firefox/lab.default" "$H/src/other" "$H/src/victim"
@@ -29,6 +31,8 @@ setup() {
   echo "LAB-FAKE-VICTIM-PROJ" >"$H/src/victim/secret.txt"
   echo "LAB-FAKE-OTHER-USER"  >/home/other/secret.txt; chmod 600 /home/other/secret.txt; chown other: /home/other/secret.txt
   chown -R $U: "$H/.ssh" "$H/.gnupg" "$H/.local/share/keyrings" "$H/.mozilla" "$H/src"
+  # install -d made the parents as root on a fresh home; give them back.
+  chown $U: "$H/.local" "$H/.local/share"
   # The attacker (labshell) must carry no secret of its own, so a match of
   # the victim marker can only mean a real cross-session read.
   rm -f "$H/.config/basalt-agent/secrets/labshell.env"

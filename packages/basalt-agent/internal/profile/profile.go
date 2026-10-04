@@ -11,7 +11,8 @@
 //	             include = SET (repeatable): a shared list from the egress
 //	             directory (SET.list),
 //	             loopback = yes|no (the session may reach unprivileged
-//	             loopback ports, e.g. a dev server it started), default yes
+//	             loopback ports, e.g. a dev server it started, which also
+//	             covers the host's own addresses), default yes
 //
 // Profiles are looked up in the user's directory first
 // (~/.config/basalt-agent/profiles), then in /usr/share/basalt-agent/profiles.

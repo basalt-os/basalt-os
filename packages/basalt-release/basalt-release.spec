@@ -21,7 +21,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -233,6 +233,15 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44-7
+- Preset: enable basalt-resolver.service (per-session default-deny
+  egress) and basalt-ledger.service (the audit ledger), installed by
+  default on servers (also in their own presets).
+- New [basalt-tools] repository (ADR 0005): optional OpenBasalt tools
+  such as Samba Conductor at $basalt_tools_url (default
+  https://obpkg.org/basalt-tools), enabled, signature checked like
+  [basalt], skip_if_unavailable so an outage never breaks dnf.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44-6
 - Repositories on https://obpkg.org: basalt_repo_url is
   https://obpkg.org/basalt; new dnf variables basalt_tools_url

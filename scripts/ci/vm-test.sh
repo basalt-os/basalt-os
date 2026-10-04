@@ -360,6 +360,28 @@ else
   result FAIL "audit sealed rotation" "see audit-rotate.txt"
 fi
 
+# Per-session egress and the audit ledger: installed and enabled by the
+# kickstart, each in its own SELinux domain; the ledger signs exports with
+# its TPM-held key (the boot test has an emulated TPM) and answers through
+# the `basalt ledger` spelling (the basalt command's basalt-<name> fallback).
+if vm 'rpm -q basalt-resolver basalt-resolver-selinux basalt-ledger basalt-ledger-selinux' >"$LOGS/rpm-ledger.txt" 2>&1; then
+  result PASS "resolver and ledger installed" "$(paste -sd' ' "$LOGS/rpm-ledger.txt")"
+else
+  result FAIL "resolver and ledger installed" "$(paste -sd' ' "$LOGS/rpm-ledger.txt")"
+fi
+st="$(vm 'printf "%s %s %s %s" "$(systemctl is-enabled basalt-resolver)" "$(systemctl is-active basalt-resolver)" "$(systemctl is-enabled basalt-ledger)" "$(systemctl is-active basalt-ledger)"' || true)"
+[[ "$st" == "enabled active enabled active" ]] && result PASS "resolver and ledger enabled" "both enabled, active" ||
+  result FAIL "resolver and ledger enabled" "basalt-resolver / basalt-ledger: $st"
+dom="$(vm 'ps -eo label,comm | awk "/basalt-(resolver|ledgerd)/ {print \$1}" | sort -u | paste -sd" "' || true)"
+[[ "$dom" == *:basalt_ledger_t:* && "$dom" == *:basalt_resolver_t:* ]] && result PASS "resolver and ledger confined" "$dom" ||
+  result FAIL "resolver and ledger confined" "${dom:-not running}"
+if vm 'basalt ledger status && basalt-ledger verify && basalt-ledger export -n 20 -o /root/ledger-ci-export.json && basalt-ledger verify-export /root/ledger-ci-export.json --key /var/log/basalt-ledger/keys/export.pub' >"$LOGS/ledger.txt" 2>&1 &&
+   grep -q '(tpm' "$LOGS/ledger.txt"; then
+  result PASS "ledger: TPM-signed export" "$(grep -m1 'export key' "$LOGS/ledger.txt"); $(grep -m1 'ledger chain intact' "$LOGS/ledger.txt")"
+else
+  result FAIL "ledger: TPM-signed export" "see ledger.txt"
+fi
+
 # --- 4. reboot ------------------------------------------------------------------------
 
 boot_id="$(vm 'cat /proc/sys/kernel/random/boot_id')"
@@ -382,7 +404,7 @@ if [[ $rebooted == 1 ]]; then
   else
     result FAIL "package persists" "$TEST_PACKAGE missing after reboot"
   fi
-  if out="$(vm 'systemctl is-active basalt-assistantd && basalt audit verify' 2>&1)"; then
+  if out="$(vm 'systemctl is-active basalt-assistantd basalt-resolver basalt-ledger && basalt audit verify && basalt-ledger verify' 2>&1)"; then
     result PASS "boot 2: assistant and audit" "$(tail -1 <<<"$out")"
   else
     result FAIL "boot 2: assistant and audit" "$(paste -sd' ' <<<"$out")"

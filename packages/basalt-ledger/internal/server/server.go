@@ -476,13 +476,21 @@ type Status struct {
 	Size      int64  `json:"size"`
 	KeyID     string `json:"key_id"`
 	KeyKind   string `json:"key_kind"`
+	KeyAlg    string `json:"key_alg"`
+	KeyNote   string `json:"key_note,omitempty"` // why the software key is used, or why there is none
+	Retention string `json:"retention"`
 	PeerUID   int    `json:"peer_uid"`
 	SeesAll   bool   `json:"sees_all"`
 	PublicKey string `json:"public_key_file,omitempty"`
 }
 
-// PublicKeyFile is reported by status (set by the daemon).
-var PublicKeyFile string
+// Reported by status (set by the daemon): the public key file, why the
+// software key is used (or none), and the retention policy.
+var (
+	PublicKeyFile string
+	KeyNote       string
+	Retention     = "forever"
+)
 
 // Handle answers one request from p.
 func (l *Ledger) Handle(p Peer, req Request) Reply {
@@ -520,9 +528,10 @@ func (l *Ledger) Handle(p Peer, req Request) Reply {
 			return Reply{Error: "chain broken: " + err.Error(), Verify: &s}
 		}
 		if s.Truncated {
-			// The ledger never removes its own files: missing oldest files
-			// were removed by someone else.
-			return Reply{Error: fmt.Sprintf("chain starts at record %d: the oldest ledger files were removed", s.FirstSeq), Verify: &s}
+			// The ledger removes its own files only through the retention
+			// policy, after a retention record: missing oldest files without
+			// one were removed by someone else.
+			return Reply{Error: fmt.Sprintf("chain starts at record %d: the oldest ledger files were removed without a retention record", s.FirstSeq), Verify: &s}
 		}
 		return Reply{OK: true, Verify: &s}
 	case "export":
@@ -534,9 +543,11 @@ func (l *Ledger) Handle(p Peer, req Request) Reply {
 	case "status":
 		h := l.st.Head()
 		s := &Status{HeadSeq: h.Seq, HeadHash: h.Hash, Path: l.st.Path, Size: l.st.Size(), PeerUID: p.UID, SeesAll: p.UID == 0,
-			PublicKey: PublicKeyFile}
+			PublicKey: PublicKeyFile, KeyNote: KeyNote, Retention: Retention}
 		if l.key != nil {
-			s.KeyID, s.KeyKind = sign.ID(l.key.Public), l.key.Kind
+			s.KeyID, s.KeyKind, s.KeyAlg = sign.ID(l.key.Public), l.key.Kind, l.key.Alg
+		} else {
+			s.KeyKind = "none"
 		}
 		return Reply{OK: true, Status: s}
 	case "rotate":

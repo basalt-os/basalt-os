@@ -32,7 +32,7 @@ const TUIToolsBaseURL = "https://pkgs.tui.tools/rpm/$basearch"
 
 // Services enabled on the installed system (the same list as the kickstart).
 var baseServices = []string{"sshd", "firewalld", "auditd", "basalt-snapshot-boot", "basalt-initial-snapshot",
-	"basalt-grub-theme", "basalt-module-keys"}
+	"basalt-grub-theme", "basalt-module-keys", "basalt-resolver", "basalt-ledger"}
 var assistantServices = []string{"basalt-assistantd", "basalt-notify", "basalt-audit-rotate.timer"}
 
 // Packages returns what dnf installs and excludes for the resolved plan
@@ -42,6 +42,8 @@ func Packages(r Resolved) (install, exclude []string) {
 	install = []string{"@core", "kernel", "shim-x64", "grub2-efi-x64", "grub2-tools", "grubby",
 		"basalt-release", "basalt-release-server", "basalt-logos", "basalt-logos-httpd", "basalt-grub2-theme",
 		"plymouth-theme-basalt", "basalt-snapshots", "basalt-security",
+		// Per-session default-deny egress and the audit ledger (docs/network.md, docs/ledger.md).
+		"basalt-resolver", "basalt-resolver-selinux", "basalt-ledger", "basalt-ledger-selinux",
 		"btrfs-progs", "cryptsetup", "tpm2-tss", "tpm2-tools", "mokutil", "keyutils", "efibootmgr", "audit",
 		"policycoreutils-python-utils", "setools-console", "compsize", "glibc-langpack-en", "snapper",
 		"libdnf5-plugin-actions", "selinux-policy-targeted"}
@@ -430,27 +432,18 @@ func (g *gen) accounts() {
 
 func (g *gen) repos() error {
 	p := g.r.Plan
-	enabled := func(b *bool) string {
-		if b == nil || *b {
-			return "1"
-		}
-		return "0"
-	}
-	g.write("Configure the basalt-tools repository (ADR 0005)", g.t("/etc/yum.repos.d/basalt-tools.repo"), 0o644,
-		`# OpenBasalt tools (Samba Conductor, future tools): metadata only, nothing is
-# installed unless chosen. Disable with: dnf config-manager setopt basalt-tools.enabled=0
-# Written by the Basalt OS installer. The base URL comes from
-# /etc/dnf/vars/basalt_tools_url (default `+plan.DefaultToolsURL+`).
+	// basalt-release ships [basalt-tools] (enabled, ADR 0005); its URL is
+	// the basalt_tools_url variable written above. A plan without tools
+	// turns it off with a dnf repository override, as
+	// `dnf config-manager setopt basalt-tools.enabled=0` would.
+	if p.Repos.Tools != nil && !*p.Repos.Tools {
+		g.write("Turn the basalt-tools repository off (ADR 0005)", g.t("/etc/dnf/repos.override.d/80-basalt-installer.repo"), 0o644,
+			`# Written by the Basalt OS installer: the plan leaves basalt-tools off.
+# Turn it on with: dnf config-manager setopt basalt-tools.enabled=1
 [basalt-tools]
-name=Basalt OS tools $releasever - $basearch
-baseurl=$basalt_tools_url/$releasever/$basearch/
-enabled=`+enabled(p.Repos.Tools)+`
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-basalt
-skip_if_unavailable=True
-metadata_expire=6h
+enabled=0
 `)
+	}
 	if t := p.Repos.ThirdParty.TUITools; t == nil || *t {
 		fpr, err := pgpkey.Fingerprint(TUIToolsKey)
 		if err != nil {

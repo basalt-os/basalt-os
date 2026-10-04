@@ -36,3 +36,11 @@ env = EXAMPLE_API_KEY
 allow = api.example.com
 # Shared lists from /usr/share/basalt-agent/egress (registries, github).
 #include = registries
+# A name that should resolve to a local or private address (a model server
+# on the LAN) needs "private"; any port works through the proxy:
+#allow = models.lab.example:11434 private
+# Unprivileged loopback ports (1024 and up), e.g. a dev server the agent
+# started. On by default. The kernel routes the host's own addresses over
+# loopback too, so this also reaches services listening on the host's LAN
+# address. Set no when the agent does not need local services.
+#loopback = yes

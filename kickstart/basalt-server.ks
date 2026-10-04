@@ -64,8 +64,10 @@ selinux --enforcing
 firewall --use-system-defaults
 # basalt-assistantd only diagnoses and proposes; applying a change always
 # needs `basalt apply` and a confirmation. basalt-notify exits at once on a
-# server without a desktop or a webhook configured.
-services --enabled=sshd,firewalld,auditd,basalt-snapshot-boot,basalt-initial-snapshot,basalt-grub-theme,basalt-module-keys,basalt-assistantd,basalt-notify,basalt-audit-rotate.timer
+# server without a desktop or a webhook configured. basalt-resolver gives
+# confined sessions (AI agents) default-deny egress; basalt-ledger keeps the
+# system's audit trail (docs/network.md, docs/ledger.md).
+services --enabled=sshd,firewalld,auditd,basalt-snapshot-boot,basalt-initial-snapshot,basalt-grub-theme,basalt-module-keys,basalt-assistantd,basalt-notify,basalt-audit-rotate.timer,basalt-resolver,basalt-ledger
 skipx
 firstboot --disable
 
@@ -203,6 +205,10 @@ basalt-snapshots
 basalt-security
 basalt-assistant
 basalt-assistant-selinux
+basalt-resolver
+basalt-resolver-selinux
+basalt-ledger
+basalt-ledger-selinux
 -fedora-release
 -fedora-release-common
 -fedora-release-identity-basic

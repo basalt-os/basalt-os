@@ -124,14 +124,14 @@ func TestDefaultEncryptedTPM(t *testing.T) {
 		}
 	}
 	_, dnf := mustFind(t, list, "dnf --assumeyes --installroot=/mnt/sysroot")
-	for _, a := range []string{"--releasever=44", "--exclude=fedora-release", "--exclude=linux-firmware", "basalt-assistant", "basalt-assistant-selinux", "shim-x64", "@core"} {
+	for _, a := range []string{"--releasever=44", "--exclude=fedora-release", "--exclude=linux-firmware", "basalt-assistant", "basalt-assistant-selinux", "basalt-resolver-selinux", "basalt-ledger-selinux", "shim-x64", "@core"} {
 		if !strings.Contains(dnf.Command(), a) {
 			t.Fatalf("dnf command lacks %s", a)
 		}
 	}
 	mustFind(t, list, "systemctl set-default multi-user.target")
 	_, svc := mustFind(t, list, "systemctl enable")
-	for _, u := range []string{"basalt-assistantd", "basalt-initial-snapshot", "sshd", "firewalld", "basalt-audit-rotate.timer"} {
+	for _, u := range []string{"basalt-assistantd", "basalt-initial-snapshot", "sshd", "firewalld", "basalt-audit-rotate.timer", "basalt-resolver", "basalt-ledger"} {
 		if !strings.Contains(svc.Command(), u) {
 			t.Fatalf("service %s not enabled", u)
 		}
@@ -253,9 +253,17 @@ func TestTUIToolsKeyIsPinned(t *testing.T) {
 	if i, _ := find(list, "tui-tools"); i >= 0 {
 		t.Fatal("tui-tools disabled in the plan but configured")
 	}
-	_, tools := mustFind(t, list, "basalt-tools.repo")
-	if !strings.Contains(tools.Write.Content, "enabled=0") {
+	_, tools := mustFind(t, list, "repos.override.d/80-basalt-installer.repo")
+	if !strings.Contains(tools.Write.Content, "[basalt-tools]\nenabled=0") {
 		t.Fatal("basalt-tools disabled in the plan")
+	}
+	// With the default plan basalt-release's own [basalt-tools] stays on.
+	_, def := generate(t, basePlan("/dev/vda"), facts("kvm", true))
+	if i, _ := find(def, "repos.override.d"); i >= 0 {
+		t.Fatal("basalt-tools turned off in the default plan")
+	}
+	if i, _ := find(def, "basalt-tools.repo"); i >= 0 {
+		t.Fatal("the installer writes its own basalt-tools.repo next to basalt-release's")
 	}
 }
 

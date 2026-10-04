@@ -44,7 +44,8 @@ var templates = map[string]string{
 	"agent.grant.helper":       "The grant helper {verdict}: {text}",
 	"snapshot.create":          "Snapshot {number} was taken ({description})",
 	"snapshot.rollback":        "The system was rolled back: snapshot {new_root} becomes the root at the next boot",
-	"ledger.start":             "The audit ledger started (chain at record {last_seq})",
+	"ledger.start":             "The audit ledger started (chain at record {last_seq}, exports signed with the {key_kind} key {key_id})",
+	"ledger.retention":         "{file} (records {first_seq} to {last_seq}) was removed by the retention policy ({retention}), sealed {sealed}",
 	"ledger.seal":              "The ledger file was sealed and continues in a new file ({file})",
 	"ledger.continue":          "The ledger continues from {from}",
 	"ledger.refused":           "A request to {op} the ledger was refused ({reason})",
@@ -79,6 +80,9 @@ func Describe(r Record) string {
 		if r.Outcome != "ok" {
 			vals["verdict"] = "refused a request"
 		}
+	}
+	if r.Event == EventStart && vals["key_kind"] == "" {
+		vals["key_kind"] = "development" // started by 0.1.0
 	}
 	if r.Event == "selinux.avc" {
 		vals["source"] = contextType(fmt.Sprint(d["scontext"]))

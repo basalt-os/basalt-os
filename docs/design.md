@@ -48,6 +48,8 @@ packages, and all updates to them, come from Fedora's mirrors.
 | `basalt-snapshots` | snapper template, dnf5 hook, snapshot boot menu, setup and rollback tools (below). |
 | `basalt-security` | `basalt-tpm` (TPM2 unlock state, re-enrollment, one-boot suspend before a planned change) and `basalt-secureboot` (Secure Boot state, enrollment of the Basalt kernel module CA as a MOK, module signing certificates loaded at boot). See [secure-boot.md](secure-boot.md). |
 | `basalt-assistant` | The system assistant, installed by default: `basalt` (diagnosis, typed proposals, confirmed and audited changes), `basalt-assistantd` (event engine, enabled), `basalt-mcp` (MCP tools), `basalt-notify` (desktop notifications, optional webhook); `basalt-assistant-selinux` confines the daemon and the MCP server. See [assistant.md](assistant.md). |
+| `basalt-resolver` | Per-session default-deny egress for confined sessions (AI agents): nftables matched by the session's cgroup, sets filled from DNS answers for allowlisted names, a resolver port per session; installed and enabled. See [network.md](network.md). |
+| `basalt-ledger` | The audit ledger: one append-only, hash-chained trail of security events with plain-English views, exports signed with a TPM-held key and a one-year retention that is itself recorded; installed and enabled. See [ledger.md](ledger.md). |
 | `basalt-llm` (optional) | Local language model service for the assistant: llama.cpp's server for the CPU, no network, its own SELinux domain. `MODEL=auto` runs the fine-tuned translator that fits the machine (1.7B with 4 or more cores and enough free memory, else 0.6B), chosen at each start. See [local-model.md](local-model.md). |
 
 The release package keeps the file names other software reads
@@ -147,7 +149,8 @@ The kickstart (`kickstart/basalt-server.ks`):
   `fedora-logos` excluded so the Basalt ones are chosen, and the system
   assistant (`basalt-assistant`, `basalt-assistant-selinux`) with
   `basalt-assistantd`, `basalt-notify` and the audit rotation timer
-  enabled. The optional local model service (`basalt-llm`) is not
+  enabled, and `basalt-resolver` and `basalt-ledger` (with their SELinux
+  policy packages) enabled. The optional local model service (`basalt-llm`) is not
   installed. The minimal profile leaves out hardware firmware, CPU
   microcode and fwupd (and what they pull in: udisks2, polkit, Bluetooth,
   mdadm and others); `kernel-core` only recommends `linux-firmware`.

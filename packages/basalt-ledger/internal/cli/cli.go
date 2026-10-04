@@ -6,7 +6,7 @@ package cli
 
 import (
 	"bufio"
-	"crypto/ed25519"
+	"crypto"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -36,6 +36,7 @@ const usage = `basalt-ledger: the system audit trail (agents, network, SELinux, 
   basalt-ledger verify [--path FILE]                  check the hash chain across all files (--path: a copy, offline)
   basalt-ledger export [FILTERS] [-o FILE] [--all]    signed export for an incident report
   basalt-ledger verify-export FILE [--key PUBKEY]     check an export's signature and records
+                                                      (PUBKEY: the host's /var/log/basalt-ledger/keys/export.pub)
   basalt-ledger status                                chain head, export key
   basalt-ledger rotate                                seal the current file (root)
   basalt-ledger api                                   raw JSON API: request lines on stdin
@@ -305,7 +306,7 @@ func verify(args []string) error {
 			return fmt.Errorf("no ledger at %s", args[1])
 		}
 		if s.Truncated {
-			return fmt.Errorf("chain starts at record %d: the oldest ledger files were removed", s.FirstSeq)
+			return fmt.Errorf("chain starts at record %d: the oldest ledger files were removed without a retention record", s.FirstSeq)
 		}
 		v = &s
 	} else {
@@ -319,6 +320,9 @@ func verify(args []string) error {
 		v = rep.Verify
 	}
 	fmt.Printf("ledger chain intact: records %d to %d (%d records, %d files, %d seals)\n", v.FirstSeq, v.LastSeq, v.Records, len(v.Files), v.Seals)
+	if v.ExpiredUpTo > 0 {
+		fmt.Printf("note: records up to %d were removed by the retention policy; retention records in the chain vouch for them\n", v.ExpiredUpTo)
+	}
 	if v.Truncated {
 		fmt.Println("note: the oldest files were removed; the chain is verified from its first remaining file")
 	}
@@ -350,7 +354,7 @@ func verifyExport(args []string) error {
 	if err := json.Unmarshal(b, &e); err != nil {
 		return fmt.Errorf("%s: not an export: %w", files[0], err)
 	}
-	var trusted ed25519.PublicKey
+	var trusted crypto.PublicKey
 	if *keyFile != "" {
 		if trusted, err = sign.ReadPublic(*keyFile); err != nil {
 			return err
@@ -365,8 +369,11 @@ func verifyExport(args []string) error {
 	if !e.Chain.Verified {
 		fmt.Printf("warning: the ledger chain did not verify when this was exported: %s\n", e.Chain.Error)
 	}
-	if e.KeyKind == "development" {
-		fmt.Println("note: signed with a per-host development key, not an OpenBasalt release key")
+	switch e.KeyKind {
+	case sign.KindTPM:
+		fmt.Println("key: held by the host's TPM (ECDSA P-256); it cannot be copied off that machine")
+	case sign.KindSoftware, sign.KindDevelopment:
+		fmt.Println("note: signed with a software key kept on the host's disk (no TPM); whoever is root there can sign with it")
 	}
 	return nil
 }
@@ -381,8 +388,12 @@ func status() error {
 	if s.SeesAll {
 		who = "all records (root)"
 	}
-	fmt.Printf("chain head: record %d, %s\nfile: %s (%d bytes)\nexport key: %s (%s), public key %s\nyou can read: %s\n",
-		s.HeadSeq, s.HeadHash, s.Path, s.Size, s.KeyID, s.KeyKind, s.PublicKey, who)
+	kind := s.KeyKind
+	if s.KeyNote != "" {
+		kind += ", " + s.KeyNote
+	}
+	fmt.Printf("chain head: record %d, %s\nfile: %s (%d bytes)\nexport key: %s (%s), public key %s\nretention: %s\nyou can read: %s\n",
+		s.HeadSeq, s.HeadHash, s.Path, s.Size, s.KeyID, kind, s.PublicKey, s.Retention, who)
 	return nil
 }
 

@@ -129,9 +129,10 @@ DNS is redirected to a resolver port of its own. A bug in the proxy, or a
 tool that ignores the proxy settings, cannot reach an address no allowed
 name resolved to. Native mode requires the resolver and refuses to start
 without it; container mode uses it when present (the container itself has
-no network). The details, and the SELinux boolean
-`basalt_agent_direct_egress` that lets native agents also connect without
-the proxy, are in `docs/network.md`.
+no network). basalt-resolver is installed and enabled by default. The
+details, and the SELinux boolean `basalt_agent_direct_egress` that lets
+native agents also connect without the proxy (off by default), are in
+`docs/network.md`.
 
 `basalt-agent-egress.service` still loads a small static table that drops
 and audits any connection to the proxy ports (`tcp 47100-47163`) that is
@@ -146,7 +147,9 @@ for later sessions: it prints the proposal, the file it writes and the
 resulting list, asks, and records the change; `--system` writes
 `/etc/basalt-agent/profiles` for every user through polkit. A profile may
 also set `loopback = no` in `[egress]` (default yes: unprivileged loopback
-ports, such as a dev server the agent started).
+ports, such as a dev server the agent started; this also covers the
+host's own addresses, which the kernel routes over loopback, so set it to
+no when the agent does not need local services; see `docs/network.md`).
 
 ## Secrets
 
@@ -271,10 +274,11 @@ policy is built) forbid any agent domain from reading `ssh_home_t`,
 
 ## Limits (today)
 
-- SELinux reasons about port types, not hostnames: the per-host rule is
-  enforced by the proxy and by basalt-resolver's kernel sets. The proxy's
-  domain connects only to HTTP port types, so a `private` entry on another
-  port works through direct egress, not through the proxy.
+- SELinux reasons about port types, not hostnames: the per-host and
+  per-port rules are enforced by the proxy and by basalt-resolver's kernel
+  sets. The proxy's domain may connect to any TCP port (the sets decide
+  which address and port), so a `private` entry on another port (a model
+  server on 11434) works through the proxy, with direct egress off.
 - A profile that allows a package registry allows uploads to it too (`npm
   publish`, `twine`); GitHub is opt-in for the same reason. Treat the egress
   list as the trust boundary and keep it short.

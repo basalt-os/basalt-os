@@ -1,4 +1,4 @@
-policy_module(basalt_ledger, 0.1.0)
+policy_module(basalt_ledger, 0.2.0)
 
 # basalt-ledger: the system audit service (docs/ledger.md). A root
 # service in its own domain that
@@ -8,7 +8,8 @@ policy_module(basalt_ledger, 0.1.0)
 #   - makes the current file append-only and sealed files immutable;
 #   - reads the journal through journalctl (journalctl_t) for SELinux
 #     denials, logins, polkit, pkexec, sudo and the system assistant;
-#   - reads snapper's snapshot descriptions for rollbacks.
+#   - reads snapper's snapshot descriptions for rollbacks;
+#   - signs exports with a key its TPM holds (/dev/tpmrm0).
 # Producers get only "connect to the socket": nobody but this domain
 # writes the ledger files, and confined agent domains cannot connect.
 
@@ -57,7 +58,13 @@ allow journalctl_t basalt_ledger_t:fifo_file rw_inherited_fifo_file_perms;
 allow journalctl_t basalt_ledger_t:process sigchld;
 # journalctl reads its cursor argument only; it writes nothing here.
 
+# The export signing key lives in the TPM: create the primary key and sign
+# through the kernel's resource manager.
+dev_rw_tpm(basalt_ledger_t)
+
 kernel_read_system_state(basalt_ledger_t)
+# Go's listen reads net.core.somaxconn for the socket's backlog.
+kernel_read_net_sysctls(basalt_ledger_t)
 dev_read_urand(basalt_ledger_t)
 files_read_etc_files(basalt_ledger_t)
 miscfiles_read_localization(basalt_ledger_t)
