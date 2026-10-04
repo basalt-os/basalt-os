@@ -167,3 +167,25 @@ eval-check: ## Every case in eval/cases: schema, expected actions pass the actio
 
 lab-eval-capture: ## Record labeled decision cases on a lab VM (scripts/lab/eval-capture.sh)
 	$(L)/eval-capture.sh
+
+# --- installer (packages/basalt-installer, docs/installer.md) ------------------------
+
+.PHONY: rpm-installer installer-test live-iso lab-installer-iso lab-installer-tui lab-installer-gui
+
+rpm-installer: ## Build basalt-installer (+ -gui, source) with the upstream Go toolchain go.mod names
+	packages/basalt-installer/build.sh
+
+installer-test: ## go vet + go test of basalt-installer (plan validation, step generation, engine, API)
+	packages/basalt-installer/build.sh test
+
+live-iso: ## Live installer ISO (mkosi): runs from memory, Fedora's signed boot chain, Basalt repository on the media
+	packages/basalt-installer/live/build-live.sh
+
+lab-installer-iso: ## Lab live ISO: a plan for the lab VM on the media, a root shell on the second serial port
+	packages/basalt-installer/tests/install-test.sh iso
+
+lab-installer-tui: ## Install the lab ISO via the text installer (serial, scripted), then the boot test's checks
+	packages/basalt-installer/tests/install-test.sh tui
+
+lab-installer-gui: ## Install the lab ISO via the graphical installer (QMP clicks, screenshots), then the boot test's checks
+	packages/basalt-installer/tests/install-test.sh gui

@@ -70,5 +70,11 @@ else
   log "actionlint not installed, workflows not checked"
 fi
 
+step "basalt-installer: ShellCheck and Python syntax (build, live image, lab test scripts)"
+shellcheck -x -S warning packages/basalt-installer/build.sh packages/basalt-installer/live/build-live.sh \
+  packages/basalt-installer/live/mkosi.finalize.chroot packages/basalt-installer/live/mkosi.extra/usr/libexec/basalt-installer/ui-select packages/basalt-installer/live/mkosi.extra/usr/libexec/basalt-installer/ui-start \
+  packages/basalt-installer/tests/*.sh || fail=1
+python3 -m py_compile packages/basalt-installer/tests/*.py && rm -rf packages/basalt-installer/tests/__pycache__ || fail=1
+
 [[ $fail == 0 ]] || die "lint failed"
 log "all checks passed"

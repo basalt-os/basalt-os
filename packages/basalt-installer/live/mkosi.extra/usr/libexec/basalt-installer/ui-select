@@ -1,0 +1,7 @@
+#!/bin/bash
+# ExecCondition of basalt-installer-tui@.service: a serial port runs the
+# text installer only when the kernel command line names it as a console.
+# tty1 is decided by ui-start (basalt-installer-ui.service).
+tty="$1"
+[ "$tty" = tty1 ] && exit 0
+grep -q "console=$tty" /proc/cmdline

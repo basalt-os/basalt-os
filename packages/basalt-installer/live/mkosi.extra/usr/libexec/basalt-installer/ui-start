@@ -1,0 +1,17 @@
+#!/bin/bash
+# Which installer owns the screen (tty1): the graphical one when
+# basalt.inst.ui=gui, or when basalt.inst.ui=auto (the default) and a
+# display device exists; otherwise the text one. The graphical unit falls
+# back to the text one when it cannot start (OnFailure=).
+ui="$(sed -n 's/.*basalt\.inst\.ui=\([a-z]*\).*/\1/p' /proc/cmdline)"
+ui="${ui:-auto}"
+gui=0
+case "$ui" in
+  gui) gui=1 ;;
+  tui) gui=0 ;;
+  *) if compgen -G '/dev/dri/card*' >/dev/null && command -v cage >/dev/null; then gui=1; fi ;;
+esac
+if [ "$gui" = 1 ]; then
+  exec systemctl start --no-block basalt-installer-gui.service
+fi
+exec systemctl start --no-block basalt-installer-tui@tty1.service

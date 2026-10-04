@@ -1,0 +1,9 @@
+#%PAM-1.0
+# Session of the graphical installer (basalt-installer-gui.service): no
+# authentication (it starts on the console of a live installer, like a
+# getty with autologin); a logind session for the seat and XDG_RUNTIME_DIR.
+auth       required     pam_permit.so
+account    required     pam_permit.so
+session    required     pam_loginuid.so
+session    required     pam_systemd.so
+session    required     pam_unix.so

@@ -90,3 +90,5 @@ find "$RPM_DIR" -name "*.rpm" -printf "%P  %s bytes\n" | sort
 # their own container runs.
 "$REPO_ROOT/packages/basalt-assistant/build.sh"
 "$REPO_ROOT/packages/basalt-agent/build.sh"
+# basalt-installer (Go with the upstream toolchain named in its go.mod).
+"$REPO_ROOT/packages/basalt-installer/build.sh"

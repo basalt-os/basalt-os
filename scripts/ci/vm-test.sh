@@ -23,6 +23,11 @@
 #    audit chain still verifies across the rotated files.
 # The guest reaches the test repository on 10.0.2.2 (QEMU user networking
 # maps it to this container's loopback, where a small HTTP server runs).
+#
+# INSTALL_MODE=external skips step 1: the disk, firmware variables and TPM
+# state in /work/state were written by another installer (the Basalt
+# installer's lab test, packages/basalt-installer/tests/vm-install-test.sh),
+# and the same checks then run against that installation.
 set -euo pipefail
 
 : "${SSH_PORT:=2222}"
@@ -37,6 +42,7 @@ set -euo pipefail
 # os-release values the build must produce (boot-test.sh passes them).
 : "${EXPECT_FEDORA_RELEASE:=44}"
 : "${EXPECT_BASALT_VERSION:=}"
+: "${INSTALL_MODE:=kickstart}"
 
 W=/work
 S="$W/state"
@@ -85,6 +91,9 @@ vm() { ssh "${SSH_OPTS[@]}" root@127.0.0.1 "$@"; }
 
 # --- emulated hardware ------------------------------------------------------------
 
+if [[ "$INSTALL_MODE" == external ]]; then
+  for f in vars.qcow2 disk.qcow2 tpm; do [[ -e "$S/$f" ]] || die "INSTALL_MODE=external: no $S/$f"; done
+else
 cp "$OVMF_VARS" "$S/vars.qcow2"
 rm -f "$S/disk.qcow2"
 qemu-img create -q -f qcow2 "$S/disk.qcow2" "${VM_DISK_GB}G"
@@ -93,6 +102,7 @@ mkdir -p "$S/tpm"
 swtpm_setup --tpm2 --tpmstate "$S/tpm" --createek --create-ek-cert --create-platform-cert \
   --lock-nvram --pcr-banks sha256 --overwrite >"$LOGS/swtpm-setup.log" 2>&1 ||
   { cat "$LOGS/swtpm-setup.log" >&2; die "swtpm_setup failed"; }
+fi
 
 # swtpm ends when QEMU exits, so each QEMU process gets a fresh one (same state).
 tpm_start() {
@@ -212,6 +222,9 @@ log "serving the test repository on 127.0.0.1:$REPO_PORT (guest: 10.0.2.2)"
 python3 -m http.server "$REPO_PORT" --bind 127.0.0.1 --directory /repo >"$LOGS/http.log" 2>&1 &
 http_pid=$!
 
+if [[ "$INSTALL_MODE" == external ]]; then
+  result PASS "install" "${INSTALL_NOTE:-installed by an external installer}"
+else
 log "install: ${VM_VCPUS} vCPU, ${VM_MEMORY_MB} MiB, ${VM_DISK_GB} GiB disk, timeout ${INSTALL_TIMEOUT}s"
 t0=$(date +%s)
 qemu_start install 1
@@ -221,6 +234,7 @@ log "TIMING install: ${t_install}s"
 grep -aq 'basalt-post: done' "$LOGS/serial-install.log" ||
   log "note: the %post completion line is not on the serial console (Anaconda logs it in the target)"
 result PASS "install" "${t_install}s, VM powered off by the kickstart"
+fi
 
 # --- 2. first boot ----------------------------------------------------------------
 
@@ -247,11 +261,13 @@ else
   result FAIL "os-release" "$osr (want VERSION_ID=$EXPECT_FEDORA_RELEASE, VERSION=\"$want_ver\", BUILD_ID set)"
 fi
 # The installer picks the minimal profile on a virtual machine by itself.
-prof="$(vm 'sed -n "s/^basalt: .* profile=\([a-z]*\) (\([^)]*\)).*/\1 (\2)/p" /root/basalt-install-pre.log 2>/dev/null | head -1' || true)"
+# The kickstart writes the line to /root/basalt-install-pre.log, the Basalt
+# installer to /var/log/basalt-installer/summary.log (same format).
+prof="$(vm 'sed -n "s/^basalt: .* profile=\([a-z]*\) (\([^)]*\)).*/\1 (\2)/p" /root/basalt-install-pre.log /var/log/basalt-installer/summary.log 2>/dev/null | head -1' || true)"
 if [[ "$prof" == "minimal (auto, virtual machine:"* ]] && ! vm 'rpm -q linux-firmware >/dev/null 2>&1'; then
   result PASS "install profile" "$prof, no linux-firmware"
 else
-  result FAIL "install profile" "${prof:-not in /root/basalt-install-pre.log}; linux-firmware: $(vm 'rpm -q linux-firmware 2>&1' || true)"
+  result FAIL "install profile" "${prof:-no install summary}; linux-firmware: $(vm 'rpm -q linux-firmware 2>&1' || true)"
 fi
 if vm 'rpm -q basalt-release basalt-snapshots basalt-security >/dev/null && ! rpm -q fedora-release-common >/dev/null 2>&1'; then
   result PASS "basalt packages" "$(vm 'rpm -q basalt-release basalt-snapshots basalt-security' | paste -sd' ')"

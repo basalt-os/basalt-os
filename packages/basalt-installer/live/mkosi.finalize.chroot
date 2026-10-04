@@ -1,0 +1,13 @@
+#!/bin/bash
+# Live installer image setup, run inside the image by mkosi as the last step.
+# Which units run is decided by usr/lib/systemd/system-preset/10-basalt-live.preset
+# (systemd applies presets again on each boot of the live system, which has
+# no machine ID); the serial getty is kept off with systemd.getty_auto=0 on
+# the kernel command line.
+set -euo pipefail
+
+# Root logs in only on tty2 (autologin, a rescue shell like Anaconda's);
+# the password stays locked.
+passwd -l root >/dev/null
+systemctl set-default multi-user.target
+rm -f /etc/machine-id

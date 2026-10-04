@@ -1,0 +1,435 @@
+== preflight
+  1. Wait for device events to settle
+     $ udevadm settle --timeout=30
+  2. Create the installer's work directory (memory only)
+     $ install -d -m 0700 /run/basalt-installer
+  3. Create the target mount point
+     $ install -d -m 0755 /mnt/sysroot
+
+== disk
+  4. Erase the partition table of /dev/vda
+     # from here on the previous contents of /dev/vda are gone
+     $ sgdisk --zap-all /dev/vda
+  5. Erase remaining file system signatures on /dev/vda
+     $ wipefs --all --force /dev/vda
+  6. Partition /dev/vda: EFI system, /boot, system
+     $ sgdisk --clear --new=1:0:+600M --typecode=1:EF00 '--change-name=1:EFI System Partition' --new=2:0:+1024M --typecode=2:8300 --change-name=2:boot --new=3:0:0 --typecode=3:8309 --change-name=3:basalt /dev/vda
+  7. Wait for the new partitions
+     $ udevadm settle --timeout=30
+  8. Erase old signatures at the start of each partition
+     $ wipefs --all --force /dev/vda1 /dev/vda2 /dev/vda3
+  9. Format the EFI system partition (FAT32)
+     $ mkfs.vfat -F 32 -n EFI -i AB125C07 /dev/vda1
+ 10. Format /boot (ext4, readable by GRUB)
+     $ mkfs.ext4 -q -F -L boot -U ab125c07-ab12-4c07-ab12-5c07ab125c07 /dev/vda2
+
+== encryption
+ 11. Create a temporary key for the new LUKS2 volume
+     # it lives in memory only and is removed once the unlock method and the recovery key are enrolled
+     $ write /run/basalt-installer/luks.key (mode 0600): 64 random characters
+ 12. Encrypt the system partition (LUKS2)
+     $ cryptsetup luksFormat --batch-mode --type luks2 --uuid ab125c07-ab12-4c07-ab12-5c07ab125c07 --label basalt --key-file /run/basalt-installer/luks.key /dev/vda3
+ 13. Open the encrypted volume
+     $ cryptsetup open --key-file /run/basalt-installer/luks.key /dev/vda3 luks-ab125c07-ab12-4c07-ab12-5c07ab125c07
+
+== filesystems
+ 14. Create the btrfs file system
+     $ mkfs.btrfs --force --label basalt --uuid ab125c07-ab12-4c07-ab12-5c07ab125c07 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07
+ 15. Create a mount point for the btrfs top level
+     $ install -d -m 0700 /run/basalt-installer/btrfs-top
+ 16. Mount the btrfs top level
+     $ mount -o compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /run/basalt-installer/btrfs-top
+ 17. Create subvolume root (/)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/root
+ 18. Create subvolume home (/home)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/home
+ 19. Create subvolume srv (/srv)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/srv
+ 20. Create subvolume var_cache (/var/cache)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_cache
+ 21. Create subvolume var_lib_containers (/var/lib/containers)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_lib_containers
+ 22. Create subvolume var_lib_libvirt (/var/lib/libvirt)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_lib_libvirt
+ 23. Create subvolume var_lib_mysql (/var/lib/mysql)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_lib_mysql
+ 24. Create subvolume var_lib_pgsql (/var/lib/pgsql)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_lib_pgsql
+ 25. Create subvolume var_log (/var/log)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_log
+ 26. Create subvolume var_spool (/var/spool)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_spool
+ 27. Create subvolume var_tmp (/var/tmp)
+     $ btrfs subvolume create /run/basalt-installer/btrfs-top/var_tmp
+ 28. Unmount the btrfs top level
+     $ umount /run/basalt-installer/btrfs-top
+ 29. Mount the system subvolume on /mnt/sysroot
+     # compress=zstd:1 is active while the system is written, so installed files are compressed
+     $ mount -o subvol=root,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot
+ 30. Create /home
+     $ mkdir -p /mnt/sysroot/home
+ 31. Mount subvolume home on /home
+     $ mount -o subvol=home,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/home
+ 32. Create /srv
+     $ mkdir -p /mnt/sysroot/srv
+ 33. Mount subvolume srv on /srv
+     $ mount -o subvol=srv,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/srv
+ 34. Create /var/cache
+     $ mkdir -p /mnt/sysroot/var/cache
+ 35. Mount subvolume var_cache on /var/cache
+     $ mount -o subvol=var_cache,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/cache
+ 36. Create /var/lib/containers
+     $ mkdir -p /mnt/sysroot/var/lib/containers
+ 37. Mount subvolume var_lib_containers on /var/lib/containers
+     $ mount -o subvol=var_lib_containers,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/lib/containers
+ 38. Create /var/lib/libvirt
+     $ mkdir -p /mnt/sysroot/var/lib/libvirt
+ 39. Mount subvolume var_lib_libvirt on /var/lib/libvirt
+     $ mount -o subvol=var_lib_libvirt,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/lib/libvirt
+ 40. Create /var/lib/mysql
+     $ mkdir -p /mnt/sysroot/var/lib/mysql
+ 41. Mount subvolume var_lib_mysql on /var/lib/mysql
+     $ mount -o subvol=var_lib_mysql,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/lib/mysql
+ 42. Create /var/lib/pgsql
+     $ mkdir -p /mnt/sysroot/var/lib/pgsql
+ 43. Mount subvolume var_lib_pgsql on /var/lib/pgsql
+     $ mount -o subvol=var_lib_pgsql,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/lib/pgsql
+ 44. Create /var/log
+     $ mkdir -p /mnt/sysroot/var/log
+ 45. Mount subvolume var_log on /var/log
+     $ mount -o subvol=var_log,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/log
+ 46. Create /var/spool
+     $ mkdir -p /mnt/sysroot/var/spool
+ 47. Mount subvolume var_spool on /var/spool
+     $ mount -o subvol=var_spool,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/spool
+ 48. Create /var/tmp
+     $ mkdir -p /mnt/sysroot/var/tmp
+ 49. Mount subvolume var_tmp on /var/tmp
+     $ mount -o subvol=var_tmp,compress=zstd:1 /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 /mnt/sysroot/var/tmp
+ 50. Create /boot
+     $ mkdir -p /mnt/sysroot/boot
+ 51. Mount /boot
+     $ mount /dev/vda2 /mnt/sysroot/boot
+ 52. Create /boot/efi
+     $ mkdir -p /mnt/sysroot/boot/efi
+ 53. Mount the EFI system partition
+     $ mount -o umask=0077,shortname=winnt /dev/vda1 /mnt/sysroot/boot/efi
+ 54. Set the sticky, world-writable mode of /var/tmp
+     $ chmod 1777 /mnt/sysroot/var/tmp
+
+== configure
+ 55. Create configuration directories
+     $ mkdir -p /mnt/sysroot/etc/kernel /mnt/sysroot/etc/default /mnt/sysroot/etc/dnf/vars
+ 56. Write /etc/fstab
+     # basalt-snapshots-setup later drops subvol=root from / so the default subvolume (what snapper rollback switches) is booted
+     $ write /mnt/sysroot/etc/fstab (mode 0644, 1304 bytes)
+       | # /etc/fstab, written by the Basalt OS installer.
+       | # btrfs on LUKS2, label basalt; data subvolumes are not rolled back.
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 / btrfs subvol=root,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /boot ext4 defaults 1 2
+       | UUID=AB12-5C07 /boot/efi vfat umask=0077,shortname=winnt 0 2
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /home btrfs subvol=home,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /srv btrfs subvol=srv,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/cache btrfs subvol=var_cache,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/lib/containers btrfs subvol=var_lib_containers,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/lib/libvirt btrfs subvol=var_lib_libvirt,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/lib/mysql btrfs subvol=var_lib_mysql,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/lib/pgsql btrfs subvol=var_lib_pgsql,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/log btrfs subvol=var_log,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/spool btrfs subvol=var_spool,compress=zstd:1 0 0
+       | UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 /var/tmp btrfs subvol=var_tmp,compress=zstd:1 0 0
+ 57. Write /etc/crypttab
+     $ write /mnt/sysroot/etc/crypttab (mode 0600, 114 bytes)
+       | luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 none discard,tpm2-device=auto
+ 58. Write the kernel command line for new kernels
+     # kernel-install reads it when the kernel package is installed; without it, it would copy the live system's command line
+     $ write /mnt/sysroot/etc/kernel/cmdline (mode 0644, 203 bytes)
+       | root=UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 ro rootflags=subvol=root rd.luks.uuid=luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 console=tty0 console=ttyS0,115200n8 lockdown=integrity module.sig_enforce=1
+ 59. Write the GRUB settings
+     $ write /mnt/sysroot/etc/default/grub (mode 0644, 513 bytes)
+       | GRUB_TIMEOUT=5
+       | GRUB_DISTRIBUTOR="$(sed 's, release .*$,,g' /etc/system-release)"
+       | GRUB_DEFAULT=saved
+       | GRUB_DISABLE_SUBMENU=true
+       | GRUB_TIMEOUT_STYLE=menu
+       | GRUB_TERMINAL_INPUT="serial console"
+       | GRUB_TERMINAL_OUTPUT="serial console"
+       | GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"
+       | GRUB_CMDLINE_LINUX="rd.luks.uuid=luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 console=tty0 console=ttyS0,115200n8 lockdown=integrity module.sig_enforce=1"
+       | GRUB_DISABLE_RECOVERY="true"
+       | GRUB_ENABLE_BLSCFG=true
+ 60. Write the machine ID
+     # boot loader entries are named after it
+     $ write /mnt/sysroot/etc/machine-id (mode 0444, 33 bytes)
+       | ab125c07ab125c07ab125c07ab125c07
+ 61. Set the host name
+     $ write /mnt/sysroot/etc/hostname (mode 0644, 7 bytes)
+       | basalt
+ 62. Set the locale
+     $ write /mnt/sysroot/etc/locale.conf (mode 0644, 17 bytes)
+       | LANG=en_US.UTF-8
+ 63. Set the console keymap
+     $ write /mnt/sysroot/etc/vconsole.conf (mode 0644, 10 bytes)
+       | KEYMAP=us
+ 64. Set the time zone
+     $ symlink /mnt/sysroot/etc/localtime -> ../usr/share/zoneinfo/Etc/UTC
+ 65. Point the Basalt repository at its URL
+     $ write /mnt/sysroot/etc/dnf/vars/basalt_repo_url (mode 0644, 21 bytes)
+       | http://10.0.2.2:8098
+ 66. Create the temporary repository directory
+     $ install -d -m 0700 /run/basalt-installer/repos.d
+ 67. Write the install-time repositories (Fedora, Basalt)
+     $ write /run/basalt-installer/repos.d/basalt-install.repo (mode 0600, 767 bytes)
+       | # Install-time repositories of the Basalt OS installer (live system only).
+       | [basalt-install-fedora]
+       | name=Fedora $releasever - $basearch
+       | metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-$releasever&arch=$basearch
+       | gpgcheck=1
+       | gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+       | 
+       | [basalt-install-updates]
+       | name=Fedora $releasever - $basearch - Updates
+       | metalink=https://mirrors.fedoraproject.org/metalink?repo=updates-released-f$releasever&arch=$basearch
+       | gpgcheck=1
+       | gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+       | 
+       | [basalt-install-basalt]
+       | name=Basalt OS $releasever - $basearch
+       | baseurl=http://10.0.2.2:8098/$releasever/$basearch/
+       | gpgcheck=1
+       | repo_gpgcheck=1
+       | gpgkey=file:///run/basalt/media/basalt/RPM-GPG-KEY-basalt
+
+== packages
+ 68. Create /dev, /proc, /sys and /run in the target
+     $ mkdir -p /mnt/sysroot/dev /mnt/sysroot/proc /mnt/sysroot/sys /mnt/sysroot/run
+ 69. Bind the device tree into the target
+     $ mount --rbind /dev /mnt/sysroot/dev
+ 70. Keep unmounts in the target from reaching the live /dev
+     $ mount --make-rslave /mnt/sysroot/dev
+ 71. Mount /proc in the target
+     $ mount -t proc proc /mnt/sysroot/proc
+ 72. Mount /sys in the target
+     $ mount -t sysfs sysfs /mnt/sysroot/sys
+ 73. Mount a /run for package scripts
+     $ mount -t tmpfs -o mode=0755 tmpfs /mnt/sysroot/run
+ 74. Install the minimal profile (Fedora 44 packages and the Basalt packages)
+     # packages and repository metadata are signature checked (gpgcheck, repo_gpgcheck for Basalt)
+     $ dnf --assumeyes --installroot=/mnt/sysroot --releasever=44 --use-host-config --no-plugins --setopt=reposdir=/run/basalt-installer/repos.d --setopt=install_weak_deps=True --exclude=fedora-release --exclude=fedora-release-common --exclude=fedora-release-identity-basic --exclude=fedora-logos --exclude=fedora-logos-httpd --exclude=generic-release --exclude=generic-logos --exclude=linux-firmware --exclude=linux-firmware-whence '--exclude=*-firmware' --exclude=microcode_ctl '--exclude=fwupd*' --exclude=flashrom install @core kernel shim-x64 grub2-efi-x64 grub2-tools grubby basalt-release basalt-release-server basalt-logos basalt-logos-httpd basalt-grub2-theme plymouth-theme-basalt basalt-snapshots basalt-security btrfs-progs cryptsetup tpm2-tss tpm2-tools mokutil keyutils efibootmgr audit policycoreutils-python-utils setools-console compsize glibc-langpack-en snapper libdnf5-plugin-actions selinux-policy-targeted basalt-assistant basalt-assistant-selinux
+
+== system
+ 75. SELinux enforcing, targeted policy
+     $ write /mnt/sysroot/etc/selinux/config (mode 0644, 111 bytes)
+       | # Written by the Basalt OS installer. Basalt OS runs SELinux enforcing.
+       | SELINUX=enforcing
+       | SELINUXTYPE=targeted
+ 76. Lock the root password (root logs in with an SSH key or not at all)
+     $ chroot /mnt/sysroot usermod --lock root
+ 77. Create /root/.ssh
+     $ install -d -m 0700 /mnt/sysroot/root/.ssh
+ 78. Authorize SSH keys for root
+     $ write /mnt/sysroot/root/.ssh/authorized_keys (mode 0600, 85 bytes)
+       | ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl lab
+ 79. Configure the basalt-tools repository (ADR 0005)
+     $ write /mnt/sysroot/etc/yum.repos.d/basalt-tools.repo (mode 0644, 514 bytes)
+       | # OpenBasalt tools (Samba Conductor, future tools): metadata only, nothing is
+       | # installed unless chosen. Disable with: dnf config-manager setopt basalt-tools.enabled=0
+       | # Written by the Basalt OS installer; it moves to basalt-release once the
+       | # repository is published.
+       | [basalt-tools]
+       | name=Basalt OS tools $releasever - $basearch
+       | baseurl=$basalt_repo_url/tools/$releasever/$basearch/
+       | enabled=1
+       | gpgcheck=1
+       | repo_gpgcheck=1
+       | gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-basalt
+       | skip_if_unavailable=True
+       | metadata_expire=6h
+ 80. Install the tui-tools signing key (fingerprint 767CFB337B01F32FFC073F3F389120B277E4FB44, pinned)
+     $ write /mnt/sysroot/etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools (mode 0644, 1741 bytes)
+       | -----BEGIN PGP PUBLIC KEY BLOCK-----
+       | 
+       | mQINBGqUAc0BEADlrAQn12mXlzPBKBXBlsa4vSgNEcjiNwOBpwpk20D9PAMaKhF/
+       | syGO/VvnPYi8gHwUMWBBmeTBvqvUr8EFm+RBf4floYCvo01t9QEYXogCNULHuzmo
+       | QObvWm+pvFiUNRx2+HtsZzkkYPiBlHkWteVIyvRvTedoT3//dkr1Pfsz2Euv4f8g
+       | fjMst4VTWrCBl5jiDWLtcoR94bOcNo9XeOUj4pAiovFLeo8go+XB7Eb1MkqXgrGZ
+       | nx1XKXtjjma0sZNN3GhNxflTPuKa/kzb7MQCwXpsk9UF4O4Uk9+8lARCU08wtU/J
+       | eaw+oYcRYE8lPZYUfq+lcVyrvqxllEQppOghDYLe/i1zx8ggVS5ptRW2pFDspKJc
+       | eXpnwxUJ4FTDTcrOByFApacqub4VTRc83U1q0g1FdRVfAuU3L1lMto2cKjte1uXG
+       | 3Sb0Dx7VxtUmg9VM3qMjskfhXpTVI5+we8Dbi4bUlWXXuy8KR3AXj2KUVBCJSDDn
+       | UH9NXeFXc2ZKmK7jwW5WLr27slF5lPt/C1j4DQeZDYC265v1b/YWKqLxibqo8llg
+       | Jgzo6yozZ8WOYZd3HuFnNLYkvRfmlETg70pLceBAQ9wiNtsmXNwYCmzh4+OW93e4
+       | FgsSPWReBi4njfH1+/gvl+xVerNF7URQtmK1Klx5IX0byi/2ZUSH4V5uTQARAQAB
+       | tGR0dWktdG9vbHMgcGFja2FnZSBzaWduaW5nIChhcHQsIGRuZiBhbmQgcGFjbWFu
+       | IHJlcG9zaXRvcnkgYXQgcGtncy50dWkudG9vbHMpIDxtYWludGFpbmVyc0B0dWku
+       | dG9vbHM+iQJRBBMBCgA7FiEEdnz7M3sB8y/8Bz8/OJEgsnfk+0QFAmqUAc0CGwMF
+       | CwkIBwICIgIGFQoJCAsCBBYCAwECHgcCF4AACgkQOJEgsnfk+0TdTBAAkICCSXfg
+       | H9hnTNNj/9n42usvcuETD8NRKIDx1mS9aoCX7na4nWtYSNUTuDduydhtVMyB0+hQ
+       | JnPdDhnGykSYti+l5LLnLWs0IaDokeET06ecSEngGPfUv7yrwDoanLJPq1gXfLvD
+       | c1LWwXxb+ZKdNJFBIFwfaba1zHd4kdzXNBDfu+660tx5WtvSHbPq3uJIT/r9ZqLP
+       | eo38RFxE4zkgwX1jeQ6MZz8KsKA8cTL3SQikkezkO0Eon4G3NC1G79fs5S+il4RS
+       | SjBPNUxMkVP+L3Xhm8jGxipJ4HjgfT+b8elUVdUv4x+imH5brhPS/efeJHZypMWE
+       | XcMKC07Jd86Ou5LWrwKYbdNa1ROxqR5bvd6GbWzeblhMuqCaQChsWi3+ieeh+icK
+       | MhNAgyDJhEPBnkTo61WkVIIhj1iXcmqVTc0eejCG54pNfHm+0DXHpYsWaBjvlwWK
+       | IsGmBFl1Q2UX1ldRR00AFiDNBF0jqEP7Hh8QdDskHtO+btDr4RiFoAYGGI6C20e4
+       | hOiOLpT7SqPDO5Oyqyk/+U1O5lM5RJKgydBx63PofY98tinnXevOj7x2YF4xQJ1W
+       | y0k9MdFjRfuMuxvfrKcECWIytTpPvHtvG6dDA5lsqVoSrFBkcDe/nujbB6bFCqcm
+       | vslPWkh1S944Q0oXFpyhnZb2bUqtLcNQkok=
+       | =RK/h
+       | -----END PGP PUBLIC KEY BLOCK-----
+ 81. Configure the tui-tools repository (third party, ADR 0005)
+     $ write /mnt/sysroot/etc/yum.repos.d/tui-tools.repo (mode 0644, 529 bytes)
+       | # tui-tools: terminal tools with a command preview before every change.
+       | # Official third-party repository: packages come straight from upstream.
+       | # Signing key fingerprint 767CFB337B01F32FFC073F3F389120B277E4FB44 (pinned by the installer).
+       | # Written by the Basalt OS installer; it moves to basalt-third-party.
+       | [tui-tools]
+       | name=tui-tools (third party)
+       | baseurl=https://pkgs.tui.tools/rpm/$basearch
+       | enabled=1
+       | gpgcheck=1
+       | repo_gpgcheck=1
+       | gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools
+       | skip_if_unavailable=True
+       | metadata_expire=6h
+ 82. Trust the tui-tools key in the package database
+     $ chroot /mnt/sysroot rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools
+ 83. Use the Basalt boot splash (may fail)
+     $ chroot /mnt/sysroot plymouth-set-default-theme basalt
+ 84. Enable the Basalt services
+     # the assistant's daemon only diagnoses and proposes; applying a change always needs a confirmation
+     $ chroot /mnt/sysroot systemctl enable sshd firewalld auditd basalt-snapshot-boot basalt-initial-snapshot basalt-grub-theme basalt-module-keys basalt-assistantd basalt-notify basalt-audit-rotate.timer
+
+== bootloader
+ 85. Create the boot loader directory on the EFI system partition
+     $ mkdir -p /mnt/sysroot/boot/efi/EFI/fedora
+ 86. Point the signed GRUB on the ESP at /boot
+     # the boot chain is Fedora's signed shim, GRUB and kernel, so Secure Boot stays on
+     $ write /mnt/sysroot/boot/efi/EFI/fedora/grub.cfg (mode 0600, 159 bytes)
+       | search --no-floppy --root-dev-only --fs-uuid --set=dev ab125c07-ab12-4c07-ab12-5c07ab125c07
+       | set prefix=($dev)/grub2
+       | export $prefix
+       | configfile $prefix/grub.cfg
+ 87. Show the boot menu (may fail)
+     $ chroot /mnt/sysroot grub2-editenv - unset menu_auto_hide
+ 88. Generate the GRUB configuration
+     $ chroot /mnt/sysroot grub2-mkconfig -o /boot/grub2/grub.cfg
+ 89. Add a firmware boot entry (may fail)
+     # the firmware's fallback path (\EFI\BOOT\BOOTX64.EFI, also Fedora's shim) boots the disk without it
+     $ efibootmgr --create --disk /dev/vda --part 1 --label 'Basalt OS' --loader '\EFI\fedora\shimx64.efi'
+
+== unlock
+ 90. Seal a key in the TPM, bound to the Secure Boot state (PCR 7)
+     # the disk unlocks by itself while the Secure Boot configuration is unchanged
+     $ systemd-cryptenroll --unlock-key-file=/run/basalt-installer/luks.key --tpm2-device=auto --tpm2-pcrs=7 /dev/vda3
+ 91. Generate and enroll the recovery key
+     # shown once on the screen; it opens the disk when the TPM refuses (Secure Boot changed, disk moved)
+     $ systemd-cryptenroll --unlock-key-file=/run/basalt-installer/luks.key --recovery-key /dev/vda3
+ 92. Check that key slot 0 holds the temporary key
+     # token plugins off, so the TPM2 token cannot answer instead (milestone 1 lesson)
+     $ cryptsetup open --test-passphrase --disable-external-tokens --key-slot 0 --key-file /run/basalt-installer/luks.key /dev/vda3
+ 93. Remove the temporary key from the volume
+     $ systemd-cryptenroll --unlock-key-file=/run/basalt-installer/luks.key --wipe-slot=0 /dev/vda3
+ 94. Delete the temporary key
+     $ rm -f /run/basalt-installer/luks.key
+
+== initramfs
+ 95. Build the initramfs with the unlock support and the crypttab
+     $ chroot /mnt/sysroot dracut --force --regenerate-all
+
+== snapshots
+ 96. Set up snapper, the default subvolume and the snapshot boot menu
+     # no snapshot inside the installer: the first one is taken on the first boot (basalt-initial-snapshot.service)
+     $ chroot /mnt/sysroot basalt-snapshots-setup --no-initial-snapshot
+
+== finish
+ 97. Remove the package cache (may fail)
+     $ chroot /mnt/sysroot dnf clean all
+ 98. Create the install record directory
+     $ mkdir -p /mnt/sysroot/var/log/basalt-installer
+ 99. Record the plan (without secrets)
+     $ write /mnt/sysroot/var/log/basalt-installer/plan.json (mode 0600, 1143 bytes)
+       | {
+       |   "apiVersion": "basalt-install-plan/v1",
+       |   "edition": "server",
+       |   "target": {
+       |     "disk": "/dev/vda",
+       |     "wipe": true
+       |   },
+       |   "layout": {
+       |     "mode": "automatic",
+       |     "esp_mib": 600,
+       |     "boot_mib": 1024,
+       |     "subvolumes": [
+       |       "root",
+       |       "home",
+       |       "srv",
+       |       "var_log",
+       |       "var_cache",
+       |       "var_tmp",
+       |       "var_spool",
+       |       "var_lib_containers",
+       |       "var_lib_libvirt",
+       |       "var_lib_pgsql",
+       |       "var_lib_mysql"
+       |     ]
+       |   },
+       |   "encryption": {
+       |     "enabled": true,
+       |     "unlock": "tpm2",
+       |     "tpm2_pcrs": [
+       |       7
+       |     ],
+       |     "tang": {}
+       |   },
+       |   "profile": "auto",
+       |   "hostname": "basalt",
+       |   "timezone": "Etc/UTC",
+       |   "locale": "en_US.UTF-8",
+       |   "keymap": "us",
+       |   "lockdown": true,
+       |   "accounts": {
+       |     "root": {
+       |       "ssh_keys": [
+       |         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl lab"
+       |       ]
+       |     }
+       |   },
+       |   "ssh": {},
+       |   "network": {
+       |     "mode": "dhcp"
+       |   },
+       |   "repos": {
+       |     "basalt": {
+       |       "url": "http://10.0.2.2:8098"
+       |     },
+       |     "fedora": {},
+       |     "tools": true,
+       |     "third_party": {
+       |       "tui_tools": true
+       |     }
+       |   },
+       |   "assistant": true,
+       |   "packages": {},
+       |   "finish": "reboot"
+       | }
+100. Record the install summary
+     $ write /mnt/sysroot/var/log/basalt-installer/summary.log (mode 0644, 142 bytes)
+       | basalt: disk=vda encrypt=1 unlock=tpm2 profile=minimal (auto, virtual machine: kvm) lockdown=1 finish=reboot installer=basalt-installer 0.1.0
+101. Label every file for SELinux (target policy)
+     # every subvolume, /.snapshots and /boot by name: setfiles does not cross into another file system on its own; append-only and immutable files (the assistant's audit log) lose that attribute for the relabel and get it back
+     $ chroot /mnt/sysroot setfiles -F -e /proc -e /sys -e /dev -e /run -e /boot/efi /etc/selinux/targeted/contexts/files/file_contexts / /boot /.snapshots /home /srv /var/cache /var/lib/containers /var/lib/libvirt /var/lib/mysql /var/lib/pgsql /var/log /var/spool /var/tmp
+102. Copy the install log into the installed system
+     $ write /mnt/sysroot/var/log/basalt-installer/install.jsonl (mode 0600): the install log so far
+103. Label the install record
+     $ chroot /mnt/sysroot restorecon -R /var/log/basalt-installer
+104. Unmount the installed system
+     $ umount --recursive /mnt/sysroot
+105. Flush writes to disk
+     $ sync
+106. Wait for device events to settle
+     $ udevadm settle --timeout=30
+107. Show what still uses the file system (diagnostics) (may fail)
+     $ findmnt --source /dev/mapper/luks-ab125c07-ab12-4c07-ab12-5c07ab125c07
+108. Close the encrypted volume
+     $ cryptsetup close luks-ab125c07-ab12-4c07-ab12-5c07ab125c07

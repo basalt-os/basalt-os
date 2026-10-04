@@ -1,0 +1,11 @@
+[Unit]
+Description=Start the Basalt OS installer on the screen (graphical or text)
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/installer.md
+After=systemd-user-sessions.service systemd-udev-settle.service basalt-installer-api.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/basalt-installer/ui-start
+
+[Install]
+WantedBy=multi-user.target

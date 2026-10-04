@@ -1,0 +1,22 @@
+[Unit]
+Description=Basalt OS text installer on %I
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/installer.md
+After=systemd-user-sessions.service run-basalt-media.mount network.target
+Wants=run-basalt-media.mount
+Conflicts=getty@%i.service serial-getty@%i.service
+
+[Service]
+ExecCondition=/usr/libexec/basalt-installer/ui-select %I
+ExecStart=/usr/bin/basalt-installer tui
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/%I
+TTYReset=yes
+TTYVHangup=yes
+Environment=LANG=C.UTF-8 TERM=linux
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

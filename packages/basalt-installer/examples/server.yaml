@@ -1,0 +1,25 @@
+# Example plan: an encrypted server on the first virtio disk, unlocked by
+# the TPM, root reachable with an SSH key. Validate and preview it with
+#   basalt-installer plan validate server.yaml
+#   basalt-installer plan preview server.yaml
+apiVersion: basalt-install-plan/v1
+edition: server
+target:
+  disk: /dev/vda
+  wipe: true
+layout:
+  mode: automatic
+encryption:
+  enabled: true
+  unlock: tpm2
+profile: auto
+hostname: basalt
+accounts:
+  root:
+    ssh_keys:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl example"
+repos:
+  basalt:
+    url: media
+    installed_url: https://repo.example.org/basalt
+finish: reboot

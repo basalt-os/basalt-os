@@ -1,0 +1,30 @@
+[Unit]
+Description=Basalt OS graphical installer (cage + Quickshell)
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/installer.md
+After=systemd-user-sessions.service basalt-installer-api.service systemd-logind.service
+Wants=basalt-installer-api.service
+Conflicts=getty@tty1.service basalt-installer-tui@tty1.service
+OnFailure=basalt-installer-tui@tty1.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+User=basalt-live
+PAMName=basalt-installer-gui
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+# Software rendering everywhere: the installer needs no GPU driver, and the
+# same path works on a basic framebuffer, in a VM and on any graphics card.
+Environment=XDG_SESSION_TYPE=wayland WLR_RENDERER=pixman QT_QUICK_BACKEND=software QT_QPA_PLATFORM=wayland LANG=C.UTF-8
+ExecStart=/usr/bin/cage -s -- /usr/bin/quickshell -p /usr/share/basalt-installer/gui
+Restart=on-failure
+RestartSec=2
+
+# Started by basalt-installer-ui.service, not enabled on its own.

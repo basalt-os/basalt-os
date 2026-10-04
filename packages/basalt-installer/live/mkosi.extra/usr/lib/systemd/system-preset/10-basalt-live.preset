@@ -1,0 +1,13 @@
+# Live installer image. systemd applies presets on the live system's
+# first (every) boot, since it has no machine ID; these come before
+# Fedora's, and the first matching line wins.
+enable run-basalt-media.mount
+enable basalt-installer-api.service
+# basalt-installer-ui starts the graphical or the text installer on tty1.
+enable basalt-installer-ui.service
+enable basalt-installer-tui@.service ttyS0
+enable NetworkManager.service
+enable systemd-resolved.service
+# tty1 belongs to the installer; tty2 is a root shell (getty with autologin).
+enable getty@.service tty2
+disable getty@.service

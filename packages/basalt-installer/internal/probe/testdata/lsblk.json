@@ -1,0 +1,20 @@
+{
+   "blockdevices": [
+      {"name":"loop0", "path":"/dev/loop0", "size":800000000, "type":"loop", "rm":false, "ro":true, "rota":false, "model":null, "serial":null, "tran":null, "fstype":"squashfs", "mountpoints":[null], "label":null},
+      {"name":"sr0", "path":"/dev/sr0", "size":900000000, "type":"rom", "rm":true, "ro":false, "rota":true, "model":"QEMU DVD-ROM", "serial":"QM00001", "tran":"sata", "fstype":"iso9660", "mountpoints":["/run/basalt/media"], "label":"BASALT-INST"},
+      {"name":"vda", "path":"/dev/vda", "size":32212254720, "type":"disk", "rm":false, "ro":false, "rota":true, "model":null, "serial":"basalt-disk", "tran":null, "fstype":null, "mountpoints":[null], "label":null},
+      {"name":"nvme0n1", "path":"/dev/nvme0n1", "size":512110190592, "type":"disk", "rm":"0", "ro":"0", "rota":"0", "model":"Samsung SSD 980 ", "serial":"S1", "tran":"nvme", "fstype":null, "mountpoints":[null], "label":null,
+         "children": [
+            {"name":"nvme0n1p1", "path":"/dev/nvme0n1p1", "size":629145600, "type":"part", "rm":false, "ro":false, "rota":false, "model":null, "serial":null, "tran":"nvme", "fstype":"vfat", "mountpoints":[null], "label":null},
+            {"name":"nvme0n1p2", "path":"/dev/nvme0n1p2", "size":511480000000, "type":"part", "rm":false, "ro":false, "rota":false, "model":null, "serial":null, "tran":"nvme", "fstype":"crypto_LUKS", "mountpoints":[null], "label":null,
+               "children": [{"name":"luks-x", "path":"/dev/mapper/luks-x", "size":511470000000, "type":"crypt", "rm":false, "ro":false, "rota":false, "model":null, "serial":null, "tran":null, "fstype":"btrfs", "mountpoints":[null], "label":null}]}
+         ]},
+      {"name":"sda", "path":"/dev/sda", "size":1000204886016, "type":"disk", "rm":false, "ro":false, "rota":true, "model":"WDC", "serial":"W1", "tran":"sata", "fstype":null, "mountpoints":[null], "label":null,
+         "children": [{"name":"sda1", "path":"/dev/sda1", "size":1000203837440, "type":"part", "rm":false, "ro":false, "rota":true, "model":null, "serial":null, "tran":"sata", "fstype":"linux_raid_member", "mountpoints":[null], "label":"host:0",
+            "children": [{"name":"md0", "path":"/dev/md0", "size":1000202788864, "type":"raid1", "rm":false, "ro":false, "rota":true, "model":null, "serial":null, "tran":null, "fstype":"ext4", "mountpoints":[null], "label":null}]}]},
+      {"name":"sdb", "path":"/dev/sdb", "size":107374182400, "type":"disk", "rm":false, "ro":false, "rota":true, "model":"LIO-ORG", "serial":"I1", "tran":"iscsi", "fstype":null, "mountpoints":[null], "label":null},
+      {"name":"sdc", "path":"/dev/sdc", "size":16008609792, "type":"disk", "rm":true, "ro":false, "rota":false, "model":"USB Stick", "serial":"U1", "tran":"usb", "fstype":null, "mountpoints":[null], "label":null,
+         "children": [{"name":"sdc1", "path":"/dev/sdc1", "size":16007561216, "type":"part", "rm":true, "ro":false, "rota":false, "model":null, "serial":null, "tran":"usb", "fstype":"vfat", "mountpoints":["/run/media/key"], "label":"KEY"}]},
+      {"name":"zram0", "path":"/dev/zram0", "size":8589934592, "type":"disk", "rm":false, "ro":false, "rota":false, "model":null, "serial":null, "tran":null, "fstype":"swap", "mountpoints":["[SWAP]"], "label":null}
+   ]
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Basalt OS installer media (repository, plan files)
+
+[Mount]
+What=/dev/disk/by-label/BASALT-INST
+Where=/run/basalt/media
+Type=iso9660
+Options=ro
+
+[Install]
+WantedBy=multi-user.target

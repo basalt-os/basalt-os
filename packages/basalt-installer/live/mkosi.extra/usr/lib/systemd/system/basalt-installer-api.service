@@ -1,0 +1,13 @@
+[Unit]
+Description=Basalt OS installer engine (local API for the graphical installer)
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/installer.md
+After=run-basalt-media.mount systemd-sysusers.service
+Wants=run-basalt-media.mount
+
+[Service]
+ExecStart=/usr/bin/basalt-installer serve --allow-user basalt-live
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

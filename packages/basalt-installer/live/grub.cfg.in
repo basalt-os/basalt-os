@@ -1,0 +1,21 @@
+# GRUB menu of the Basalt OS live installer (read by Fedora's signed GRUB
+# from the EFI system partition image of the ISO).
+set default="0"
+set timeout=@TIMEOUT@
+serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+terminal_input serial console
+terminal_output serial console
+search --no-floppy --set=root -l '@LABEL@'
+
+menuentry 'Install Basalt OS @VERSION@' --class basalt --class gnu-linux --class os {
+	linux /images/vmlinuz @CMDLINE@
+	initrd /images/live.img
+}
+menuentry 'Install Basalt OS @VERSION@ (text installer on the screen)' --class basalt --class gnu-linux --class os {
+	linux /images/vmlinuz @CMDLINE@ basalt.inst.ui=tui
+	initrd /images/live.img
+}
+menuentry 'Install Basalt OS @VERSION@ (graphical installer)' --class basalt --class gnu-linux --class os {
+	linux /images/vmlinuz @CMDLINE@ basalt.inst.ui=gui
+	initrd /images/live.img
+}
