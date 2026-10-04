@@ -67,6 +67,96 @@ func (z Analyzer) begin() Analyzer {
 	return z
 }
 
+// prefetch answers the queries an analysis is about to make in one walk of
+// the policy (see Policy.Prefetch).
+func (z Analyzer) prefetch(ctx context.Context, queries ...[]string) {
+	if z.Policy != nil && len(queries) > 0 {
+		z.Policy.Prefetch(ctx, queries...)
+	}
+}
+
+// PrefetchGroups answers, in one walk of the policy, the queries the
+// analysis of these groups will need that are known before it starts: the
+// port label and the rules of each port denial; the rules for the current
+// label, the policy default (when the audit record names the path) and the
+// candidate types of each file denial.
+func (z Analyzer) PrefetchGroups(ctx context.Context, groups []Group) {
+	z = z.begin()
+	var qs [][]string
+	for _, g := range groups {
+		a := g.AVC
+		switch {
+		case a.SType() == "" || len(a.Perms) == 0:
+		case a.IsPort():
+			qs = append(qs, portQueries(a)...)
+		case a.IsFile():
+			def := ""
+			if a.Path != "" && ValidPath(a.Path) {
+				def = z.defaultType(ctx, a.Path)
+			}
+			qs = append(qs, fileQueries(a, a.Path, def)...)
+		}
+	}
+	z.prefetch(ctx, qs...)
+}
+
+// portQueries are the queries analyzePort makes when the port still has the
+// label the denial recorded.
+func portQueries(a AVC) [][]string {
+	dom, perm := a.SType(), "name_bind"
+	if hasAny(a.Perms, "name_connect") {
+		perm = "name_connect"
+	}
+	return [][]string{PortconQuery(a.Port), AllowQuery(dom, a.TType(), a.Class, perm), AllowQuery(dom, "", a.Class, perm)}
+}
+
+// filePerm is the permission a file denial is analyzed for: the first
+// write permission, else the first one.
+func filePerm(a AVC) (perm string, write bool) {
+	perm = a.Perms[0]
+	for _, x := range a.Perms {
+		if writePerms[x] {
+			write, perm = true, x
+		}
+	}
+	return perm, write
+}
+
+// fileQueries are the queries analyzeFile may make for the object at p
+// (empty: not known yet) whose policy default is def.
+func fileQueries(a AVC, p, def string) [][]string {
+	dom, tgt := a.SType(), a.TType()
+	perm, write := filePerm(a)
+	qs := [][]string{AllowQuery(dom, tgt, a.Class, perm)}
+	if def != "" && def != tgt {
+		qs = append(qs, AllowQuery(dom, def, a.Class, perm))
+	}
+	if p == "" {
+		p = a.Name
+	}
+	if t := preferredType(dom, p, write); t != "" {
+		qs = append(qs, AllowQuery(dom, t, a.Class, perm))
+	}
+	return append(qs, AllowQuery(dom, "", a.Class, perm))
+}
+
+// preferredType is the type candidateType tries first for a service with
+// known types.
+func preferredType(dom, p string, write bool) string {
+	ts, ok := serviceTypes[dom]
+	if !ok {
+		return ""
+	}
+	isLog := strings.Contains(p, "/log") || strings.HasSuffix(p, ".log")
+	switch {
+	case isLog && write:
+		return ts.log
+	case write:
+		return ts.rw
+	}
+	return ts.read
+}
+
 func (z Analyzer) fail(err error) {
 	if z.errs != nil {
 		*z.errs = append(*z.errs, err.Error())
@@ -249,6 +339,7 @@ func (z Analyzer) analyzePort(ctx context.Context, f *Fix) {
 	if hasAny(a.Perms, "name_connect") {
 		perm = "name_connect"
 	}
+	z.prefetch(ctx, portQueries(a)...)
 	cur := z.portType(ctx, a.Proto(), a.Port)
 	if cur == "" {
 		cur = a.TType()
@@ -259,7 +350,7 @@ func (z Analyzer) analyzePort(ctx context.Context, f *Fix) {
 	// Booleans: only rules that cover this port's current type (sesearch
 	// expands attributes for -t), so an attribute of other ports does not
 	// suggest an unrelated boolean.
-	for _, r := range z.sesearch(ctx, "-A", "-s", dom, "-t", cur, "-c", a.Class, "-p", perm) {
+	for _, r := range z.rules(ctx, AllowQuery(dom, cur, a.Class, perm)) {
 		// Only booleans written for this domain and this port type: a
 		// boolean on an attribute (nis_enabled for every nsswitch domain
 		// and every unreserved port) opens far more than this one port.
@@ -272,7 +363,7 @@ func (z Analyzer) analyzePort(ctx context.Context, f *Fix) {
 		}
 	}
 	var types []string
-	for _, r := range z.sesearch(ctx, "-A", "-s", dom, "-c", a.Class, "-p", perm) {
+	for _, r := range z.rules(ctx, AllowQuery(dom, "", a.Class, perm)) {
 		if r.Bool != "" {
 			continue
 		}
@@ -342,7 +433,7 @@ var rePortcon = regexp.MustCompile(`portcon\s+(\w+)\s+(\d+)(?:-(\d+))?\s+\S+:\S+
 
 // portType is the label of a port in the loaded policy (most specific range).
 func (z Analyzer) portType(ctx context.Context, proto string, port int) string {
-	out, err := z.Policy.Query(ctx, "seinfo", "--portcon="+strconv.Itoa(port))
+	out, err := z.Policy.Query(ctx, PortconQuery(port)...)
 	if err != nil {
 		z.fail(err)
 		return ""
@@ -385,15 +476,10 @@ func (z Analyzer) analyzeFile(ctx context.Context, f *Fix) {
 	f.Features["has_path"] = true
 	f.Evidence = append(f.Evidence, fmt.Sprintf("object: %s (found via %s), labeled %s", p, how, tgt))
 
-	perm := a.Perms[0]
-	write := false
-	for _, x := range a.Perms {
-		if writePerms[x] {
-			write, perm = true, x
-		}
-	}
+	perm, write := filePerm(a)
 	def := z.defaultType(ctx, p)
 	f.DefaultType = def
+	z.prefetch(ctx, fileQueries(a, p, def)...)
 	if def != "" {
 		f.Evidence = append(f.Evidence, fmt.Sprintf("policy default label for %s: %s", p, def))
 	}
@@ -414,7 +500,7 @@ func (z Analyzer) analyzeFile(ctx context.Context, f *Fix) {
 	}
 
 	// 2. A boolean that allows this access is off.
-	for _, r := range z.sesearch(ctx, "-A", "-s", dom, "-t", tgt, "-c", a.Class, "-p", perm) {
+	for _, r := range z.rules(ctx, AllowQuery(dom, tgt, a.Class, perm)) {
 		// Only booleans written for this domain (not for an attribute of
 		// many domains).
 		if r.Bool != "" && r.Source == dom && !z.booleanOn(ctx, r.Bool) {
@@ -464,22 +550,13 @@ func (z Analyzer) defaultType(ctx context.Context, p string) string {
 
 func (z Analyzer) candidateType(ctx context.Context, dom, class, perm, p string, write bool) string {
 	isLog := strings.Contains(p, "/log") || strings.HasSuffix(p, ".log")
-	if ts, ok := serviceTypes[dom]; ok {
-		t := ts.read
-		switch {
-		case isLog && write:
-			t = ts.log
-		case write:
-			t = ts.rw
-		}
-		if z.allowed(ctx, dom, t, class, perm) {
-			return t
-		}
+	if t := preferredType(dom, p, write); t != "" && z.allowed(ctx, dom, t, class, perm) {
+		return t
 	}
 	// Generic: a type named after the domain that it may use this way.
 	stem := strings.TrimSuffix(dom, "_t") + "_"
 	var cands []string
-	for _, r := range z.sesearch(ctx, "-A", "-s", dom, "-c", class, "-p", perm) {
+	for _, r := range z.rules(ctx, AllowQuery(dom, "", class, perm)) {
 		if r.Bool == "" && strings.HasPrefix(r.Target, stem) && strings.HasSuffix(r.Target, "_t") && !genericTypes[r.Target] {
 			cands = append(cands, r.Target)
 		}
@@ -530,8 +607,8 @@ func ParseSesearch(out string) []Rule {
 	return rules
 }
 
-func (z Analyzer) sesearch(ctx context.Context, args ...string) []Rule {
-	out, err := z.Policy.Query(ctx, append([]string{"sesearch"}, args...)...)
+func (z Analyzer) rules(ctx context.Context, query []string) []Rule {
+	out, err := z.Policy.Query(ctx, query...)
 	if err != nil {
 		z.fail(err)
 		return nil
@@ -541,7 +618,7 @@ func (z Analyzer) sesearch(ctx context.Context, args ...string) []Rule {
 
 // allowed reports an unconditional rule (or one whose boolean is on).
 func (z Analyzer) allowed(ctx context.Context, dom, tgt, class, perm string) bool {
-	for _, r := range z.sesearch(ctx, "-A", "-s", dom, "-t", tgt, "-c", class, "-p", perm) {
+	for _, r := range z.rules(ctx, AllowQuery(dom, tgt, class, perm)) {
 		if r.Bool == "" || z.booleanOn(ctx, r.Bool) {
 			return true
 		}

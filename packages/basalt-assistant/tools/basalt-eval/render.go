@@ -112,7 +112,7 @@ func (g genCtx) sample() (*explain.Facts, []action.Action) {
 	switch g.n(0, 9) {
 	case 0, 1, 2, 3, 4: // units
 		causes := []string{"config_error", "config_error", "selinux_denial", "port_conflict", "dependency_failed", "disk_full",
-			"missing_file", "oom", "crashed", "permission", "unknown", "ok", "not_found"}
+			"missing_file", "oom", "crashed", "crash_loop", "permission", "unknown", "ok", "not_found"}
 		cause := g.one(causes)
 		f := explain.New("unit", cause, u)
 		var acts []action.Action
@@ -183,6 +183,17 @@ func (g genCtx) sample() (*explain.Facts, []action.Action) {
 		case "crashed":
 			f.Set("result", g.one([]string{"core-dump", "signal", "exit-code", "watchdog"}))
 			acts = []action.Action{act(action.UnitRestart, "unit", u)}
+		case "crash_loop":
+			f.Set("result", g.one([]string{"core-dump", "signal", "exit-code"})).Set("window", "24 hours")
+			f.Set("exit", g.one([]string{"dumped 11/SEGV", "dumped 6/ABRT", "killed 9/KILL", "exited 1"}))
+			switch g.n(0, 2) {
+			case 0:
+				f.SetInt("crashes", g.n(2, 12))
+			case 1:
+				f.SetInt("restarts", g.n(1, 10))
+			default:
+				f.Set("ran_for", fmt.Sprintf("%d s", g.n(0, 20))).Set("at_start", "yes")
+			}
 		case "permission":
 			f.Set("dac_path", g.one(g.p.dirs)).Set("dac_mode", g.one([]string{"0700", "0750", "0600", "0640"})).Set("dac_owner", "root").
 				Set("dac_user", fmt.Sprintf("%s (uid %d)", g.one(g.p.users), g.n(48, 999))).Set("dac_need", g.one([]string{"read", "search", "write"}))

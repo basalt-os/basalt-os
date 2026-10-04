@@ -1,0 +1,4 @@
+{"MESSAGE":"Starting basalt-lab-segv.service - Basalt lab fixture basalt-lab-segv...","PRIORITY":"6","UNIT":"basalt-lab-segv.service","_PID":"1","__REALTIME_TIMESTAMP":"1791037390000000"}
+{"MESSAGE":"basalt-lab-segv.service: Main process exited, code=dumped, status=11/SEGV","PRIORITY":"4","UNIT":"basalt-lab-segv.service","_PID":"1","EXIT_CODE":"dumped","EXIT_STATUS":"11","__REALTIME_TIMESTAMP":"1791037390150000"}
+{"MESSAGE":"basalt-lab-segv.service: Failed with result 'core-dump'.","PRIORITY":"4","UNIT":"basalt-lab-segv.service","_PID":"1","UNIT_RESULT":"core-dump","__REALTIME_TIMESTAMP":"1791037390160000"}
+{"MESSAGE":"Failed to start basalt-lab-segv.service - Basalt lab fixture basalt-lab-segv.","PRIORITY":"3","UNIT":"basalt-lab-segv.service","_PID":"1","__REALTIME_TIMESTAMP":"1791037390170000"}

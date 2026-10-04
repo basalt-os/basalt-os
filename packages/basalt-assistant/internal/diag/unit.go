@@ -30,6 +30,7 @@ type UnitReport struct {
 	AVCs        []selinux.Fix     `json:"avcs,omitempty"`
 	DAC         []DACFinding      `json:"dac,omitempty"`
 	OOM         *OOMInfo          `json:"oom,omitempty"`
+	Crash       *CrashInfo        `json:"crash,omitempty"`
 	Deps        []DepState        `json:"deps,omitempty"`
 	Ports       []PortInfo        `json:"ports,omitempty"`
 	Disks       []FSStat          `json:"disks,omitempty"`
@@ -156,7 +157,8 @@ func ParseShow(out string) []map[string]string {
 
 var showProps = "Id,LoadState,ActiveState,SubState,Result,ExecMainStatus,ExecMainCode,FragmentPath,ExecStart,ExecStartPre," +
 	"MainPID,NRestarts,StateChangeTimestamp,InactiveExitTimestamp,ActiveEnterTimestamp,Requires,Requisite,BindsTo,Wants,After,Description," +
-	"User,Group,DynamicUser,SELinuxContext,ExecMainPID,MemoryMax,MemoryHigh,MemorySwapMax,MemoryPeak,MemoryCurrent,OOMPolicy"
+	"User,Group,DynamicUser,SELinuxContext,ExecMainPID,MemoryMax,MemoryHigh,MemorySwapMax,MemoryPeak,MemoryCurrent,OOMPolicy," +
+	"ExecMainStartTimestamp,ExecMainExitTimestamp,Restart"
 
 // WhyUnit diagnoses a unit.
 func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
@@ -186,7 +188,10 @@ func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
 	if st["ActiveState"] == "failed" {
 		rep.Features["unit_failed"] = true
 	}
-	if st["Result"] == "signal" || st["Result"] == "core-dump" || st["Result"] == "watchdog" {
+	// start-limit-hit: systemd gave up restarting it; when its main process
+	// last died by a signal, that is a crash loop.
+	if st["Result"] == "signal" || st["Result"] == "core-dump" || st["Result"] == "watchdog" ||
+		(st["Result"] == "start-limit-hit" && (st["ExecMainCode"] == "2" || st["ExecMainCode"] == "3")) {
 		rep.Features["signal_or_core"] = true
 	}
 	if st["Result"] == "oom-kill" {
@@ -204,11 +209,15 @@ func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
 	}
 
 	e.unitJournal(ctx, rep, window)
-	e.unitDomain(ctx, rep)
+	avcs := e.CollectAVCs(ctx, window)
+	// The domain is only needed to attribute denials to the unit or to
+	// explain a "Permission denied"; finding it from the executable's label
+	// walks the policy, so other failures (a crash, a missing file) skip it.
+	e.unitDomain(ctx, rep, len(avcs) > 0 || rep.Features["journal_permission_denied"])
 	if rep.DomainHow != "" {
 		rep.Evidence = append(rep.Evidence, "domain: "+rep.DomainHow)
 	}
-	e.unitAVCs(ctx, rep, window)
+	e.unitAVCs(ctx, rep, avcs)
 	e.unitPermissions(ctx, rep)
 	e.unitOOM(ctx, rep, window)
 	e.unitDeps(ctx, rep)
@@ -221,6 +230,9 @@ func WhyUnit(ctx context.Context, e *Env, unit string) (*UnitReport, error) {
 	d := e.ask(ctx, q)
 	rep.Decision = d
 	rep.Cause = d.Answer.Top
+	if rep.Cause == "crashed" && !rep.Features["oom_killed"] {
+		e.unitCrash(ctx, rep)
+	}
 	e.unitPlan(rep)
 	return rep, nil
 }
@@ -336,12 +348,11 @@ func execPath(st map[string]string) string {
 	return ""
 }
 
-func (e *Env) unitAVCs(ctx context.Context, rep *UnitReport, window time.Time) {
+func (e *Env) unitAVCs(ctx context.Context, rep *UnitReport, avcs []selinux.AVC) {
 	exe := execPath(rep.State)
 	comm := path.Base(exe)
 	pid, _ := strconv.Atoi(strings.TrimSpace(rep.State["ExecMainPID"]))
 	confined := rep.Domain != "" && !selinux.Unconfined(rep.Domain)
-	avcs := e.CollectAVCs(ctx, window)
 	var mine []selinux.AVC
 	for _, a := range avcs {
 		switch {
@@ -355,7 +366,9 @@ func (e *Env) unitAVCs(ctx context.Context, rep *UnitReport, window time.Time) {
 		return
 	}
 	rep.Features["avc_for_domain"] = true
-	for _, g := range selinux.GroupAVCs(mine) {
+	groups := selinux.GroupAVCs(mine)
+	e.PrefetchAVCs(ctx, groups)
+	for _, g := range groups {
 		f := e.AnalyzeAVC(ctx, g)
 		if len(f.Errors) > 0 {
 			rep.Errors = append(rep.Errors, f.Errors...)
@@ -852,7 +865,19 @@ func (e *Env) unitPlan(rep *UnitReport) {
 				"(`systemctl set-property " + u + " MemoryMax=SIZE`), otherwise find out why the program needs that much memory."
 			break
 		}
-		rep.Explanation = u + " was killed (" + rep.State["Result"] + "); a restart is proposed, but the crash itself needs review."
+		if c := rep.Crash; c != nil && c.Repeating {
+			// A crash that repeats (or comes right at the start) is not
+			// cured by a restart: the restart would fail its verification.
+			rep.Explanation = u + " keeps crashing: " + strings.Join(c.Reasons, "; ") +
+				". A restart would most likely crash the same way, so none is proposed. Find the cause first: " +
+				crashNext(u, c) + "."
+			break
+		}
+		rep.Explanation = u + " was killed (" + rep.State["Result"] + ")"
+		if c := rep.Crash; c != nil && c.RanFor != "" {
+			rep.Explanation += " after running for " + c.RanFor
+		}
+		rep.Explanation += "; this is its first crash, so a restart is proposed, but the crash itself needs review."
 		rep.Actions = []action.Action{{Kind: action.UnitRestart, Params: map[string]string{"unit": u}}}
 	default:
 		if rep.Features["dac_denied"] && len(rep.DAC) > 0 && !rep.Healthy {

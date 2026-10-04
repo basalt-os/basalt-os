@@ -1,0 +1,3 @@
+Started worker.service - Worker.
+worker.service: Main process exited, code=killed, status=9/KILL
+worker.service: Failed with result 'signal'.

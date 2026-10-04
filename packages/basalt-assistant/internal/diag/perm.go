@@ -27,8 +27,9 @@ var genericComm = map[string]bool{
 // unit, else the loaded policy's transition from init_t for the label of
 // the executable. Guessing from the label's name (shell_exec_t -> shell_t)
 // blamed SELinux for file-mode errors of units that run a shell: those run
-// in unconfined_service_t, which SELinux does not stop.
-func (e *Env) unitDomain(ctx context.Context, rep *UnitReport) {
+// in unconfined_service_t, which SELinux does not stop. The policy is only
+// queried when lookup is set (the caller needs the domain).
+func (e *Env) unitDomain(ctx context.Context, rep *UnitReport, lookup bool) {
 	if c := strings.TrimPrefix(strings.TrimSpace(rep.State["SELinuxContext"]), "-"); c != "" {
 		if t := selinux.Type(c); t != "" {
 			rep.Domain, rep.DomainHow = t, "SELinuxContext= of the unit"
@@ -36,7 +37,7 @@ func (e *Env) unitDomain(ctx context.Context, rep *UnitReport) {
 		}
 	}
 	exe := execPath(rep.State)
-	if exe == "" || e.Label == nil {
+	if !lookup || exe == "" || e.Label == nil {
 		return
 	}
 	et := selinux.Type(e.Label(exe))

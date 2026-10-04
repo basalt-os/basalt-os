@@ -40,6 +40,11 @@ func (z Analyzer) AnalyzePath(ctx context.Context, dom, p string, write bool, la
 	for c := p; c != "/"; c = path.Dir(c) {
 		comps = append([]string{c}, comps...)
 	}
+	// Every existing component and the access it needs, first: their
+	// rules are then looked up in one walk of the policy.
+	type step struct{ c, lab, class, perm string }
+	var steps []step
+	var qs [][]string
 	for i, c := range comps {
 		lab := label(c)
 		if lab == "" {
@@ -61,6 +66,12 @@ func (z Analyzer) AnalyzePath(ctx context.Context, dom, p string, write bool, la
 				class, perm = "dir", "search"
 			}
 		}
+		steps = append(steps, step{c, lab, class, perm})
+		qs = append(qs, AllowQuery(dom, Type(lab), class, perm))
+	}
+	z.prefetch(ctx, qs...)
+	for _, s := range steps {
+		c, lab, class, perm := s.c, s.lab, s.class, s.perm
 		actual := Type(lab)
 		if z.allowed(ctx, dom, actual, class, perm) {
 			continue
@@ -81,6 +92,15 @@ func (z Analyzer) AnalyzePath(ctx context.Context, dom, p string, write bool, la
 		}
 		def := z.defaultType(ctx, c)
 		f.DefaultType = def
+		// The default label and the candidate types, in one more walk.
+		more := [][]string{AllowQuery(dom, "", class, perm)}
+		if def != "" && def != actual {
+			more = append(more, AllowQuery(dom, def, class, perm))
+		}
+		if t := preferredType(dom, p, write); t != "" {
+			more = append(more, AllowQuery(dom, t, class, perm))
+		}
+		z.prefetch(ctx, more...)
 		if def != "" {
 			f.Evidence = append(f.Evidence, fmt.Sprintf("policy default label for %s: %s", c, def))
 		}

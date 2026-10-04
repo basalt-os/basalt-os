@@ -75,8 +75,18 @@ func Real(confined bool, layer *decide.Layer) *Env {
 		exe = "/usr/bin/basalt"
 	}
 	r := runner.Exec{}
+	// Policy answers: one walk of the policy per batch of queries, reused
+	// for as long as the same policy is loaded. Only the root command line
+	// keeps them across runs, in its own root-only store: it never reads
+	// answers the confined daemon (or the MCP server) produced.
+	pol := selinux.NewPolicy(r)
+	pol.Helper = selinux.DefaultHelper
+	pol.LoadID = selinux.KernelLoadID
+	if !confined && os.Geteuid() == 0 {
+		pol.Store = selinux.NewStore(selinux.DefaultStoreDir)
+	}
 	return &Env{
-		Policy: selinux.NewPolicy(r),
+		Policy: pol,
 		Isolate: func(argv []string, replace map[string]string) []string {
 			return sandbox.Wrap(exe, argv, replace)
 		},
@@ -143,6 +153,14 @@ func (e *Env) policy() *selinux.Policy {
 		e.Policy = selinux.NewPolicy(e.R)
 	}
 	return e.Policy
+}
+
+// PrefetchAVCs looks up, in one walk of the policy, what the analysis of
+// these denial groups will query.
+func (e *Env) PrefetchAVCs(ctx context.Context, groups []selinux.Group) {
+	if len(groups) > 0 {
+		e.analyzer().PrefetchGroups(ctx, groups)
+	}
 }
 
 // analyzer is an SELinux analyzer bound to this machine.

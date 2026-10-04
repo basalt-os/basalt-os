@@ -47,7 +47,7 @@ func finish(p *proposal.Proposal, ds ...decide.Decision) *proposal.Proposal {
 var unitCauses = map[string]string{
 	"config_error": "configuration error", "selinux_denial": "blocked by SELinux", "port_conflict": "port already in use",
 	"dependency_failed": "a unit it needs failed", "disk_full": "disk full", "missing_file": "missing file",
-	"crashed": "crashed", "oom": "out of memory", "permission": "file permissions", "not_found": "no such unit",
+	"crashed": "crashed", "crash_loop": "keeps crashing", "oom": "out of memory", "permission": "file permissions", "not_found": "no such unit",
 	"unknown": "cause unknown",
 }
 
@@ -129,6 +129,8 @@ func UnitFacts(r *diag.UnitReport) *explain.Facts {
 		cause = "not_found"
 	case cause == "crashed" && r.Features["oom_killed"]:
 		cause = "oom"
+	case cause == "crashed" && r.Crash != nil && r.Crash.Repeating:
+		cause = "crash_loop"
 	case cause == "unknown" && r.Features["dac_denied"] && len(r.DAC) > 0 && !r.Healthy:
 		cause = "permission"
 	}
@@ -196,6 +198,27 @@ func UnitFacts(r *diag.UnitReport) *explain.Facts {
 		}
 	case "crashed":
 		f.Set("result", r.State["Result"])
+		if c := r.Crash; c != nil {
+			f.Set("ran_for", c.RanFor)
+		}
+	case "crash_loop":
+		f.Set("result", r.State["Result"])
+		if c := r.Crash; c != nil {
+			f.Set("exit", strings.TrimSpace(c.Code+" "+c.Status)).Set("ran_for", c.RanFor).Set("window", c.Window).
+				SetInt("restarts", c.Restarts)
+			if c.Count >= 2 {
+				f.SetInt("crashes", c.Count)
+			}
+			if c.StartLimit {
+				f.Set("start_limit", "yes")
+			}
+			if c.RanSeconds >= 0 && c.RanSeconds < int64(diag.QuickCrash.Seconds()) {
+				f.Set("at_start", "yes")
+			}
+			if c.Code == "dumped" {
+				f.Set("core", "yes")
+			}
+		}
 	case "permission":
 		d := r.DAC[0]
 		f.Set("dac_path", d.Path).Set("dac_mode", d.Mode).Set("dac_owner", d.Owner).Set("dac_user", d.User).Set("dac_need", d.Need)

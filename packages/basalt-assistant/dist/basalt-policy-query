@@ -1,0 +1,189 @@
+#!/usr/bin/python3
+"""Answer several SELinux policy queries in one pass over the loaded policy.
+
+    basalt-policy-query '[["sesearch", "-A", "-s", "httpd_t", "-c", "file", "-p", "write"],
+                          ["seinfo", "--portcon=8181"]]'
+
+Each query is the argv of a `sesearch` or `seinfo` call the assistant would
+otherwise run on its own, restricted to the forms the assistant uses:
+
+    sesearch -A|-T -s TYPE [-t TYPE] [-c CLASS[,CLASS]] [-p PERM[,PERM]]
+    seinfo --portcon=PORT
+
+The answer of each query is the text that command prints, so the assistant
+parses it the same way. Loading the policy takes well under a second; it is
+walking its (some 330 000) type enforcement rules that costs about 1.5 s per
+sesearch call. This helper walks them once for every query of a batch.
+
+Output: one JSON object on the last line, {"results": [{"out": ...},
+{"error": ...} (the query fails, as sesearch would) or {"unsupported": ...}
+(a form this helper does not handle: run the command itself)]}. A policy that cannot be loaded (another process holds
+/sys/fs/selinux/policy: EBUSY) prints the error and exits 2, and the caller
+retries the whole batch. Read only; no option writes anything.
+"""
+import json
+import logging
+import sys
+import warnings
+
+warnings.simplefilter("ignore")
+logging.basicConfig(level=logging.ERROR)
+
+RULETYPES = {"-A": "allow", "-T": "type_transition"}
+
+
+class QueryError(Exception):
+    pass
+
+
+def parse(argv):
+    """Turn one query argv into a matcher description."""
+    if not argv:
+        raise QueryError("empty query")
+    if argv[0] == "seinfo":
+        if len(argv) != 2 or not argv[1].startswith("--portcon="):
+            raise QueryError("unsupported seinfo query")
+        try:
+            port = int(argv[1].split("=", 1)[1])
+        except ValueError as e:
+            raise QueryError("invalid port") from e
+        return {"kind": "portcon", "port": port}
+    if argv[0] != "sesearch":
+        raise QueryError("unsupported command " + argv[0])
+    q = {"kind": "te", "ruletype": None, "source": None, "target": None, "tclass": None, "perms": None}
+    it = iter(argv[1:])
+    for a in it:
+        if a in RULETYPES:
+            if q["ruletype"]:
+                raise QueryError("one rule type per query")
+            q["ruletype"] = RULETYPES[a]
+            continue
+        key = {"-s": "source", "-t": "target", "-c": "tclass", "-p": "perms"}.get(a)
+        if key is None:
+            raise QueryError("unsupported option " + a)
+        try:
+            val = next(it)
+        except StopIteration as e:
+            raise QueryError("option " + a + " needs a value") from e
+        q[key] = val if key in ("source", "target") else set(val.split(","))
+    if not q["ruletype"] or not q["source"]:
+        raise QueryError("a rule type and a source are required")
+    return q
+
+
+def names(policy, name):
+    """The names a rule may use for NAME with sesearch's default (indirect)
+    matching: the type itself and every attribute that contains it. None
+    when NAME is an attribute (setools answers those queries)."""
+    import setools
+    try:
+        t = policy.lookup_type(name)
+    except setools.exception.InvalidType:
+        policy.lookup_typeattr(name)  # raises InvalidType for an unknown name
+        return None
+    return {str(t)} | {str(a) for a in t.attributes()}
+
+
+def te_fallback(policy, q):
+    """A query setools answers itself (a criterion that is an attribute)."""
+    import setools
+    terq = setools.TERuleQuery(policy, ruletype=[q["ruletype"]], source=q["source"], target=q["target"])
+    if q["tclass"]:
+        terq.tclass = sorted(q["tclass"])
+    if q["perms"]:
+        terq.perms = sorted(q["perms"])
+    return sorted(terq.results())
+
+
+def portcon(policy, port):
+    """What `seinfo --portcon=PORT` prints."""
+    import setools
+    pcq = setools.PortconQuery(policy, ports_subset=True)
+    pcq.ports = setools.PortconRange(port, port)
+    results = sorted(pcq.results())
+    lines = ["", "Portcon: %d" % len(results)] + ["   " + r.statement() for r in results]
+    return "\n".join(lines)
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("usage: basalt-policy-query JSON-ARRAY-OF-QUERIES", file=sys.stderr)
+        return 64
+    try:
+        queries = json.loads(sys.argv[1])
+        if not isinstance(queries, list) or not all(isinstance(q, list) and all(isinstance(a, str) for a in q) for q in queries):
+            raise ValueError("expected a list of argv lists")
+    except ValueError as e:
+        print("basalt-policy-query: " + str(e), file=sys.stderr)
+        return 64
+    try:
+        import setools
+    except ImportError as e:
+        print("basalt-policy-query: setools is not available: " + str(e))
+        return 3
+    try:
+        policy = setools.SELinuxPolicy()
+    except Exception as e:  # noqa: BLE001 (any load failure is reported, EBUSY included)
+        print("basalt-policy-query: cannot load the policy: " + str(e))
+        return 2
+
+    results = [None] * len(queries)
+    matchers = []  # (index, query, source names, target names)
+    for i, argv in enumerate(queries):
+        try:
+            q = parse(argv)
+            if q["kind"] == "portcon":
+                results[i] = {"out": portcon(policy, q["port"])}
+                continue
+            src = names(policy, q["source"])
+            tgt = names(policy, q["target"]) if q["target"] else None
+            if src is None or (q["target"] and tgt is None):
+                results[i] = {"out": "\n".join(str(r) for r in te_fallback(policy, q))}
+                continue
+            matchers.append((i, q, src, tgt))
+        except QueryError as e:
+            # A form this helper does not know: the caller runs the command.
+            results[i] = {"unsupported": str(e)}
+        except Exception as e:  # noqa: BLE001 (an unknown type: what sesearch fails on too)
+            results[i] = {"error": "%s: %s" % (type(e).__name__, e)}
+
+    if matchers:
+        found = {i: [] for i, _, _, _ in matchers}
+        ruletypes = {q["ruletype"] for _, q, _, _ in matchers}
+        sources = set().union(*(s for _, _, s, _ in matchers))
+        for r in policy.terules():
+            rt = str(r.ruletype)
+            if rt not in ruletypes:
+                continue
+            s = str(r.source)
+            if s not in sources:
+                continue
+            t = c = perms = None
+            for i, q, src, tgt in matchers:
+                if q["ruletype"] != rt or s not in src:
+                    continue
+                if tgt is not None:
+                    if t is None:
+                        t = str(r.target)
+                    if t not in tgt:
+                        continue
+                if q["tclass"]:
+                    if c is None:
+                        c = str(r.tclass)
+                    if c not in q["tclass"]:
+                        continue
+                if q["perms"]:
+                    if perms is None:
+                        perms = {str(p) for p in r.perms}
+                    if not perms & q["perms"]:
+                        continue
+                found[i].append(r)
+        for i, _, _, _ in matchers:
+            results[i] = {"out": "\n".join(str(r) for r in sorted(found[i]))}
+
+    print(json.dumps({"results": results}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

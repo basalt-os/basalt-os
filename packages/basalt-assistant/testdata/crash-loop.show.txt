@@ -1,0 +1,19 @@
+Id=basalt-lab-loop.service
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+Result=start-limit-hit
+StateChangeTimestamp=@1791037399
+InactiveExitTimestamp=@1791037396
+ActiveEnterTimestamp=@1791037396
+ExecMainStartTimestamp=@1791037396
+ExecMainExitTimestamp=@1791037397
+Restart=on-failure
+MainPID=0
+NRestarts=5
+ExecMainPID=9220
+ExecMainCode=3
+ExecMainStatus=6
+ExecStart={ path=/bin/sh ; argv[]=/bin/sh -c sleep 1; kill -ABRT $$ ; ignore_errors=no ; start_time=[@1791037396] ; stop_time=[@1791037397] ; pid=9220 ; code=dumped ; status=6/ABRT }
+User=
+SELinuxContext=

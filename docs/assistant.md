@@ -132,7 +132,7 @@ Read-only, no confirmation:
 | Command | What it reports |
 |---|---|
 | `basalt status` | SELinux mode, failed units, denials in 24 h, root file system usage, snapshots, unfinished package transactions, pending rollback, daemon state, pending proposals, audit chain |
-| `basalt why UNIT` | unit state and result; relevant journal lines; the unit's SELinux domain (from the loaded policy: `SELinuxContext=` or the transition from `init_t` for its executable's label) and the denials for it; for a "Permission denied", the mode and owner of every component of the path against the unit's `User=` (file permissions, DAC) and, for a confined domain without any logged denial, a label check of every component (dontaudit rules hide many denials); out-of-memory kills (result `oom-kill`, systemd's and the kernel's messages) with the unit's memory limits; failed dependencies; ports named in the failure and who holds them; full file systems; the service's own config checker (`nginx -t`, `httpd -t`, `sshd -t`, `named-checkconf`, `haproxy -c`, `postfix check`, `testparm`, and others, run without side effects, see below) with the file and line of the error; the newest snapshot copy of the broken file that passes the checker |
+| `basalt why UNIT` | unit state and result; relevant journal lines; the unit's SELinux domain (from the loaded policy: `SELinuxContext=` or the transition from `init_t` for its executable's label) and the denials for it; for a "Permission denied", the mode and owner of every component of the path against the unit's `User=` (file permissions, DAC) and, for a confined domain without any logged denial, a label check of every component (dontaudit rules hide many denials); out-of-memory kills (result `oom-kill`, systemd's and the kernel's messages) with the unit's memory limits; crashes (a signal or a core dump) with the unit's recent history: how long the process ran, systemd's automatic restarts, the start limit and how often it ended the same way in the last 24 hours. A unit that crashes again and again or right as it starts gets no restart, only that evidence and how to investigate it (its log, `coredumpctl info`); a restart is proposed only for a first crash after it ran for a while; failed dependencies; ports named in the failure and who holds them; full file systems; the service's own config checker (`nginx -t`, `httpd -t`, `sshd -t`, `named-checkconf`, `haproxy -c`, `postfix check`, `testparm`, and others, run without side effects, see below) with the file and line of the error; the newest snapshot copy of the broken file that passes the checker |
 | `basalt fix selinux [--since 1h]` | recent denials grouped by domain, target, class, permission and object, each mapped to a known fix or to review |
 | `basalt snapshots` | the root snapshots; `[proposal]` marks the ones `basalt apply` took |
 | `basalt snapshots diff A [B]` | packages added, removed and changed (rpm databases of the two snapshots) and changed files by directory (`snapper status`) |
@@ -228,10 +228,35 @@ daemon and the command line diagnose the same event, one of them gets
 EBUSY. Every query is retried with a jittered exponential backoff (10
 attempts, about 14 s); one that still fails is an error and the diagnosis
 is incomplete (no change is proposed, `basalt why` and `basalt fix
-selinux` exit with an error), never a "no rule allows it". Answers are
-cached for a minute per process. There is no cache shared between the
-daemon and the command line on purpose: the root command line does not
-trust answers the less privileged daemon wrote.
+selinux` exit with an error), never a "no rule allows it".
+
+Loading the policy is quick; what costs is walking its rules (some 330 000
+on Fedora 44, about 1.5 s per `sesearch` call on a small VM). The
+assistant therefore:
+
+- asks the queries an analysis needs together:
+  `/usr/libexec/basalt/basalt-policy-query` (python3-setools) answers a
+  batch in one walk, with the same output `sesearch` and `seinfo` print
+  (checked against them on a lab VM). A label check of a path asks for
+  every component at once; `basalt fix selinux` and `basalt why` prefetch
+  what all their denial groups need. Without the helper each query runs
+  `sesearch` or `seinfo` on its own, as before;
+- reuses every answer for as long as the same policy is loaded: the key
+  is the kernel's policy load counter (`policyload` in
+  `/sys/fs/selinux/status`), which changes on every policy load and
+  boolean commit (`semanage`, `setsebool -P`, a module install). Where it
+  cannot be read, answers live for a minute;
+- looks up a unit's domain only when denials or a "Permission denied"
+  need it, so a crash or a missing file costs no policy walk at all;
+- for the root command line only, keeps the answers across runs in
+  `/var/cache/basalt-assistant/policy/` (root, mode 0700), one file per
+  boot and policy load. It reads such a file only when the directories and
+  the file belong to root, nobody else may write them, the file is a plain
+  file with one link (opened without following links) and its SELinux type
+  is not one of the daemon's own. The daemon and the MCP server keep
+  answers in memory only. Nothing is shared between them and the command
+  line on purpose: the root command line never trusts answers the less
+  privileged daemon wrote.
 
 Every path a diagnosis uses comes from the audit record, a journal message
 or an inode search (the document roots in the nginx and httpd

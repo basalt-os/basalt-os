@@ -1,0 +1,21 @@
+[p-1a2b3c] basalt-lab-segv.service stopped: keeps crashing
+For your information, found by basalt on 2026-10-04 10:15 UTC
+
+  basalt-lab-segv.service keeps crashing. It ended the same way (dumped
+  11/SEGV) 3 times in the last 24 hours, and it crashed 0 s after it started.
+
+Nothing will be changed: this is a report for you to read.
+
+Next step
+  A restart would most likely crash the same way, so none is proposed. Look at
+  its log and core dump to find the cause, fix it, then start it again.
+  Commands you may run yourself:
+    $ journalctl -u basalt-lab-segv.service -b
+    $ coredumpctl info COREDUMP_UNIT=basalt-lab-segv.service
+  Close it:   sudo basalt ignore p-1a2b3c
+
+Evidence
+  - state: failed/failed, result exit-code, main process exited status 1, restarts 0
+
+How sure the assistant is
+  - unit.cause: crashed, 0.85 (threshold 0.75, rules/v1)

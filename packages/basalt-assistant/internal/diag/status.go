@@ -20,7 +20,9 @@ type SELinuxItem struct {
 // FixSELinux analyzes the denials since a time.
 func (e *Env) FixSELinux(ctx context.Context, since time.Time) []SELinuxItem {
 	var out []SELinuxItem
-	for _, g := range selinux.GroupAVCs(e.CollectAVCs(ctx, since)) {
+	groups := selinux.GroupAVCs(e.CollectAVCs(ctx, since))
+	e.PrefetchAVCs(ctx, groups)
+	for _, g := range groups {
 		f := e.AnalyzeAVC(ctx, g)
 		d := e.ask(ctx, decide.AVCClass(g.AVC.Key(), f.Features))
 		out = append(out, SELinuxItem{Fix: f, Decision: d})

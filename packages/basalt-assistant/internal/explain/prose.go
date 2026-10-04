@@ -180,7 +180,34 @@ func unitText(f *Facts, p phraser) Text {
 		if f.Has("result") {
 			t.Why = "systemd recorded the result " + f.V("result") + "."
 		}
+		if f.Has("ran_for") {
+			t.Why = joinSentences(t.Why, "It had been running for "+f.V("ran_for")+" and has not crashed like this before.")
+		}
 		t.Next = "A restart is proposed to bring it back, but the crash itself still needs a look."
+	case "crash_loop":
+		t.Headline = p.pick(u+" keeps crashing.", u+" crashes every time it runs.")
+		var why []string
+		if f.Has("crashes") {
+			why = append(why, "it ended the same way ("+f.V("exit")+") "+f.V("crashes")+" times in the last "+f.V("window"))
+		}
+		if f.Has("restarts") {
+			why = append(why, "systemd already restarted it "+f.V("restarts")+" times")
+		}
+		if f.V("start_limit") == "yes" {
+			why = append(why, "systemd gave up restarting it after too many failures")
+		}
+		if f.V("at_start") == "yes" {
+			why = append(why, "it crashed "+f.V("ran_for")+" after it started")
+		}
+		if len(why) > 0 {
+			t.Why = strings.ToUpper(why[0][:1]) + why[0][1:]
+			if len(why) > 1 {
+				t.Why += ", and " + strings.Join(why[1:], ", and ")
+			}
+			t.Why += "."
+		}
+		t.Next = p.pick("A restart would most likely crash the same way, so none is proposed. Look at its log and core dump to find the cause, fix it, then start it again.",
+			"Restarting it would probably end in the same crash, so nothing is proposed. Find the cause in its log and core dump first, then start it again.")
 	case "permission":
 		t.Headline = p.pick(u+" cannot use a file it needs because of the file permissions.",
 			u+" failed with \"Permission denied\" from the file permissions, not from SELinux.")

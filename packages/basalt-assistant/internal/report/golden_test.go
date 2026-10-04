@@ -104,6 +104,12 @@ func scenarios() map[string]*proposal.Proposal {
 	r.Actions = []action.Action{act(action.UnitRestart, "unit", "worker.service")}
 	ps["unit-crashed"] = FromUnit("cli", r)
 
+	r = unitRep("basalt-lab-segv.service", "crashed", 0.85)
+	r.State["Result"] = "core-dump"
+	r.Crash = &diag.CrashInfo{Code: "dumped", Status: "11/SEGV", Count: 3, Window: "24 hours", RanFor: "0 s", Repeating: true,
+		Reasons: []string{"it ended the same way (dumped 11/SEGV) 3 times in the last 24 hours", "it crashed 0 s after it started, on its way up"}}
+	ps["unit-crash-loop"] = FromUnit("cli", r)
+
 	r = unitRep("basalt-lab-dac.service", "unknown", 0.5)
 	r.Features["dac_denied"] = true
 	r.DAC = []diag.DACFinding{{Path: "/srv/lab/data", Mode: "0700", Owner: "root", User: "nobody (uid 65534)", Need: "search"}}

@@ -1,0 +1,9 @@
+basalt-lab-loop.service: Main process exited, code=dumped, status=6/ABRT
+basalt-lab-loop.service: Failed with result 'core-dump'.
+basalt-lab-loop.service: Scheduled restart job, restart counter is at 4.
+basalt-lab-loop.service: Main process exited, code=dumped, status=6/ABRT
+basalt-lab-loop.service: Failed with result 'core-dump'.
+basalt-lab-loop.service: Scheduled restart job, restart counter is at 5.
+basalt-lab-loop.service: Start request repeated too quickly.
+basalt-lab-loop.service: Failed with result 'start-limit-hit'.
+Failed to start basalt-lab-loop.service - Basalt lab fixture loop.

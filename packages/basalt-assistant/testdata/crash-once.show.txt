@@ -1,0 +1,19 @@
+Id=worker.service
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+Result=signal
+StateChangeTimestamp=@1791037390
+InactiveExitTimestamp=@1791026590
+ActiveEnterTimestamp=@1791026590
+ExecMainStartTimestamp=@1791026590
+ExecMainExitTimestamp=@1791037390
+Restart=no
+MainPID=0
+NRestarts=0
+ExecMainPID=4100
+ExecMainCode=2
+ExecMainStatus=9
+ExecStart={ path=/usr/libexec/worker ; argv[]=/usr/libexec/worker ; ignore_errors=no ; start_time=[@1791026590] ; stop_time=[@1791037390] ; pid=4100 ; code=killed ; status=9/KILL }
+User=
+SELinuxContext=

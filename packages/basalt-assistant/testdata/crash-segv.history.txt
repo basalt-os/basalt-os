@@ -1,0 +1,10 @@
+Starting basalt-lab-segv.service - Basalt lab fixture basalt-lab-segv...
+Process 28731 (sh) of user 0 dumped core.
+basalt-lab-segv.service: Main process exited, code=dumped, status=11/SEGV
+basalt-lab-segv.service: Failed with result 'core-dump'.
+Failed to start basalt-lab-segv.service - Basalt lab fixture basalt-lab-segv.
+Starting basalt-lab-segv.service - Basalt lab fixture basalt-lab-segv...
+Process 9071 (sh) of user 0 dumped core.
+basalt-lab-segv.service: Main process exited, code=dumped, status=11/SEGV
+basalt-lab-segv.service: Failed with result 'core-dump'.
+Failed to start basalt-lab-segv.service - Basalt lab fixture basalt-lab-segv.

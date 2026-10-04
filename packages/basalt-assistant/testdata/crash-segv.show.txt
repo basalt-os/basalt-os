@@ -1,0 +1,19 @@
+Id=basalt-lab-segv.service
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+Result=core-dump
+StateChangeTimestamp=@1791037390
+InactiveExitTimestamp=@1791037390
+ActiveEnterTimestamp=
+ExecMainStartTimestamp=@1791037390
+ExecMainExitTimestamp=@1791037390
+Restart=no
+MainPID=0
+NRestarts=0
+ExecMainPID=9071
+ExecMainCode=3
+ExecMainStatus=11
+ExecStart={ path=/bin/sh ; argv[]=/bin/sh -c kill -SEGV $$ ; ignore_errors=no ; start_time=[@1791037390] ; stop_time=[@1791037390] ; pid=9071 ; code=dumped ; status=11/SEGV }
+User=
+SELinuxContext=

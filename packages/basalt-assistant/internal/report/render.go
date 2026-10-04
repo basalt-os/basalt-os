@@ -202,6 +202,14 @@ func nextCommands(p *proposal.Proposal, fp string) []string {
 			cmds = append(cmds, "basalt why "+f.V("dep"))
 		case f.Kind == "unit" && f.Cause == "disk_full":
 			cmds = append(cmds, "basalt disk")
+		case f.Kind == "unit" && f.Cause == "crash_loop":
+			cmds = append(cmds, "journalctl -u "+f.Subject+" -b")
+			if f.V("core") == "yes" {
+				cmds = append(cmds, "coredumpctl info COREDUMP_UNIT="+f.Subject)
+			}
+			if f.V("start_limit") == "yes" {
+				cmds = append(cmds, "sudo systemctl reset-failed "+f.Subject)
+			}
 		case f.Kind == "unit" && f.Cause == "oom":
 			cmds = append(cmds, "systemctl show "+f.Subject+" -p MemoryMax,MemoryHigh,MemorySwapMax,MemoryPeak",
 				"sudo systemctl set-property "+f.Subject+" MemoryMax=SIZE")

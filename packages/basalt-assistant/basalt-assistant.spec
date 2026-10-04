@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.6.0
+Version:        0.6.1
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -34,6 +34,7 @@ Requires:       policycoreutils
 Requires:       policycoreutils-python-utils
 Requires:       libselinux-utils
 Requires:       setools-console
+Requires:       python3-setools
 Requires:       iproute
 Requires:       diffutils
 Requires:       findutils
@@ -98,6 +99,7 @@ install -Dpm 0755 bin/basalt %{buildroot}%{_bindir}/basalt
 install -Dpm 0755 bin/basalt-mcp %{buildroot}%{_bindir}/basalt-mcp
 install -Dpm 0755 bin/basalt-assistantd %{buildroot}%{_libexecdir}/basalt/basalt-assistantd
 install -Dpm 0755 bin/basalt-notify %{buildroot}%{_libexecdir}/basalt/basalt-notify
+install -Dpm 0755 dist/basalt-policy-query %{buildroot}%{_libexecdir}/basalt/basalt-policy-query
 install -Dpm 0644 dist/basalt-assistantd.service %{buildroot}%{_unitdir}/basalt-assistantd.service
 install -Dpm 0644 dist/basalt-notify.service %{buildroot}%{_unitdir}/basalt-notify.service
 install -Dpm 0644 dist/basalt-audit-rotate.service %{buildroot}%{_unitdir}/basalt-audit-rotate.service
@@ -108,6 +110,7 @@ install -Dpm 0644 dist/assistant.conf %{buildroot}%{_sysconfdir}/basalt/assistan
 install -dm 0700 %{buildroot}%{_sharedstatedir}/basalt-assistant
 install -dm 0700 %{buildroot}%{_sharedstatedir}/basalt-assistant/proposals
 install -dm 0700 %{buildroot}%{_localstatedir}/log/basalt-assistant
+install -dm 0700 %{buildroot}%{_localstatedir}/cache/basalt-assistant
 install -Dpm 0644 selinux/%{modulename}.pp.bz2 %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}.pp.bz2
 install -Dpm 0644 selinux/%{modulename}.if %{buildroot}%{_datadir}/selinux/devel/include/distributed/%{modulename}.if
 install -d licenses && install -pm 0644 LICENSE third_party/tui-kit.LICENSE licenses/
@@ -144,6 +147,7 @@ fi
 %dir %{_libexecdir}/basalt
 %{_libexecdir}/basalt/basalt-assistantd
 %{_libexecdir}/basalt/basalt-notify
+%{_libexecdir}/basalt/basalt-policy-query
 %{_unitdir}/basalt-assistantd.service
 %{_unitdir}/basalt-notify.service
 %{_unitdir}/basalt-audit-rotate.service
@@ -155,6 +159,7 @@ fi
 %dir %attr(0700,root,root) %{_sharedstatedir}/basalt-assistant
 %dir %attr(0700,root,root) %{_sharedstatedir}/basalt-assistant/proposals
 %dir %attr(0700,root,root) %{_localstatedir}/log/basalt-assistant
+%dir %attr(0700,root,root) %{_localstatedir}/cache/basalt-assistant
 
 %files selinux
 %{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}.pp.bz2
@@ -162,6 +167,18 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.1-1
+- Policy queries: one walk of the policy per batch of queries
+  (basalt-policy-query, python3-setools), answers reused for as long as the
+  same policy is loaded (the kernel's policy load counter), and kept across
+  runs by the root command line only, in a root-only cache it never shares
+  with the confined daemon. The domain of a unit is only looked up when
+  denials or "Permission denied" need it.
+- Crashes: a unit that crashes again and again (systemd restarts, the same
+  exit status repeated, the start limit) or right as it starts gets no
+  restart proposal, only the evidence and how to investigate; a restart is
+  proposed for a first crash after the unit ran for a while.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.6.0-1
 - Optional VSM decision backend (decision.backend = vsm): a knowledge
   index (package basalt-knowledge) ranks known cases for the diagnosers'
