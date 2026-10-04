@@ -348,7 +348,29 @@ Development keys (the lab): `scripts/lab/sb-keys.sh` creates a PK, KEK, db,
 the module CA and a module signing certificate under the lab directory,
 private keys mode 0600, never printed.
 
-Release keys do not exist yet. They are created offline in a key ceremony,
-[key-ceremony.md](key-ceremony.md), and never stored on a build host.
-Until then `basalt-security` ships placeholders, which the tools recognize
-and skip.
+Release keys: created offline in a key ceremony
+([key-ceremony.md](key-ceremony.md)) and never stored on a build host.
+`basalt-security` ships their public certificates:
+
+| File | Certificate | SHA-256 fingerprint |
+|---|---|---|
+| `/usr/share/basalt/secureboot/basalt-module-ca.der` | OpenBasalt Kernel Module CA (RSA 4096, CA, `keyCertSign, cRLSign`, valid to 2036-10-01): the MOK `basalt-secureboot enroll-mok` enrolls | `15:5E:5E:7C:FE:7C:19:4C:9C:AD:E7:4F:32:0A:FE:11:57:D7:F8:B2:68:0A:93:A2:25:2F:7D:FA:DC:36:C2:DF` |
+| `/usr/lib/basalt/module-keys/basalt-module-signing.der` | OpenBasalt Kernel Module Signing 2026 (issued by the CA, `digitalSignature`, code signing, valid to 2028-10-03): loaded into `.secondary_trusted_keys` at boot | `79:DF:9F:05:C4:96:30:57:5F:59:1D:C4:2D:FA:28:8D:CF:AC:E0:A5:C6:99:4A:9B:BA:06:B8:BB:D0:E9:96:FE` |
+
+Check a certificate before enrolling it:
+
+```sh
+openssl x509 -inform DER -in /usr/share/basalt/secureboot/basalt-module-ca.der -noout -subject -fingerprint -sha256
+```
+
+The MOK flow is the one above: the module CA is the certificate machine
+owners enroll; signing certificates follow by package updates. On a
+machine where the CA is not enrolled, `basalt-module-keys.service` reports
+that the signing certificate was not loaded and boot goes on.
+
+Lab and CI: lab builds replace both certificates with the development ones
+of `scripts/lab/sb-keys.sh` through `BASALT_MODULE_CA_CERT` and
+`BASALT_MODULE_SIGNING_CERT` in `.env` (an explicit override, logged by
+`scripts/build-rpms.sh`), because the lab signs its test modules with those
+keys (`scripts/lab/kmod-build.sh`, `scripts/lab/mok-test.sh`). Without the
+override a build ships the OpenBasalt certificates.

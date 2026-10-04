@@ -31,6 +31,7 @@ export BUILD_DIR="$BUILD_DIR/ci-boot"
 export LAB_DIR="$CI_LAB_DIR"
 export GNUPGHOME_LAB="$LAB_DIR/gpg"
 export BASALT_GPG_PUBKEY="$LAB_DIR/gpg/RPM-GPG-KEY-basalt-lab"
+# The OpenBasalt module certificates (no lab override): CI signs no modules.
 export BASALT_MODULE_CA_CERT="" BASALT_MODULE_SIGNING_CERT="" EXTRA_SSH_PUBKEYS=""
 export LAB_REPO_URL="http://10.0.2.2:$CI_REPO_PORT"
 export REPO_DIR="$BUILD_DIR/repo"

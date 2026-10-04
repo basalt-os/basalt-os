@@ -1,13 +1,18 @@
 # Basalt OS security helpers: TPM2 disk unlock (basalt-tpm) and Secure Boot
 # with Basalt's own module key (basalt-secureboot).
 #
-# Build: scripts/build-rpms.sh. The module CA and signing certificates are
-# build inputs (BASALT_MODULE_CA_CERT, BASALT_MODULE_SIGNING_CERT, DER); the
-# files in this directory are placeholders that the tools recognise and skip.
+# Build: scripts/build-rpms.sh. basalt-module-ca.der and
+# basalt-module-signing.der in this directory are the OpenBasalt kernel module
+# CA (the certificate machine owners enroll as a MOK; SHA-256 fingerprint
+# 15:5E:5E:7C:FE:7C:19:4C:9C:AD:E7:4F:32:0A:FE:11:57:D7:F8:B2:68:0A:93:A2:25:2F:7D:FA:DC:36:C2:DF)
+# and the module signing certificate it issued (79:DF:9F:05:C4:96:30:57:5F:59:1D:C4:2D:FA:28:8D:CF:AC:E0:A5:C6:99:4A:9B:BA:06:B8:BB:D0:E9:96:FE).
+# Public material only; the private keys stay offline. Lab and CI builds may
+# replace them with their own through BASALT_MODULE_CA_CERT and
+# BASALT_MODULE_SIGNING_CERT (an explicit override).
 
 Name:           basalt-security
 Version:        0.1.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        TPM2 unlock and Secure Boot helpers for Basalt OS
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -87,6 +92,10 @@ install -d licenses && install -pm 0644 LICENSE licenses/
 %{_prefix}/lib/basalt/module-keys/basalt-module-signing.der
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-3
+- Ship the OpenBasalt kernel module CA and module signing certificate
+  instead of placeholders.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-2
 - basalt-secureboot: read the message of mokutil --test-key (it exits 1 for
   an enrolled key too), so an enrolled module CA is reported as enrolled.
