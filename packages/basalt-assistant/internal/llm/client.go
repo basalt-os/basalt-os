@@ -150,12 +150,8 @@ func (c *Client) Complete(ctx context.Context, r Request) (Response, error) {
 	if err := c.init(); err != nil {
 		return Response{}, err
 	}
-	req, err := c.newRequest(ctx, r, false)
-	if err != nil {
-		return Response{}, err
-	}
 	t0 := time.Now()
-	resp, err := c.hc.Do(req)
+	resp, err := c.do(ctx, r, false)
 	if err != nil {
 		return Response{}, fmt.Errorf("model endpoint: %w", err)
 	}
@@ -238,6 +234,23 @@ func (c *Client) Body(r Request, stream bool) map[string]any {
 	return body
 }
 
+// do sends the request, once more when the transport failed before any
+// answer arrived (a kept-alive connection the server had just closed).
+func (c *Client) do(ctx context.Context, r Request, stream bool) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	for attempt := 0; attempt < 2; attempt++ {
+		var req *http.Request
+		if req, err = c.newRequest(ctx, r, stream); err != nil {
+			return nil, err
+		}
+		if resp, err = c.hc.Do(req); err == nil || ctx.Err() != nil {
+			break
+		}
+	}
+	return resp, err
+}
+
 func (c *Client) newRequest(ctx context.Context, r Request, stream bool) (*http.Request, error) {
 	buf, err := json.Marshal(c.Body(r, stream))
 	if err != nil {
@@ -268,12 +281,8 @@ func (c *Client) Stream(ctx context.Context, r Request, onDelta func(string) err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := c.newRequest(ctx, r, true)
-	if err != nil {
-		return Response{}, err
-	}
 	t0 := time.Now()
-	resp, err := c.hc.Do(req)
+	resp, err := c.do(ctx, r, true)
 	if err != nil {
 		return Response{}, fmt.Errorf("model endpoint: %w", err)
 	}
