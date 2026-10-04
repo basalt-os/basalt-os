@@ -11,3 +11,29 @@ set -euo pipefail
 passwd -l root >/dev/null
 systemctl set-default multi-user.target
 rm -f /etc/machine-id
+
+# The initramfs of the live system: dracut with dmsquash-live finds the ISO
+# by its label, copies LiveOS/squashfs.img (EROFS) to memory and boots it
+# under a tmpfs overlay; systemd then loads the SELinux policy. Generic (no
+# host-only): every storage and USB driver the kernel ships.
+kver="$(ls /usr/lib/modules | sort -V | tail -1)"
+rm -f /boot/initramfs-* /boot/initrd*
+# The build sandbox cannot copy security xattrs, and dracut-install would
+# then skip files while dracut still exits 0: copy no xattrs (the initramfs
+# holds none) and treat any dracut-install error as fatal.
+export DRACUT_NO_XATTR=1
+dracut --force --no-hostonly --no-hostonly-cmdline \
+  --add "dmsquash-live" --omit "plymouth" \
+  --add-drivers "erofs overlay iso9660 sr_mod loop" \
+  --kver "$kver" /boot/initrd-live.img >/tmp/dracut.log 2>&1 || { cat /tmp/dracut.log; exit 1; }
+if grep -E "ERROR|FAILED" /tmp/dracut.log; then
+  echo "dracut reported errors" >&2
+  exit 1
+fi
+lsinitrd /boot/initrd-live.img >/tmp/initrd.list
+for f in usr/lib/systemd/systemd usr/lib/systemd/systemd-sysroot-fstab-check \
+         dmsquash-liveiso-genrules.sh dmsquash-live-root \
+         "erofs.ko" "overlay.ko" "isofs.ko"; do
+  grep -q "$f" /tmp/initrd.list || { echo "the live initramfs lacks $f" >&2; exit 1; }
+done
+rm -f /tmp/dracut.log /tmp/initrd.list

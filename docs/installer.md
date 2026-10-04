@@ -71,6 +71,7 @@ has one.
 | `ssh.password_auth` | `false` | Basalt OS accepts public keys only; `true` adds a drop-in and a warning |
 | `network.mode` | `dhcp` | `static`: `interface`, `address` (CIDR), `gateway`, `dns` |
 | `repos.basalt.url` | `media` | the repository on the installer image, or an http(s) URL; `installed_url` is what the installed system uses |
+| `repos.basalt.gpg_key` | the media's key | the repository key used during the installation; the preview says whether it is the OpenBasalt release key (fingerprint `3601734842BD4E482D19DE4AE4EED5ECA395B302`) or another one, such as a lab key. The installed system trusts the key that `basalt-release` ships |
 | `repos.fedora.baseurl`, `updates_baseurl` | Fedora's mirrors | for a local mirror |
 | `repos.tools` | `true` | `basalt-tools` configured, metadata only (ADR 0005) |
 | `repos.third_party.tui_tools` | `true` | the tui-tools repository with its key; the key's fingerprint is pinned in the installer and checked before it is written |
@@ -125,10 +126,9 @@ lists them all. In order:
    is taken on the first boot), the install record, a full SELinux
    relabel with the target's own policy (`setfiles` in the target, given
    every subvolume, `/.snapshots` and `/boot` by name, because it does not
-   cross into another file system that the kernel does not mark as
-   labeled, and the live system runs without SELinux; append-only and
-   immutable files lose that attribute for the relabel and get it back),
-   then everything is unmounted and closed.
+   cross into another file system on its own; append-only and immutable
+   files lose that attribute for the relabel and get it back), then
+   everything is unmounted and closed.
 
 ## The recovery key
 
@@ -146,10 +146,14 @@ installer reboot. Nothing writes it to disk unless the plan asks
   `basalt-logos`, the installer, its GUI and the storage, TPM and Clevis
   tools into a directory, from Fedora's repositories and the signed
   Basalt repository.
-- The tree becomes one zstd compressed cpio archive that the kernel
-  unpacks as its initramfs, with systemd as its first process: the
-  installer runs entirely from memory, needs no live root file system and
-  no initramfs logic of its own, and the medium can be removed.
+- The tree becomes `LiveOS/squashfs.img`, an EROFS image whose SELinux
+  labels come from the image's own policy (`mkfs.erofs --file-contexts`;
+  the build host's labels play no part, and the build reads a few labels
+  back from the image to check). A generic dracut initramfs with
+  `dmsquash-live` finds the medium by its label, copies the image to
+  memory (`rd.live.ram=1`) and boots it under a tmpfs overlay, the way
+  Fedora's live media boot: the installer runs from memory and the medium
+  can be removed.
 - The ISO's EFI system partition image holds Fedora's signed shim (as the
   removable-media loader), GRUB and MokManager, taken unmodified from the
   tree; the kernel is Fedora's signed one. It boots with Secure Boot on
@@ -162,10 +166,20 @@ installer reboot. Nothing writes it to disk unless the plan asks
   graphical installer runs as an unprivileged session user that may only
   talk to the engine's socket (checked with `SO_PEERCRED`); the engine
   runs as root. tty2 has a root shell, like Anaconda's.
-- The live system boots with `selinux=0`: it runs from an unlabeled
-  memory file system that holds no data and offers no network service,
-  and the installed system is labeled with its own policy by `setfiles`.
-  The installed system is enforcing from its first boot.
+- The live system runs SELinux enforcing (targeted policy, `enforcing=1`
+  on the command line: a live system that cannot load its policy does not
+  boot). The engine, `/usr/bin/basalt-installer`, runs in `install_t`,
+  the domain Fedora's policy gives Anaconda, bootc and rpm-ostree: it may
+  write labels that only the installed system's policy knows (the
+  assistant's types, for example), which a domain without `mac_admin`
+  could not. That label is set by a live-only `file_contexts.local`
+  entry; the graphical session (cage and Quickshell) runs as an ordinary
+  unconfined service of the unprivileged session user. The installed
+  system is labeled with its own policy by `setfiles` and is enforcing
+  from its first boot. Why not the earlier cpio-as-initramfs design: the
+  kernel's initial root file system (`rootfs`) gets one fixed label for
+  every file from the policy (`genfscon rootfs / root_t`), so a system
+  running from it can only run with SELinux off.
 
 Why mkosi and not lorax: lorax builds Anaconda's environment (or a
 livemedia-creator live image through Anaconda itself), which is exactly
@@ -220,7 +234,10 @@ Nothing is vendored into the repository.
   `INSTALL_MODE=external`) run on the installed disk: unattended TPM
   unlock, os-release, the profile, Secure Boot, SELinux enforcing with 0
   denials, LUKS slots and PCR 7, snapper around dnf, the rollback dry
-  run, the assistant, sealed audit rotation, a reboot.
+  run, the assistant, sealed audit rotation, a reboot. Before the end
+  action, the drivers read the live system's own SELinux state through
+  the lab ISO's debug shell (`tests/liveshell.py`): it must be enforcing
+  with 0 AVC denials for the whole installation, or the test fails.
 
 ## Complex storage
 

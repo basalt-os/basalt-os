@@ -179,8 +179,9 @@
  66. Create the temporary repository directory
      $ install -d -m 0700 /run/basalt-installer/repos.d
  67. Write the install-time repositories (Fedora, Basalt)
-     $ write /run/basalt-installer/repos.d/basalt-install.repo (mode 0600, 767 bytes)
+     $ write /run/basalt-installer/repos.d/basalt-install.repo (mode 0600, 889 bytes)
        | # Install-time repositories of the Basalt OS installer (live system only).
+       | # Basalt repository key: not readable yet (/run/basalt/media/basalt/RPM-GPG-KEY-basalt); dnf checks signatures against it
        | [basalt-install-fedora]
        | name=Fedora $releasever - $basearch
        | metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-$releasever&arch=$basearch

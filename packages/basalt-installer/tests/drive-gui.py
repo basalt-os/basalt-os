@@ -26,6 +26,9 @@ import sys
 import time
 import zlib
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from liveshell import Shell  # noqa: E402
+
 # Click targets as fractions of the screen (x, y), measured on 1280x800.
 TARGETS = {
     "primary": (1180 / 1280, 764 / 800),      # Continue / Review the plan / Power off
@@ -86,45 +89,6 @@ def ppm_to_png(ppm, png):
     return w, h
 
 
-class Shell:
-    """The root shell on the lab ISO's second serial port."""
-
-    def __init__(self, path):
-        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        for _ in range(100):
-            try:
-                self.s.connect(path)
-                break
-            except OSError:
-                time.sleep(0.3)
-        self.s.settimeout(0.5)
-        self.n = 0
-
-    def run(self, command, timeout=20):
-        self.n += 1
-        tag = f"__END{self.n}__"
-        self.s.sendall(f"{command} 2>&1; echo {tag} $?\n".encode())
-        buf, end = b"", time.time() + timeout
-        while time.time() < end:
-            try:
-                buf += self.s.recv(65536)
-            except socket.timeout:
-                pass
-            m = re.search(rf"{tag} (\d+)".encode(), buf)
-            if m and buf.count(tag.encode()) >= 2:
-                text = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", buf).decode("utf-8", "replace")
-                body = text.split(tag)[1] if text.count(tag) >= 2 else text
-                return int(m.group(1)), body
-        return -1, buf.decode("utf-8", "replace")
-
-    def json(self, command):
-        rc, out = self.run(command)
-        if rc != 0:
-            return None
-        m = re.search(r"\{.*\}", out, re.S)
-        return json.loads(m.group(0)) if m else None
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--qmp", required=True)
@@ -133,6 +97,7 @@ def main():
     ap.add_argument("--shots", required=True)
     ap.add_argument("--key-out", required=True)
     ap.add_argument("--install-timeout", type=int, default=3600)
+    ap.add_argument("--selinux-out", help="write the live system's SELinux mode and denials here")
     a = ap.parse_args()
     os.makedirs(a.shots, exist_ok=True)
     q = QMP(a.qmp)
@@ -196,8 +161,12 @@ def main():
             shot("installing")
             progress_shot = True
         if st.get("recovery_key_pending"):
-            k = sh.json("basalt-installer client recovery_key") or {}
-            key = k.get("key")
+            for _ in range(5):
+                k = sh.json("basalt-installer client recovery_key") or {}
+                key = k.get("key")
+                if key:
+                    break
+                time.sleep(2)
             break
         if st.get("state") == "failed":
             shot("failed")
@@ -229,6 +198,8 @@ def main():
     if st.get("state") != "succeeded":
         raise SystemExit(f"the installation failed: {st.get('error')}")
     print(f"--> installed in {int(time.time() - t0)}s", flush=True)
+    if a.selinux_out:
+        sh.selinux_report(a.selinux_out)
     click("primary", pause=2)  # Power off
     print("--> end action clicked", flush=True)
     return 0

@@ -8,7 +8,7 @@
 # Output: $BUILD_DIR/rpms/<fedora>/ (binary and source RPMs); lab fixtures in
 # $BUILD_DIR/rpms/<fedora>/lab/. FEDORA_RELEASE selects the base (default 44).
 # BASALT_GPG_PUBKEY, when set, is the repository key shipped in basalt-release
-# (otherwise the placeholder in packages/basalt-release is kept).
+# (otherwise basalt-release ships the OpenBasalt release key from packages/basalt-release).
 # BASALT_MODULE_CA_CERT and BASALT_MODULE_SIGNING_CERT (DER or PEM), when set,
 # are the kernel module CA (the MOK) and signing certificate shipped in
 # basalt-security (otherwise its placeholders are kept).
@@ -32,7 +32,7 @@ if [[ -n "$BASALT_GPG_PUBKEY" ]]; then
   cp "$BASALT_GPG_PUBKEY" "$work/SOURCES/RPM-GPG-KEY-basalt"
   log "basalt-release ships the key from $BASALT_GPG_PUBKEY"
 else
-  log "basalt-release ships the placeholder key (set BASALT_GPG_PUBKEY for a usable repository)"
+  log "basalt-release ships the OpenBasalt release key (set BASALT_GPG_PUBKEY for a repository signed with another key)"
 fi
 
 # Module certificates for basalt-security, converted to DER.

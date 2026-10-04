@@ -3,6 +3,7 @@
 
 Usage:
   drive-tui.py --socket SERIAL.sock --disk vda --key-out FILE [--log FILE]
+               [--shell SHELL.sock --selinux-out FILE]
 
 Connects to QEMU's serial chardev (a Unix socket), walks the wizard like a
 person would (every screen, the review, the typed disk name), reads the
@@ -16,6 +17,9 @@ import re
 import socket
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from liveshell import Shell  # noqa: E402
 
 ANSI = re.compile(rb"\x1b\[[0-9;?<>=]*[ -/]*[@-~]|\x1b[()][A-Za-z0-9]|\x1b[=>78]|\x1b\][^\x07]*\x07")
 
@@ -91,6 +95,8 @@ def main():
     ap.add_argument("--log")
     ap.add_argument("--boot-timeout", type=int, default=600)
     ap.add_argument("--install-timeout", type=int, default=3600)
+    ap.add_argument("--shell", help="the lab ISO's root shell socket (second serial port)")
+    ap.add_argument("--selinux-out", help="write the live system's SELinux mode and denials here")
     a = ap.parse_args()
     con = Console(a.socket, a.log)
 
@@ -138,6 +144,8 @@ def main():
         print(con.text()[-4000:])
         raise SystemExit("the installation failed")
     print(f"--> installed in {int(time.time() - t0)}s", flush=True)
+    if a.shell and a.selinux_out:
+        Shell(a.shell).selinux_report(a.selinux_out)
     con.wait(r"enter (poweroff|reboot) now", 10, "the end action")
     con.send(ENTER, 2)
     print("--> end action confirmed", flush=True)

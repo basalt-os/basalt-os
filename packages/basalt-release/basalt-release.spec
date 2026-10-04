@@ -5,9 +5,12 @@
 # Fedora release (Version = the Fedora release it runs on, like
 # fedora-release), so `dnf system-upgrade` moves it along with the base.
 #
-# Build: scripts/build-rpms.sh (in a Fedora container). The repository
-# signing key is a build input: BASALT_GPG_PUBKEY replaces the placeholder
-# RPM-GPG-KEY-basalt shipped in this directory.
+# Build: scripts/build-rpms.sh (in a Fedora container). RPM-GPG-KEY-basalt
+# in this directory is the OpenBasalt release key (primary key fingerprint
+# 3601734842BD4E482D19DE4AE4EED5ECA395B302, published at
+# https://obpkg.org/keys/openbasalt-release-key.asc); its packages subkey
+# 302461D26520E077D07FFCA9AA27C62C36CCFC4B signs the repository. Lab and CI
+# builds replace it with their own key through BASALT_GPG_PUBKEY.
 
 %global dist_version %{fedora}
 %{!?basalt_version:%global basalt_version 0.0.1}
@@ -18,7 +21,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -224,6 +227,10 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44-5
+- RPM-GPG-KEY-basalt is the OpenBasalt release key (fingerprint
+  3601734842BD4E482D19DE4AE4EED5ECA395B302) instead of a placeholder.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 44-4
 - os-release: VERSION_ID is the Fedora release; VERSION "44 (Basalt 0.0.1)",
   BUILD_ID, BASALT_VERSION and BASALT_CODENAME carry the Basalt version.

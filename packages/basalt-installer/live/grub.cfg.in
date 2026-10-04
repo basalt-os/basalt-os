@@ -9,13 +9,13 @@ search --no-floppy --set=root -l '@LABEL@'
 
 menuentry 'Install Basalt OS @VERSION@' --class basalt --class gnu-linux --class os {
 	linux /images/vmlinuz @CMDLINE@
-	initrd /images/live.img
+	initrd /images/initrd.img
 }
 menuentry 'Install Basalt OS @VERSION@ (text installer on the screen)' --class basalt --class gnu-linux --class os {
 	linux /images/vmlinuz @CMDLINE@ basalt.inst.ui=tui
-	initrd /images/live.img
+	initrd /images/initrd.img
 }
 menuentry 'Install Basalt OS @VERSION@ (graphical installer)' --class basalt --class gnu-linux --class os {
 	linux /images/vmlinuz @CMDLINE@ basalt.inst.ui=gui
-	initrd /images/live.img
+	initrd /images/initrd.img
 }

@@ -294,3 +294,19 @@ func TestGoldenPreview(t *testing.T) {
 		t.Fatalf("preview changed; review and run go test ./internal/steps -update\n%s", got)
 	}
 }
+
+// The OpenBasalt release key (public, from https://obpkg.org/keys/) is
+// recognised; any other key is reported as not the release key.
+func TestDescribeBasaltKey(t *testing.T) {
+	got := describeBasaltKey(filepath.Join("testdata", "openbasalt-release-key.asc"))
+	if got != "OpenBasalt release key "+OpenBasaltReleaseFingerprint {
+		t.Fatalf("release key: %q", got)
+	}
+	other := describeBasaltKey(filepath.Join("RPM-GPG-KEY-tui-tools"))
+	if !strings.Contains(other, TUIToolsFingerprint) || !strings.Contains(other, "not the OpenBasalt release key") {
+		t.Fatalf("other key: %q", other)
+	}
+	if missing := describeBasaltKey("/nonexistent/key"); !strings.Contains(missing, "not readable") {
+		t.Fatalf("missing key: %q", missing)
+	}
+}

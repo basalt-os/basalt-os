@@ -73,8 +73,10 @@ make iso                 # build the Basalt OS installer ISO
 
 `make repo` needs a signing key. For development, `make lab-keys` creates one
 under `LAB_DIR` (mode 0600, never printed); `BASALT_GPG_PUBKEY` makes
-`basalt-release` ship its public half. Without it, `basalt-release` carries a
-placeholder and cannot verify the repository. There is no release key yet.
+`basalt-release` ship its public half. Without it, `basalt-release` ships the
+OpenBasalt release key (fingerprint `3601734842BD4E482D19DE4AE4EED5ECA395B302`,
+public key at https://obpkg.org/keys/openbasalt-release-key.asc), which only
+verifies repositories signed on the release signer.
 
 CI (GitHub Actions, `.github/workflows/ci.yml`) runs the same steps on every
 push and pull request: `make ci-lint` (ShellCheck, rpmlint, ksvalidator,

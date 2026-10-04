@@ -1,8 +1,12 @@
 # Key ceremony
 
-Status: planned. Basalt OS has no release keys yet; the lab uses
-development keys that never leave the lab host. This is the procedure for
-creating the release keys once, offline, and for using them afterwards.
+Status: the OpenBasalt release key exists (2026-10-04). Its primary key
+(certify only) has the fingerprint `3601734842BD4E482D19DE4AE4EED5ECA395B302`;
+the signing subkey for packages is `302461D26520E077D07FFCA9AA27C62C36CCFC4B`.
+The public key is published at https://obpkg.org/keys/openbasalt-release-key.asc
+and `basalt-release` ships it as `RPM-GPG-KEY-basalt`. The lab and CI still
+sign with development keys that never leave their host. The rest of this
+document is the procedure for release keys and for using them afterwards.
 
 ## Keys
 

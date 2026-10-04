@@ -3,6 +3,7 @@ package steps
 import (
 	_ "embed"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,6 +20,12 @@ var TUIToolsKey []byte
 
 // TUIToolsFingerprint is the pinned fingerprint of TUIToolsKey.
 const TUIToolsFingerprint = "767CFB337B01F32FFC073F3F389120B277E4FB44"
+
+// OpenBasaltReleaseFingerprint is the primary key of the OpenBasalt release
+// key (https://obpkg.org/keys/openbasalt-release-key.asc); its packages
+// subkey signs the Basalt OS repository. basalt-release ships the key; the
+// installer only reports whether the key on the media is this one.
+const OpenBasaltReleaseFingerprint = "3601734842BD4E482D19DE4AE4EED5ECA395B302"
 
 // TUIToolsBaseURL is the upstream tui-tools RPM repository.
 const TUIToolsBaseURL = "https://pkgs.tui.tools/rpm/$basearch"
@@ -596,6 +603,7 @@ func (g *gen) installRepos() string {
 	}
 	fkey := "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch"
 	return fmt.Sprintf(`# Install-time repositories of the Basalt OS installer (live system only).
+# Basalt repository key: %s
 [basalt-install-fedora]
 name=Fedora $releasever - $basearch
 %s
@@ -614,7 +622,26 @@ baseurl=%s/$releasever/$basearch/
 gpgcheck=1
 repo_gpgcheck=1
 gpgkey=file://%s
-`, fedora, fkey, updates, fkey, g.basaltInstallURL(), g.basaltKey())
+`, describeBasaltKey(g.basaltKey()), fedora, fkey, updates, fkey, g.basaltInstallURL(), g.basaltKey())
+}
+
+// describeBasaltKey says whether a repository key file holds the OpenBasalt
+// release key. dnf verifies every package and the metadata against the key
+// either way; this tells a release build from a development one.
+func describeBasaltKey(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "not readable yet (" + path + "); dnf checks signatures against it"
+	}
+	fpr, err := pgpkey.Fingerprint(data)
+	switch {
+	case err != nil:
+		return "not an OpenPGP public key (" + err.Error() + "); dnf will refuse the repository"
+	case fpr == OpenBasaltReleaseFingerprint:
+		return "OpenBasalt release key " + fpr
+	default:
+		return fpr + ", not the OpenBasalt release key " + OpenBasaltReleaseFingerprint + " (development or third-party build)"
+	}
 }
 
 func (g *gen) nmConnection(name string) string {

@@ -7,9 +7,13 @@
 #    packages and the installer from the signed repository in REPO_DIR
 #    (served to mkosi on the container's loopback; packages and metadata are
 #    signature checked) into a directory tree.
-# 2. The tree becomes one compressed cpio archive that the kernel unpacks as
-#    its initramfs: the installer runs entirely from memory, so the boot
-#    medium can be removed and no live root file system is needed.
+# 2. The tree becomes LiveOS/squashfs.img, an EROFS image whose SELinux
+#    labels come from the tree's own policy (mkfs.erofs --file-contexts;
+#    the build host's labels and policy play no part). dracut's
+#    dmsquash-live (initrd made in mkosi.finalize.chroot) copies it to
+#    memory (rd.live.ram) and boots it under a tmpfs overlay, like Fedora's
+#    live media: the medium can be removed, and the live system runs
+#    SELinux enforcing. The build checks a few labels in the image.
 # 3. The ISO holds Fedora's signed shim, GRUB and kernel (taken from the
 #    tree, unmodified) in an EFI system partition image, so it boots with
 #    Secure Boot on; the Basalt repository travels on it too (the "media"
@@ -38,10 +42,10 @@ mkdir -p "$out" "$BUILD_DIR/cache/mkosi"
 plans=/dev/null
 [[ -n "$LIVE_PLANS" ]] && plans="$LIVE_PLANS"
 
-tools="localhost/basalt-live-tools:$FEDORA_RELEASE"
+tools="localhost/basalt-live-tools:$FEDORA_RELEASE-2"
 if ! $PODMAN image exists "$tools"; then
   log "building $tools"
-  printf 'FROM %s\nRUN dnf -y install mkosi xorriso dosfstools mtools cpio zstd python3 dnf5 rpm systemd-container util-linux && dnf clean all\n' "$FEDORA_IMAGE" |
+  printf 'FROM %s\nRUN dnf -y install mkosi xorriso dosfstools mtools erofs-utils attr python3 dnf5 rpm systemd-container util-linux && dnf clean all\n' "$FEDORA_IMAGE" |
     $PODMAN build --network=host -q -t "$tools" -f - >/dev/null
 fi
 
@@ -77,14 +81,17 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
 
     kver="$(ls "$tree/usr/lib/modules" | sort -V | tail -1)"
     iso=/tmp/iso
-    rm -rf "$iso" && mkdir -p "$iso/images" "$iso/basalt/repo"
+    rm -rf "$iso" && mkdir -p "$iso/images" "$iso/LiveOS" "$iso/basalt/repo"
     cp "$tree/usr/lib/modules/$kver/vmlinuz" "$iso/images/vmlinuz"
+    [ -s "$tree/boot/initrd-live.img" ] || { echo "no live initrd (mkosi.finalize.chroot)" >&2; exit 1; }
+    cp "$tree/boot/initrd-live.img" "$iso/images/initrd.img"
 
     # Fedora signed boot chain, unmodified: shim as the removable-media
     # loader, GRUB and MokManager next to it, our menu.
     efisrc="$tree/boot/efi/EFI"
     [ -f "$efisrc/BOOT/BOOTX64.EFI" ] && [ -f "$efisrc/fedora/grubx64.efi" ] || { echo "signed shim/GRUB not found in the tree" >&2; exit 1; }
-    cmdline="rdinit=/usr/lib/systemd/systemd selinux=0 systemd.firstboot=off systemd.getty_auto=0 console=tty0 console=ttyS0,115200n8 $CMDLINE_EXTRA"
+    # enforcing=1: a live system that cannot load the policy does not boot.
+    cmdline="root=live:CDLABEL=$LABEL rd.live.image rd.live.ram=1 rd.live.overlay.overlayfs=1 enforcing=1 systemd.firstboot=off systemd.getty_auto=0 console=tty0 console=ttyS0,115200n8 $CMDLINE_EXTRA"
     sed -e "s|@LABEL@|$LABEL|" -e "s|@VERSION@|$VERSION|g" -e "s|@CMDLINE@|$cmdline|g" -e "s|@TIMEOUT@|$TIMEOUT|" /live/grub.cfg.in >/tmp/grub.cfg
     img="$iso/images/efiboot.img"
     mkfs.vfat -C -n BASALTEFI "$img" 8192 >/dev/null
@@ -95,9 +102,29 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
     mcopy -i "$img" /tmp/grub.cfg ::/EFI/BOOT/grub.cfg
     mkdir -p "$iso/EFI/BOOT" && cp /tmp/grub.cfg "$iso/EFI/BOOT/grub.cfg"
 
-    # The live system: everything but what only the ISO needs.
-    rm -rf "$tree/boot/efi"/* "$tree/usr/lib/modules/$kver/vmlinuz" "$tree/var/cache/"* "$tree/var/lib/dnf" 2>/dev/null || true
-    (cd "$tree" && find . -mindepth 1 | LC_ALL=C sort | cpio --quiet -o -H newc -R 0:0) | zstd -q -T0 -15 >"$iso/images/live.img"
+    # The live system: everything but what only the ISO needs, labeled
+    # with the policy of the image itself (file_contexts plus the live-only
+    # file_contexts.local: the installer runs in install_t).
+    rm -rf "$tree/boot/efi"/* "$tree/boot/initrd-live.img" "$tree/usr/lib/modules/$kver/vmlinuz" \
+      "$tree/var/cache/"* "$tree/var/lib/dnf" 2>/dev/null || true
+    fc="$tree/etc/selinux/targeted/contexts/files"
+    [ -f "$tree/etc/selinux/targeted/policy/policy.$(ls "$tree/etc/selinux/targeted/policy" | sed -n "s/^policy\.//p" | sort -n | tail -1)" ] ||
+      { echo "no compiled SELinux policy in the tree" >&2; exit 1; }
+    cat "$fc/file_contexts" "$fc/file_contexts.local" >/tmp/file_contexts
+    mkfs.erofs --quiet -zlzma -C1048576 --all-root --file-contexts=/tmp/file_contexts \
+      "$iso/LiveOS/squashfs.img" "$tree" >/tmp/erofs.log 2>&1 || { cat /tmp/erofs.log >&2; exit 1; }
+
+    # The labels the live system depends on, read back from the image.
+    mkdir -p /tmp/check && mount -t erofs -o ro,loop "$iso/LiveOS/squashfs.img" /tmp/check
+    bad=0
+    for want in /:root_t /usr/lib/systemd/systemd:init_exec_t /usr/bin/bash:shell_exec_t \
+                /etc/shadow:shadow_t /usr/bin/basalt-installer:install_exec_t /usr/bin/cage:bin_t; do
+      f="${want%%:*}" t="${want##*:}"
+      got="$(getfattr --absolute-names --only-values -h -n security.selinux "/tmp/check$f" 2>&1 | tr -d "\\0")"
+      case "$got" in *":$t:"*) echo "label $f: $got" ;; *) echo "label $f: $got (expected $t)" >&2; bad=1 ;; esac
+    done
+    umount /tmp/check
+    [ "$bad" = 0 ] || { echo "SELinux labels missing in the live image" >&2; exit 1; }
 
     # The Basalt repository (the installer reads it as "media") and plans.
     cp -a "/repo/$RELEASE" "$iso/basalt/repo/"
@@ -109,7 +136,7 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
       -append_partition 2 C12A7328-F81F-11D2-BA4B-00A0C93EC93B "$img" -appended_part_as_gpt \
       -e --interval:appended_partition_2:all:: -no-emul-boot \
       -output "/out/$NAME.iso" "$iso"
-    du -m "$iso/images/live.img" "$iso/images/vmlinuz" | sed "s|$iso/||"
+    du -m "$iso/LiveOS/squashfs.img" "$iso/images/initrd.img" "$iso/images/vmlinuz" | sed "s|$iso/||"
   '
 sudo chown "$(id -u):$(id -g)" "$out/$name".* 2>/dev/null || true
 (cd "$out" && sha256sum "$name.iso" >"$name.iso.sha256")

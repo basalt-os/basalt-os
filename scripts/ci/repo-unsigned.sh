@@ -42,13 +42,14 @@ in_fedora -v "$REPO_DIR:/repo" -e OWNER="$(id -u):$(id -g)" "$FEDORA_IMAGE" bash
   chown -R \"\$OWNER\" /repo"
 
 # scripts/iso.sh puts RPM-GPG-KEY-basalt on the media; here it is the
-# placeholder text from basalt-release, not a key.
+# release key from basalt-release, which signed nothing in this tree.
 cp "$REPO_ROOT/packages/basalt-release/RPM-GPG-KEY-basalt" "$REPO_DIR/RPM-GPG-KEY-basalt"
 cat >"$REPO_DIR/UNSIGNED.txt" <<EOF
 Basalt OS CI repository: UNSIGNED.
 
 Packages and repository metadata in this tree carry no signatures, and
-RPM-GPG-KEY-basalt is a placeholder, not a key. Built by CI for testing
+RPM-GPG-KEY-basalt is the OpenBasalt release key, which did not sign
+anything here. Built by CI for testing
 only. Release repositories are signed on the release signer with the keys
 from the key ceremony (docs/key-ceremony.md); CI holds no signing keys.
 

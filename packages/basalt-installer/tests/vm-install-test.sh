@@ -20,6 +20,7 @@
 #    dnf, rollback dry run, the assistant enabled and confined, sealed
 #    audit rotation, a reboot.
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 : "${MODE:=tui}"
 : "${SSH_PORT:=2291}"
@@ -113,9 +114,11 @@ if [[ "$MODE" == hold ]]; then
   exit 0
 elif [[ "$MODE" == gui ]]; then
   python3 /t/drive-gui.py --qmp "$S/qmp.sock" --shell "$S/shell.sock" --disk vda --shots "$LOGS/screenshots" \
-    --key-out "$S/recovery-key.txt" --install-timeout "$INSTALL_TIMEOUT" 2>&1 | tee "$LOGS/driver.log" || rc=$?
+    --key-out "$S/recovery-key.txt" --install-timeout "$INSTALL_TIMEOUT" --selinux-out "$LOGS/live-selinux.txt" \
+    2>&1 | tee "$LOGS/driver.log" || rc=$?
 else
   python3 /t/drive-tui.py --socket "$S/serial.sock" --disk vda --key-out "$S/recovery-key.txt" \
+    --shell "$S/shell.sock" --selinux-out "$LOGS/live-selinux.txt" \
     --install-timeout "$INSTALL_TIMEOUT" 2>&1 | tee "$LOGS/driver.log" || rc=$?
 fi
 [[ $rc == 0 ]] || die "the $MODE driver failed (exit $rc)"
@@ -134,7 +137,15 @@ sleep 1
 # The recovery key stays in the state directory (removed by the host script).
 [[ -s "$S/recovery-key.txt" ]] || die "no recovery key captured"
 
+# The live system itself runs SELinux enforcing; the installer must not
+# have needed a single exception (read before the end action, see liveshell.py).
+live_mode="$(sed -n 's/^mode //p' "$LOGS/live-selinux.txt" 2>/dev/null)"
+live_avc="$(sed -n 's/^denials //p' "$LOGS/live-selinux.txt" 2>/dev/null)"
+[[ "$live_mode" == Enforcing ]] || die "live system SELinux: '${live_mode:-unknown}', expected Enforcing ($LOGS/live-selinux.txt)"
+[[ "$live_avc" == 0 ]] || { grep '^avc ' "$LOGS/live-selinux.txt" >&2 || true; die "live system: ${live_avc:-?} AVC denial(s)"; }
+log "live system: SELinux Enforcing, 0 AVC denials during the installation"
+
 log "running the boot test checks on the installed disk"
-export INSTALL_MODE=external INSTALL_NOTE="basalt-installer ($MODE frontend), live boot + install ${t_install}s, VM powered off"
+export INSTALL_MODE=external INSTALL_NOTE="basalt-installer ($MODE frontend), live boot + install ${t_install}s, live SELinux Enforcing 0 AVC, VM powered off"
 export SSH_PORT REPO_PORT VM_MEMORY_MB VM_VCPUS HOST_OWNER
 exec /ci/vm-test.sh

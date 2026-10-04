@@ -1,0 +1,4 @@
+# Basalt OS live installer. The installer runs in install_t, the domain of
+# Anaconda, bootc and rpm-ostree: it writes the target's SELinux labels,
+# including types that only the installed system's policy knows (mac_admin).
+/usr/bin/basalt-installer	--	system_u:object_r:install_exec_t:s0
