@@ -55,6 +55,11 @@ Ask in your own words (optional: needs the local model service basalt-llm
 and [translator] enabled = yes in /etc/basalt/assistant.conf):
   basalt ask "why did nginx stop?"    read-only requests run; a change is printed, never run
 
+Tell the Basalt OS project what broke or what you wish it did (opt-in; you
+see exactly what will be sent and confirm it first):
+  basalt feedback ["MESSAGE"] [--kind bug|idea|other] [--email ADDRESS]
+                  [--include os,packages,hardware,findings|all|none] [--preview]
+
 Other Basalt tools: basalt NAME ... runs basalt-NAME from /usr/libexec/basalt
 or /usr/bin (never from PATH), e.g. basalt ledger summary --since today.
 
@@ -72,6 +77,11 @@ type opts struct {
 	confirm, reason       string
 	before, config        string
 	args                  []string
+
+	// basalt feedback
+	kind, email, source string
+	include             string
+	includeSet, preview bool
 }
 
 func parse(argv []string) (opts, error) {
@@ -120,6 +130,17 @@ func parse(argv []string) (opts, error) {
 			o.before, err = val()
 		case "--config":
 			o.config, err = val()
+		case "--kind":
+			o.kind, err = val()
+		case "--email":
+			o.email, err = val()
+		case "--include":
+			o.include, err = val()
+			o.includeSet = true
+		case "--preview":
+			o.preview = true
+		case "--source":
+			o.source, err = val()
 		case "-h", "--help":
 			o.args = append([]string{"help"}, o.args...)
 		default:
@@ -146,6 +167,8 @@ type app struct {
 	out   io.Writer
 	root  bool
 	tty   bool // stdout is a terminal
+
+	version string
 }
 
 // Main runs the CLI and returns the exit code.
@@ -168,7 +191,7 @@ func Main(argv []string, version string) int {
 		fmt.Fprintln(os.Stderr, "basalt:", err)
 		return 2
 	}
-	a := &app{o: o, cfg: cfg, out: os.Stdout, root: os.Geteuid() == 0}
+	a := &app{o: o, cfg: cfg, out: os.Stdout, root: os.Geteuid() == 0, version: version}
 	if st, err := os.Stdout.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
 		a.tty = true
 	}
@@ -185,6 +208,9 @@ func Main(argv []string, version string) int {
 	ctx := context.Background()
 	err = a.dispatch(ctx)
 	if err != nil {
+		if errors.Is(err, errNotSent) {
+			return 1 // the reason was already shown
+		}
 		if errors.Is(err, apply.ErrCancelled) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -222,6 +248,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.auditCmd()
 	case "ask":
 		return a.ask(ctx)
+	case "feedback":
+		return a.feedback(ctx)
 	}
 	return fmt.Errorf("unknown command %q (basalt help)", a.o.args[0])
 }

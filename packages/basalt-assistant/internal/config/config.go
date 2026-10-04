@@ -12,6 +12,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/feedback"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/knowledge"
 )
 
@@ -80,6 +81,11 @@ type Config struct {
 	WebhookEvents     string // notify (default: what the decision layer marks for notification) or all
 	WebhookTimeout    time.Duration
 
+	// basalt feedback: where reports go (empty: sending is off) and how
+	// long a send may take.
+	FeedbackEndpoint string
+	FeedbackTimeout  time.Duration
+
 	// Event engine.
 	DedupWindow  time.Duration // the same problem is reported once per window
 	MaxPerHour   int           // new proposals per hour (rate limit)
@@ -101,8 +107,9 @@ func Defaults() Config {
 		Disk:            diag.DefaultDiskThresholds,
 		AuditRotateSize: 32 << 20,
 		NotifyDesktop:   "auto", WebhookSecretFile: "/etc/basalt/webhook.key", WebhookEvents: "notify",
-		WebhookTimeout: 10 * time.Second,
-		DedupWindow:    time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
+		WebhookTimeout:   10 * time.Second,
+		FeedbackEndpoint: feedback.DefaultEndpoint, FeedbackTimeout: 20 * time.Second,
+		DedupWindow: time.Hour, MaxPerHour: 20, DiskInterval: 5 * time.Minute,
 		DnfMinAge: 2 * time.Minute, DnfSettle: 15 * time.Second, AVCSettle: 5 * time.Second, UnitSettle: 3 * time.Second,
 	}
 }
@@ -252,6 +259,13 @@ func (c *Config) set(sec, k, v string) error {
 		c.WebhookEvents = v
 	case "notify.webhook_timeout":
 		c.WebhookTimeout, err = du()
+	case "feedback.endpoint":
+		if v != "" {
+			err = feedback.CheckEndpoint(v)
+		}
+		c.FeedbackEndpoint = v
+	case "feedback.timeout":
+		c.FeedbackTimeout, err = du()
 	case "events.dedup_window":
 		c.DedupWindow, err = du()
 	case "events.max_proposals_per_hour":

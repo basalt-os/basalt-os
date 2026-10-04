@@ -9,7 +9,9 @@ back to deterministic rules (see Decision layer). An optional local model (packa
 natural language into the commands below (`basalt ask`), can answer the
 decision layer's questions, and can write the explanation of a finding in
 its own words (humanize); all three are off by default and nothing below
-depends on them. The assistant's text is in English only for now.
+depends on them. The assistant's text is in English; the feedback flow
+(`basalt feedback`) already goes through translation catalogs (see
+Translations), and the rest moves there next.
 
 Package: `basalt-assistant` (and `basalt-assistant-selinux`), source in
 `packages/basalt-assistant/` (Go, no third-party modules). The installer
@@ -646,6 +648,90 @@ The systemd unit adds `ProtectSystem=strict`, `ProtectHome=read-only`,
 `CapabilityBoundingSet=CAP_DAC_READ_SEARCH` and the other hardening options
 as a second, independent fence.
 
+## Feedback
+
+`basalt feedback` sends a report to the Basalt OS project. It is opt-in in
+every part: nothing leaves the machine until the person has seen the exact
+payload and said yes.
+
+```
+basalt feedback                                   asks for everything, step by step
+basalt feedback "the installer froze" --kind bug  the message and kind on the command line
+basalt feedback "dark theme" --kind idea --include os,packages --preview
+basalt feedback "dark theme" --kind idea --include os,packages --yes --confirm CODE
+```
+
+1. The kind (bug, idea, other), the message and, optionally, an e-mail
+   address for a reply.
+2. Each optional part is collected, scrubbed and shown, and included only
+   if the person answers yes: the OS version and kernel release
+   (`/etc/os-release`), the versions of the installed `basalt-*`
+   packages, a hardware summary (processor model, cores, memory,
+   firmware type, virtual machine or not, TPM present; no serial numbers,
+   MAC addresses or disk identifiers) and the assistant's findings of the
+   last 7 days (from the system journal, readable by root and by members
+   of wheel, adm or systemd-journal; others are told to use sudo).
+3. Personal data is scrubbed from the message and every part: this
+   machine's host names, the user names and full names of its accounts,
+   IPv4 and IPv6 and MAC addresses, the name after `/home/` and `/root/`,
+   e-mail addresses in the text, and anything shaped like a password,
+   token, key or JWT (the same redaction as for remote models, see
+   Humanize). The reply address the person typed is kept, and the report
+   says so.
+4. The exact JSON payload is shown with the endpoint and the number of
+   values that were redacted. `edit` opens it in `$VISUAL` or `$EDITOR`
+   (what the person writes there is sent as they leave it); `yes` sends;
+   anything else cancels.
+
+Without a terminal it never asks: `--preview` prints the payload and a
+confirmation code (the first 8 hex digits of the payload's SHA-256;
+`--json` gives both as JSON), and only `--yes --confirm CODE` with that
+code sends it, so a confirmation always matches the payload it was given
+for. This is the hook for the Basalt shell's future voice action "send
+feedback": the shell shows the payload on its confirmation sheet and
+sends with the code after the person confirms, with `--source voice`.
+
+The report goes to the project's feedback service (source:
+[basalt-os/feedback-worker](https://github.com/basalt-os/feedback-worker)),
+which stores it privately with the time it arrived and keeps no IP
+address. People can also use the form on
+[basalt-os.org](https://basalt-os.org/#feedback) or write to
+feedback@basalt-os.org. A report is evidence for the project's lab, not
+knowledge by itself: a fix learned from it is reproduced and verified
+before it reaches `basalt-knowledge`.
+
+Where it runs, and the network:
+
+- `basalt feedback` sends from the person's own session, as the person,
+  over HTTPS. The confined daemon and the MCP server have no network
+  access and offer no feedback tool: sending data off the machine always
+  starts with a person.
+- AI agent sessions (`basalt-agent`) are default deny: the feedback
+  service is on no shipped allowlist, so an agent that runs `basalt
+  feedback` inside its session cannot reach it, and the denied lookup is
+  recorded in the ledger (`dns.deny`). Allowing it is an ordinary
+  allowlist change with its preview, confirmation and record
+  ([network.md](network.md)), for example `basalt-agent egress propose
+  PROFILE add basalt-feedback.openbasalt.workers.dev`; we do not
+  recommend it.
+- `[feedback] endpoint` in `/etc/basalt/assistant.conf` points it
+  elsewhere (https only; plain http to localhost for tests), and an empty
+  value turns sending off.
+
+## Translations
+
+User-facing text goes through GNU gettext catalogs, domain
+`basalt-assistant` (package `internal/i18n`), in the language of
+`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG`; English is the reference
+text and Brazilian Portuguese the first translation. Sources:
+`po/basalt-assistant.pot` (generated: `go test ./internal/i18n -update`)
+and `po/<lang>.po`; the package build compiles them with `msgfmt --check`
+into `/usr/share/locale/<lang>/LC_MESSAGES/basalt-assistant.mo`. The tests
+fail when the template is not current, a translation is missing or fuzzy,
+or a translation's placeholders differ from the English text. Whole
+sentences only, with placeholders, and plural forms through `i18n.N`.
+Machine output (`--json`), logs and audit records stay English.
+
 ## Configuration
 
 `/etc/basalt/assistant.conf` (INI): decision backend, thresholds and
@@ -654,7 +740,8 @@ humanize layer (`[humanize]`: enabled, endpoint, model, allow_remote,
 api_key_file, prompt, max_chars, timeout, stream), disk
 thresholds (warn 85 %, critical 95 %, what counts as large), event timings
 (dedup window, hourly limit, disk interval, settle times), the audit log
-rotation size (`[audit]`) and notifications (`[notify]`). Restart the
+rotation size (`[audit]`), notifications (`[notify]`) and where `basalt
+feedback` sends (`[feedback]`: endpoint, timeout). Restart the
 daemon (and `basalt-notify`) after a change.
 
 ## Lab

@@ -1,0 +1,191 @@
+# Brazilian Portuguese translation of basalt-assistant.
+msgid ""
+msgstr ""
+"Project-Id-Version: basalt-assistant\n"
+"PO-Revision-Date: 2026-10-04 19:00-0300\n"
+"Last-Translator: Basalt OS project <feedback@basalt-os.org>\n"
+"Language-Team: Brazilian Portuguese <feedback@basalt-os.org>\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: internal/cli/feedback.go:103
+msgid "Write your message. End it with an empty line."
+msgstr "Escreva sua mensagem. Termine com uma linha vazia."
+
+#: internal/cli/feedback.go:107
+msgid "E-mail address for a reply (optional, press Enter to skip): "
+msgstr "E-mail para resposta (opcional, tecle Enter para pular): "
+
+#: internal/cli/feedback.go:132
+msgid "Include this? [y/N] "
+msgstr "Incluir isto? [s/N] "
+
+#: internal/cli/feedback.go:163
+#, c-format
+msgid "To send exactly this report, run the same command with --yes --confirm %s instead of --preview."
+msgstr "Para enviar exatamente este relatório, rode o mesmo comando com --yes --confirm %s no lugar de --preview."
+
+#: internal/cli/feedback.go:168
+msgid "The confirmation code does not match this report. Nothing was sent. Run the command with --preview to see the report and its code."
+msgstr "O código de confirmação não corresponde a este relatório. Nada foi enviado. Rode o comando com --preview para ver o relatório e o código dele."
+
+#: internal/cli/feedback.go:179
+msgid "Send it? Type yes to send, edit to change it, or press Enter to cancel: "
+msgstr "Enviar? Digite sim para enviar, editar para mudar, ou tecle Enter para cancelar: "
+
+#: internal/cli/feedback.go:183
+msgid "edit"
+msgstr "editar"
+
+#: internal/cli/feedback.go:185
+#, c-format
+msgid "The report could not be changed: %v"
+msgstr "Não foi possível mudar o relatório: %v"
+
+#: internal/cli/feedback.go:189 internal/cli/feedback.go:220
+msgid "Nothing was sent."
+msgstr "Nada foi enviado."
+
+#: internal/cli/feedback.go:206
+msgid "What is it about?"
+msgstr "Do que se trata?"
+
+#: internal/cli/feedback.go:207
+msgid "something is broken"
+msgstr "algo não funciona"
+
+#: internal/cli/feedback.go:208
+msgid "an idea"
+msgstr "uma ideia"
+
+#: internal/cli/feedback.go:209
+msgid "something else"
+msgstr "outra coisa"
+
+#: internal/cli/feedback.go:210
+msgid "Choose 1, 2 or 3: "
+msgstr "Escolha 1, 2 ou 3: "
+
+#: internal/cli/feedback.go:227
+msgid "The Basalt OS version and the kernel release:"
+msgstr "A versão do Basalt OS e a versão do kernel:"
+
+#: internal/cli/feedback.go:229
+msgid "The versions of the installed basalt-* packages:"
+msgstr "As versões dos pacotes basalt-* instalados:"
+
+#: internal/cli/feedback.go:231
+msgid "A hardware summary (processor, memory, firmware, virtual machine or not, TPM), nothing that identifies the machine:"
+msgstr "Um resumo do hardware (processador, memória, firmware, máquina virtual ou não, TPM), nada que identifique a máquina:"
+
+#: internal/cli/feedback.go:233
+msgid "The assistant's findings of the last 7 days:"
+msgstr "Os achados do assistente nos últimos 7 dias:"
+
+#: internal/cli/feedback.go:243
+#, c-format
+msgid "The system version could not be read: %v"
+msgstr "Não foi possível ler a versão do sistema: %v"
+
+#: internal/cli/feedback.go:251
+msgid "No basalt-* packages were found."
+msgstr "Nenhum pacote basalt-* foi encontrado."
+
+#: internal/cli/feedback.go:264
+msgid "No findings of the assistant are readable here. They are in the system journal; run sudo basalt feedback to include them."
+msgstr "Nenhum achado do assistente pode ser lido aqui. Eles ficam no journal do sistema; rode sudo basalt feedback para incluí-los."
+
+#: internal/cli/feedback.go:266
+msgid "The assistant has no findings from the last 7 days."
+msgstr "O assistente não tem achados dos últimos 7 dias."
+
+#: internal/cli/feedback.go:305
+#, c-format
+msgid "This is exactly what will be sent to %s:"
+msgstr "Isto é exatamente o que será enviado para %s:"
+
+#: internal/cli/feedback.go:308
+#, c-format
+msgid "%d value was changed to hide personal data (shown as [redacted])."
+msgid_plural "%d values were changed to hide personal data (shown as [redacted])."
+msgstr[0] "%d valor foi mudado para esconder dados pessoais (aparece como [redacted])."
+msgstr[1] "%d valores foram mudados para esconder dados pessoais (aparecem como [redacted])."
+
+#: internal/cli/feedback.go:312
+msgid "Your e-mail address is sent as you typed it, so the project can reply."
+msgstr "Seu e-mail é enviado como você digitou, para que o projeto possa responder."
+
+#: internal/cli/feedback.go:314
+msgid "The service keeps the report and the time it arrived; it does not keep your IP address."
+msgstr "O serviço guarda o relatório e a hora em que chegou; ele não guarda seu endereço IP."
+
+#: internal/cli/feedback.go:324
+#, c-format
+msgid "The feedback service could not be reached: %v. Nothing was sent; you can write to feedback@basalt-os.org instead."
+msgstr "Não foi possível falar com o serviço de feedback: %v. Nada foi enviado; você pode escrever para feedback@basalt-os.org."
+
+#: internal/cli/feedback.go:331
+#, c-format
+msgid "Sent. Thank you. Reference: %s"
+msgstr "Enviado. Obrigado. Referência: %s"
+
+#: internal/cli/feedback.go:343
+msgid "The message is empty. Nothing was sent."
+msgstr "A mensagem está vazia. Nada foi enviado."
+
+#: internal/cli/feedback.go:345
+#, c-format
+msgid "The message is longer than %d characters. Nothing was sent."
+msgstr "A mensagem tem mais de %d caracteres. Nada foi enviado."
+
+#: internal/cli/feedback.go:347
+msgid "The e-mail address does not look right. Nothing was sent."
+msgstr "O endereço de e-mail não parece correto. Nada foi enviado."
+
+#: internal/cli/feedback.go:349
+msgid "The kind must be bug, idea or other. Nothing was sent."
+msgstr "O tipo deve ser bug, idea ou other. Nada foi enviado."
+
+#: internal/cli/feedback.go:351
+msgid "The system details are too large to send; leave out a part. Nothing was sent."
+msgstr "Os detalhes do sistema são grandes demais para enviar; deixe uma parte de fora. Nada foi enviado."
+
+#: internal/cli/feedback.go:353
+msgid "The feedback service received too many reports from your network in the last hour. Nothing was sent; please try again later."
+msgstr "O serviço de feedback recebeu relatórios demais da sua rede na última hora. Nada foi enviado; tente de novo mais tarde."
+
+#: internal/cli/feedback.go:355
+msgid "The feedback service received a lot of reports today. Nothing was sent; please try again tomorrow, or write to feedback@basalt-os.org."
+msgstr "O serviço de feedback recebeu muitos relatórios hoje. Nada foi enviado; tente de novo amanhã, ou escreva para feedback@basalt-os.org."
+
+#: internal/cli/feedback.go:357
+#, c-format
+msgid "The feedback service refused the report (%s). Nothing was sent; you can write to feedback@basalt-os.org instead."
+msgstr "O serviço de feedback recusou o relatório (%s). Nada foi enviado; você pode escrever para feedback@basalt-os.org."
+
+#: internal/cli/feedback.go:443
+msgid "y"
+msgstr "s"
+
+#: internal/cli/feedback.go:447
+msgid "yes"
+msgstr "sim"
+
+#: internal/cli/feedback.go:66
+msgid "Sending feedback is turned off on this system ([feedback] endpoint is empty in /etc/basalt/assistant.conf). You can write to feedback@basalt-os.org instead."
+msgstr "O envio de feedback está desligado neste sistema ([feedback] endpoint está vazio em /etc/basalt/assistant.conf). Você pode escrever para feedback@basalt-os.org."
+
+#: internal/cli/feedback.go:90 internal/cli/feedback.go:174
+msgid "Without a terminal, give the message and --kind, choose the parts with --include, look at the report with --preview and send it with --yes --confirm CODE."
+msgstr "Sem um terminal, informe a mensagem e --kind, escolha as partes com --include, veja o relatório com --preview e envie com --yes --confirm CÓDIGO."
+
+#: internal/cli/feedback.go:94
+msgid "Send feedback to the Basalt OS project."
+msgstr "Enviar feedback ao projeto Basalt OS."
+
+#: internal/cli/feedback.go:95
+msgid "Nothing leaves this computer until you have seen exactly what will be sent and said yes."
+msgstr "Nada sai deste computador antes de você ver exatamente o que será enviado e dizer sim."

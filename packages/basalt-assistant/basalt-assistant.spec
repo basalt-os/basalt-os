@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.8.0
+Version:        0.9.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -24,6 +24,7 @@ BuildRequires:  systemd-rpm-macros
 BuildRequires:  selinux-policy-devel
 BuildRequires:  make
 BuildRequires:  bzip2
+BuildRequires:  gettext
 
 Requires:       systemd
 Requires:       snapper
@@ -91,6 +92,11 @@ export GOFLAGS="-mod=mod -trimpath" GOTOOLCHAIN=local GOPROXY=off
 for c in basalt basalt-assistantd basalt-mcp basalt-notify; do
     go build -buildmode=pie -ldflags "-B gobuildid -X main.version=%{version}-%{release}" -o bin/$c ./cmd/$c
 done
+for po in po/*.po; do
+    lang=$(basename "$po" .po)
+    mkdir -p locale/$lang/LC_MESSAGES
+    msgfmt --check -o locale/$lang/LC_MESSAGES/%{name}.mo "$po"
+done
 make -C selinux -f %{_datadir}/selinux/devel/Makefile %{modulename}.pp
 bzip2 -9 selinux/%{modulename}.pp
 
@@ -118,6 +124,10 @@ install -dm 0700 %{buildroot}%{_localstatedir}/cache/basalt-assistant
 install -Dpm 0644 selinux/%{modulename}.pp.bz2 %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}.pp.bz2
 install -Dpm 0644 selinux/%{modulename}.if %{buildroot}%{_datadir}/selinux/devel/include/distributed/%{modulename}.if
 install -d licenses && install -pm 0644 LICENSE third_party/tui-kit.LICENSE licenses/
+for d in locale/*/LC_MESSAGES; do
+    install -Dpm 0644 $d/%{name}.mo %{buildroot}%{_datadir}/$d/%{name}.mo
+done
+%find_lang %{name}
 
 %post
 %tmpfiles_create %{name}.conf
@@ -144,7 +154,7 @@ fi
 %posttrans selinux
 %selinux_relabel_post -s %{selinuxtype}
 
-%files
+%files -f %{name}.lang
 %license licenses/LICENSE licenses/tui-kit.LICENSE
 %{_bindir}/basalt
 %{_bindir}/basalt-mcp
@@ -171,6 +181,23 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.9.0-1
+- basalt feedback: an opt-in report to the Basalt OS project. The person's
+  own text plus, only for the parts they accept one by one, the OS
+  version, the basalt-* package versions, a hardware summary and the
+  assistant's recent findings. Personal data is scrubbed (host and user
+  names, IP and MAC addresses, paths under /home and /root, tokens, keys,
+  passwords), the exact payload is shown and sent only after a yes; it
+  can be edited first. Without a terminal, --preview prints the payload
+  and a confirmation code and --yes --confirm CODE sends exactly that
+  payload (the hook for the shell's future voice action "send feedback").
+  It sends from the person's session; the confined daemon has no network.
+  [feedback] endpoint and timeout in assistant.conf (empty endpoint: off).
+- Translation catalogs (gettext, domain basalt-assistant) with Brazilian
+  Portuguese as the first translation; the feedback flow's text goes
+  through them. A test keeps po/basalt-assistant.pot current and checks
+  every translation for completeness and placeholders.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.8.0-1
 - The VSM backend is the default decision backend ([decision] backend =
   vsm in the shipped assistant.conf and the built-in default). The rules

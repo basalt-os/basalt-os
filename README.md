@@ -50,6 +50,25 @@ allowlist and audit): [docs/agents.md](docs/agents.md). Current state and measur
 [docs/milestone-1-report.md](docs/milestone-1-report.md) (and
 [milestone 0](docs/milestone-0-report.md)).
 
+## Try it and tell us
+
+Basalt OS is young, and what you notice now shapes it. We would love to
+hear what broke, what confused you and what you wish it did.
+
+- Try it: a live ISO you can boot without installing is coming soon. Today
+  you can build the installer ISO from this repository (see Build) and
+  install it in a virtual machine (see Lab and [docs/lab.md](docs/lab.md)).
+  It is pre-alpha, so use a virtual machine or a spare computer.
+- Tell us, three ways: the form at
+  [basalt-os.org](https://basalt-os.org/#feedback), an e-mail to
+  feedback@basalt-os.org, or from inside the system with `basalt
+  feedback`, which shows you exactly what will be sent and sends nothing
+  until you say yes (see [docs/assistant.md](docs/assistant.md), Feedback).
+  When voice arrives, you will be able to just say "send feedback".
+
+Security problems go through private reporting instead, see
+[SECURITY.md](SECURITY.md).
+
 ## Layout
 
 ```

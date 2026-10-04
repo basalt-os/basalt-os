@@ -208,6 +208,14 @@ Allowlists only grow through a person:
 The resolver accepts allowlist changes only from root; a session's owner
 can register and end sessions, nothing more.
 
+### Sending feedback
+
+`basalt feedback` (docs/assistant.md, Feedback) runs in the person's
+session, outside any agent session, so these rules do not apply to it. An
+agent session that tries it is refused like any unlisted name: the
+feedback service is on no shipped allowlist, because sending data off the
+machine starts with a person.
+
 ## Records
 
 All with the session's uid, session id and subject, so the owner sees them

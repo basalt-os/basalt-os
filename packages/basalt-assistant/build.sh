@@ -22,7 +22,7 @@ log "basalt-assistant $ver: $mode in $FEDORA_IMAGE"
 # every expected action passes the action validators runs with the tests.
 in_fedora -v "$work:/rpmbuild" -v "$REPO_ROOT/eval/cases:/eval-cases:ro" -e BASALT_EVAL_CASES=/eval-cases \
   -e MODE="$mode" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
-  dnf -q -y install rpm-build systemd-rpm-macros golang gcc selinux-policy-devel make bzip2 >/dev/null 2>&1 ||
+  dnf -q -y install rpm-build systemd-rpm-macros golang gcc selinux-policy-devel make bzip2 gettext >/dev/null 2>&1 ||
     { echo "dnf install failed"; exit 1; }
   if [ "$MODE" = test ]; then
     mkdir -p /src && tar -C /src -xzf /rpmbuild/SOURCES/basalt-assistant-$VER.tar.gz && cd /src
