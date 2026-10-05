@@ -73,7 +73,8 @@ case "$LIVE_SOURCE" in
   *) die "LIVE_SOURCE must be local or obpkg" ;;
 esac
 if [[ "$LIVE_PROFILE" == desktop ]]; then
-  ls "$REPO_DIR/$FEDORA_RELEASE/$ARCH"/basalt-desktop-*.rpm ${testing_dir:+"$testing_dir/$FEDORA_RELEASE/$ARCH"/basalt-desktop-*.rpm} >/dev/null 2>&1 ||
+  compgen -G "$REPO_DIR/$FEDORA_RELEASE/$ARCH/basalt-desktop-*.rpm" >/dev/null ||
+    { [[ -n "$testing_dir" ]] && compgen -G "$testing_dir/$FEDORA_RELEASE/$ARCH/basalt-desktop-*.rpm" >/dev/null; } ||
     die "basalt-desktop is not in $REPO_DIR${testing_dir:+ or $testing_dir} (the desktop profile needs it)"
   [[ -n "$LIVE_PLANS" ]] || LIVE_PLANS="$live/desktop/plans"
 fi
