@@ -159,6 +159,69 @@ tree (served on 127.0.0.1 for the test) or from a URL such as
 https://obpkg.org/basalt, then checks that dnf refuses a tampered
 `repomd.xml` (local trees) and a different key.
 
+## APT repository (Debian and Ubuntu)
+
+https://obpkg.org/apt/ carries OpenBasalt packages for Debian 13,
+Ubuntu 26.04 and Ubuntu 24.04 (today Samba Conductor, built in its own
+repositories). The packages are static builds, identical for every
+supported release, so there is one suite for all of them: `stable`, and
+`testing` for release candidates, component `main`, architectures amd64
+and arm64. Per-release suites (trixie, noble and so on) would only multiply
+metadata. The same three steps apply, with the APT variants of the sign
+and client test scripts:
+
+```sh
+OB_APT_SUITE=stable scripts/release/merge-published-apt.sh /tmp/apt-in
+OB_APT_SUITE=stable scripts/release/sign-apt.sh --op /tmp/apt-in /tmp/apt-out
+scripts/release/client-test-apt.sh /tmp/apt-out packages/basalt-release/RPM-GPG-KEY-basalt conductor
+scripts/release/upload.sh /tmp/apt-out
+```
+
+The input is a directory of unsigned .deb files with a `SHA256SUMS` that
+lists exactly them, each under its canonical name
+(`<package>_<version>_<arch>.deb`). The tree is
+
+```
+apt/pool/main/<letter>/<package>/<package>_<version>_<arch>.deb
+apt/dists/<suite>/InRelease, Release, Release.gpg
+apt/dists/<suite>/main/binary-<arch>/Packages, Packages.gz, Packages.xz, Release
+apt/dists/<suite>/main/binary-<arch>/by-hash/SHA256/<sha256>
+```
+
+- `sign-apt.sh` keeps the key handling of `sign.sh` (subkey export only,
+  tmpfs, a Debian 13 container with `--network none`), indexes the pool
+  with `apt-ftparchive` and signs `Release` twice with exactly the packages
+  subkey: `InRelease` (clear-signed) and `Release.gpg` (detached). It
+  verifies in a second container with the public key only: gpgv (apt's
+  verifier on Ubuntu 24.04) and sqv (Debian 13, Ubuntu 26.04), the
+  `VALIDSIG` of the subkey, every checksum of `Release` and of the
+  `Packages` files, and apt itself reading the tree offline through a
+  `Signed-By` keyring. `SIGNED-OK` records `repo: apt` and the suite.
+  `--test-key` works as in `sign.sh`.
+- `Release` sets `Acquire-By-Hash: yes`: apt fetches each index by its
+  SHA-256 from `by-hash/`, whose objects never change, so a client never
+  combines a new `InRelease` with a `Packages` file still cached at the
+  edge.
+- `upload.sh` sends the .deb files, then the `by-hash/` objects, then the
+  other index files, and `Release`, `Release.gpg` and `InRelease` last.
+  .deb files and `by-hash/` objects are immutable (30 days, never
+  replaced: different content stops the upload); the rest of `dists/` is
+  metadata (60 seconds).
+- `merge-published-apt.sh` is the APT form of `merge-published.sh`: it
+  checks the published `InRelease` (packages subkey, release key), each
+  `Packages` index against it and each .deb against its index, and puts
+  every published .deb byte-identical into the input (`PUBLISHED`,
+  `POOL-PATHS`), so the new index keeps every older version
+  (`apt install <package>=<version>` goes back to one). A built .deb with
+  the name of a published one is replaced by the published file; a
+  changed package needs a new version.
+- `client-test-apt.sh SOURCE KEY PACKAGE...` sets the repository up in
+  fresh Debian 13, Ubuntu 26.04 and Ubuntu 24.04 containers as the
+  obpkg.org page documents (the key dearmored into
+  `/etc/apt/keyrings/openbasalt.gpg`, a deb822 `.sources` file with
+  `Signed-By`), installs the packages, runs `<binary> version`, and checks
+  that apt refuses a tampered `InRelease` (local trees) and another key.
+
 ## Later publishes
 
 The metadata from `sign.sh` lists only the packages of its input. A later

@@ -6,7 +6,8 @@
 #
 # TREE_DIR is sign.sh's OUT_DIR: SIGNED-OK and <repo>/<releasever>/{<arch>,source}/,
 # where <repo> (basalt, basalt-tools or basalt-testing) is the "repo:" line
-# of SIGNED-OK (basalt when the line is missing).
+# of SIGNED-OK (basalt when the line is missing); or sign-apt.sh's OUT_DIR:
+# SIGNED-OK with "repo: apt" and apt/{pool,dists}/.
 # Every file is checked against SIGNED-OK before anything is sent, and a
 # tree signed with a test key is refused for the obpkg bucket.
 #
@@ -25,6 +26,10 @@
 # public, max-age=60; RPMs and repodata blobs (content-addressed names)
 # public, max-age=2592000, immutable. A published RPM is never replaced: an
 # existing object with the same key and a different MD5 stops the upload.
+# APT: .deb files, then the by-hash indexes, then Packages* and the
+# per-architecture Release, then Release, Release.gpg and InRelease last.
+# .deb files and by-hash objects are immutable (never replaced, max-age
+# 30 days); the other files under dists/ are metadata (max-age=60).
 #
 # Later publishes must start from the whole published package set (the
 # metadata built by sign.sh lists only the packages in its input).
@@ -45,13 +50,24 @@ if [[ "$mode" == test-key && "$OB_R2_BUCKET" == obpkg ]]; then
 fi
 repo="$(awk '/^repo: / {print $2}' "$tree/SIGNED-OK")"
 repo="${repo:-basalt}"
-case "$repo" in basalt | basalt-tools | basalt-testing) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
+case "$repo" in basalt | basalt-tools | basalt-testing | apt) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
 listed="$(grep -E "^[0-9a-f]{64}  $repo/" "$tree/SIGNED-OK")"
 (cd "$tree" && sha256sum -c --quiet <<<"$listed") || die "the tree changed after it was verified"
 [[ "$(awk '{print $2}' <<<"$listed" | sort)" == "$(cd "$tree" && find "$repo" -type f | sort)" ]] ||
   die "files in $tree/$repo and SIGNED-OK differ"
 
 # 2. Upload plan.
+if [[ "$repo" == apt ]]; then
+  # Suites in this tree (sign-apt.sh signs one suite per run).
+  mapfile -t repos < <(cd "$tree" && find apt/dists -mindepth 2 -maxdepth 2 -name InRelease -printf '%h\n' | sort)
+  [[ ${#repos[@]} -gt 0 ]] || die "no suites in $tree/apt/dists"
+  plan=()
+  mapfile -t -O 0 plan < <(cd "$tree" && find apt/pool -type f -name '*.deb' | LC_ALL=C sort)
+  mapfile -t -O "${#plan[@]}" plan < <(cd "$tree" && find apt/dists -type f -path '*/by-hash/*' | LC_ALL=C sort)
+  mapfile -t -O "${#plan[@]}" plan < <(cd "$tree" && find apt/dists -mindepth 3 -type f ! -path '*/by-hash/*' | LC_ALL=C sort)
+  for r in "${repos[@]}"; do plan+=("$r/Release" "$r/Release.gpg" "$r/InRelease"); done
+  [[ ${#plan[@]} -eq $(cd "$tree" && find apt -type f | wc -l) ]] || die "unexpected files in $tree/apt"
+else
 mapfile -t repos < <(cd "$tree" && find "$repo" -type f -path '*/repodata/repomd.xml' -printf '%h\n' | xargs -n1 dirname | sort)
 [[ ${#repos[@]} -gt 0 ]] || die "no repositories in $tree"
 plan=()
@@ -61,10 +77,15 @@ for r in "${repos[@]}"; do
   mapfile -t -O "${#plan[@]}" plan < <(cd "$tree" && find "$r/repodata" -type f ! -name 'repomd.xml*' | sort)
 done
 for r in "${repos[@]}"; do plan+=("$r/repodata/repomd.xml" "$r/repodata/repomd.xml.asc"); done
+fi
 
 content_type() {
   case "$1" in
     *.rpm) echo application/x-rpm ;;
+    *.deb) echo application/vnd.debian.binary-package ;;
+    */by-hash/SHA256/*) echo application/octet-stream ;;
+    */InRelease | */Release | */Packages) echo "text/plain; charset=utf-8" ;;
+    */Release.gpg) echo application/pgp-signature ;;
     *.xml) echo application/xml ;;
     *.asc) echo application/pgp-signature ;;
     *.gz) echo application/gzip ;;
@@ -75,9 +96,19 @@ content_type() {
     *) echo application/octet-stream ;;
   esac
 }
+# Mutable metadata: replaced on every publish.
+is_metadata() {
+  case "$1" in
+    */repomd.xml | */repomd.xml.asc) return 0 ;;
+    apt/dists/*/by-hash/*) return 1 ;;
+    apt/dists/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 cache_control() {
   case "$1" in
-    */repomd.xml | */repomd.xml.asc) echo "public, max-age=60" ;;
+    */by-hash/*) echo "public, max-age=2592000, immutable" ;;
+    */repomd.xml | */repomd.xml.asc | apt/dists/*) echo "public, max-age=60" ;;
     *) echo "public, max-age=2592000, immutable" ;;
   esac
 }
@@ -120,7 +151,7 @@ s3api() { aws --endpoint-url "$endpoint" s3api "$@"; }
 log "checking existing objects in $OB_R2_BUCKET"
 todo=()
 for k in "${plan[@]}"; do
-  case "$k" in */repomd.xml | */repomd.xml.asc) todo+=("$k"); continue ;; esac
+  is_metadata "$k" && { todo+=("$k"); continue; }
   etag="$(s3api head-object --bucket "$OB_R2_BUCKET" --key "$k" --query ETag --output text 2>/dev/null || true)"
   etag="${etag//\"/}"
   if [[ -z "$etag" || "$etag" == None ]]; then
@@ -143,7 +174,16 @@ for k in "${todo[@]}"; do
 done
 
 # 6. Public check: the metadata served by obpkg.org is the one just signed.
-if [[ "$OB_R2_BUCKET" == obpkg ]]; then
+if [[ "$OB_R2_BUCKET" == obpkg && "$repo" == apt ]]; then
+  for r in "${repos[@]}"; do
+    for f in InRelease Release; do
+      got="$(curl -fsSL --proto '=https' -H 'Cache-Control: no-cache' "$OB_PUBLIC_URL/$r/$f?v=$(date +%s)" | sha256sum | cut -d' ' -f1)"
+      [[ "$got" == "$(sha256sum "$tree/$r/$f" | cut -d' ' -f1)" ]] &&
+        log "public: $OB_PUBLIC_URL/$r/$f matches" ||
+        log "WARNING: $OB_PUBLIC_URL/$r/$f does not match yet (edge cache, up to 60 s)"
+    done
+  done
+elif [[ "$OB_R2_BUCKET" == obpkg ]]; then
   for r in "${repos[@]}"; do
     for f in repomd.xml repomd.xml.asc; do
       got="$(curl -fsSL --proto '=https' -H 'Cache-Control: no-cache' "$OB_PUBLIC_URL/$r/repodata/$f?v=$(date +%s)" | sha256sum | cut -d' ' -f1)"
@@ -153,4 +193,4 @@ if [[ "$OB_R2_BUCKET" == obpkg ]]; then
     done
   done
 fi
-log "published ${#todo[@]} objects to $OB_R2_BUCKET ($OB_PUBLIC_URL/${repos[0]%/*}/)"
+log "published ${#todo[@]} objects to $OB_R2_BUCKET ($OB_PUBLIC_URL/$repo/)"
