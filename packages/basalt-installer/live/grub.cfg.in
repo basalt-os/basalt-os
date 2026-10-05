@@ -3,20 +3,21 @@
 set default="0"
 set timeout=@TIMEOUT@
 serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
-# The menu uses the firmware console only, for keys and for output. UEFI
-# firmware that redirects its console to a serial port (OVMF, server BMCs
-# with serial over LAN) already carries it there: drawing on the serial
-# port as well printed every line twice, and reading the port as well let
-# two readers split the typed bytes (garbled boot line edits). On a machine
-# whose firmware does not redirect, the menu is on the screen and the
-# default entry boots after the timeout; the installer itself still runs
-# on the serial console.
+# Keys come from the firmware console only: firmware that redirects its
+# console to a serial port (OVMF, server BMCs with serial over LAN) already
+# passes the port's keys there, and GRUB reading the port as well let two
+# readers split the typed bytes (garbled boot line edits).
 terminal_input console
-terminal_output console
+terminal_output serial console
 search --no-floppy --set=root -l '@LABEL@'
 # The Basalt GRUB theme on the screen (basalt-grub2-theme); the serial
 # console keeps the text menu. Filled in by build-live.sh.
 @THEME@
+# Without the graphical theme on a screen, the text menu goes to the
+# firmware console alone: on redirecting firmware it reaches the serial
+# port from there, and GRUB's own serial output printed every line twice.
+# With the theme the screen shows gfxterm and the serial port the text menu.
+if [ "${basalt_gfx}" != y ]; then terminal_output --remove serial; fi
 
 menuentry 'Install Basalt OS @VERSION@' --class basalt --class gnu-linux --class os {
 	linux /images/vmlinuz @CMDLINE@

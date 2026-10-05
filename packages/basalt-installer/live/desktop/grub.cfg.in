@@ -3,14 +3,22 @@
 set default="0"
 set timeout=@TIMEOUT@
 serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
-# The menu on the firmware console only (see the installer image's grub.cfg.in).
+# Keys come from the firmware console only: firmware that redirects its
+# console to a serial port (OVMF, server BMCs with serial over LAN) already
+# passes the port's keys there, and GRUB reading the port as well let two
+# readers split the typed bytes (garbled boot line edits).
 terminal_input console
-terminal_output console
+terminal_output serial console
 # The serial console gets the text installer, as on the installer image.
 search --no-floppy --set=root -l '@LABEL@'
 # The Basalt GRUB theme on the screen (basalt-grub2-theme); the serial
 # console keeps the text menu. Filled in by build-live.sh.
 @THEME@
+# Without the graphical theme on a screen, the text menu goes to the
+# firmware console alone: on redirecting firmware it reaches the serial
+# port from there, and GRUB's own serial output printed every line twice.
+# With the theme the screen shows gfxterm and the serial port the text menu.
+if [ "${basalt_gfx}" != y ]; then terminal_output --remove serial; fi
 
 menuentry 'Try Basalt OS @VERSION@ (live desktop)' --class basalt --class gnu-linux --class os {
 	linux /images/vmlinuz @CMDLINE@

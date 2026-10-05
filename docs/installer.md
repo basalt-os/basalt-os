@@ -274,13 +274,16 @@ Hardware and the boot menu:
   `mt7xxx-firmware`, `nxpwireless-firmware` and `qed-firmware`, with
   NetworkManager's Wi-Fi support. `n` on the text installer's welcome
   screen opens `nmtui` to join a Wi-Fi network or set an address.
-- The GRUB menu uses the firmware console only, for keys and output. UEFI
-  firmware that copies its console to a serial port (OVMF, BMC serial over
-  LAN) showed every line twice when GRUB wrote to the port as well, and
-  garbled typed boot line edits when GRUB read the port as well. Firmware
-  that does not redirect shows the menu on the screen only; the default
-  entry boots after the timeout and the installer runs on the serial
-  console either way.
+- The GRUB menu reads keys from the firmware console only: UEFI firmware
+  that copies its console to a serial port (OVMF, BMC serial over LAN)
+  passes the port's keys there, and GRUB reading the port as well garbled
+  typed boot line edits. With the graphical theme on a screen, the screen
+  shows it and the serial port the text menu; without it the text menu
+  goes to the firmware console alone, because GRUB writing to the port as
+  well showed every line twice on redirecting firmware. Firmware that does
+  not redirect then shows the menu on the screen only; the default entry
+  boots after the timeout and the installer runs on the serial console
+  either way.
 
 Kernel command line options of the live image: `basalt.inst.repo=URL`,
 `basalt.inst.installed-repo=URL`, `basalt.inst.hostname=`,
