@@ -6,6 +6,9 @@ serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
 terminal_input serial console
 terminal_output serial console
 search --no-floppy --set=root -l '@LABEL@'
+# The Basalt GRUB theme on the screen (basalt-grub2-theme); the serial
+# console keeps the text menu. Filled in by build-live.sh.
+@THEME@
 
 menuentry 'Install Basalt OS @VERSION@' --class basalt --class gnu-linux --class os {
 	linux /images/vmlinuz @CMDLINE@

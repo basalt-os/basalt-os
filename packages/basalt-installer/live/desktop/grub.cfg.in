@@ -7,6 +7,9 @@ terminal_input serial console
 terminal_output serial console
 # The serial console gets the text installer, as on the installer image.
 search --no-floppy --set=root -l '@LABEL@'
+# The Basalt GRUB theme on the screen (basalt-grub2-theme); the serial
+# console keeps the text menu. Filled in by build-live.sh.
+@THEME@
 
 menuentry 'Try Basalt OS @VERSION@ (live desktop)' --class basalt --class gnu-linux --class os {
 	linux /images/vmlinuz @CMDLINE@

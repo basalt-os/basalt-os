@@ -4,7 +4,7 @@
 
 Name:           basalt-snapshots
 Version:        0.2.0
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Snapshots of the root file system around every dnf transaction
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -99,6 +99,10 @@ fi
 %config(noreplace) %{_sysconfdir}/basalt/snapshots.conf
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-4
+- Snapshot menu entries and their submenu carry the basalt-snapshot class
+  first, so the Basalt GRUB theme shows them with the snapshot icon.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-3
 - basalt-rollback --clean-kernels: also remove the dangling symvers link.
 

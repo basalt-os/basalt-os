@@ -119,7 +119,17 @@ $PODMAN run --rm --privileged --network=host --security-opt label=disable \
     [ "$PROFILE" = desktop ] && live_args="" menu=/live/desktop/grub.cfg.in
     cmdline="root=live:CDLABEL=$LABEL quiet rd.live.image $live_args rd.live.overlay.overlayfs=1 enforcing=1 systemd.firstboot=off systemd.getty_auto=0 console=tty0 console=ttyS0,115200n8 $CMDLINE_EXTRA"
     cmdline="$(echo "$cmdline" | tr -s " ")"
-    sed -e "s|@LABEL@|$LABEL|" -e "s|@VERSION@|$VERSION|g" -e "s|@CMDLINE@|$cmdline|g" -e "s|@TIMEOUT@|$TIMEOUT|" "$menu" >/tmp/grub.cfg
+    # The GRUB theme from the tree (basalt-grub2-theme) goes on the ISO, and
+    # its block into the menu: GRUB reads it from the ISO file system (root).
+    themes="$tree/usr/share/basalt/grub2"
+    : >/tmp/theme.cfg
+    if [ -f "$themes/basalt-theme.cfg" ] && [ -f "$themes/themes/basalt/theme.txt" ]; then
+      mkdir -p "$iso/boot/grub2/themes"
+      cp -r "$themes/themes/basalt" "$iso/boot/grub2/themes/"
+      sed -e "s|@THEME_DIR@|(\$root)/boot/grub2/themes/basalt|" "$themes/basalt-theme.cfg" | grep -v "^#" >/tmp/theme.cfg
+    fi
+    sed -e "s|@LABEL@|$LABEL|" -e "s|@VERSION@|$VERSION|g" -e "s|@CMDLINE@|$cmdline|g" -e "s|@TIMEOUT@|$TIMEOUT|" \
+      -e "/^@THEME@\$/{r /tmp/theme.cfg" -e "d}" "$menu" >/tmp/grub.cfg
     img="$iso/images/efiboot.img"
     mkfs.vfat -C -n BASALTEFI "$img" 8192 >/dev/null
     mmd -i "$img" ::/EFI ::/EFI/BOOT

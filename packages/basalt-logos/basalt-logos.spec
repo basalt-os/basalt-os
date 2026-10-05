@@ -9,8 +9,8 @@
 # grub2-mkconfig writes /boot/grub2/grub.cfg from /etc/grub.d.
 
 Name:           basalt-logos
-Version:        0.1.0
-Release:        2%{?dist}
+Version:        0.2.0
+Release:        1%{?dist}
 Summary:        Basalt OS logos and icons
 License:        CC-BY-SA-4.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -55,14 +55,21 @@ and rebuild the initramfs.
 
 %package -n basalt-grub2-theme
 Summary:        Basalt OS theme for the GRUB boot menu
+# The key hints image is drawn with Inter (SIL OFL 1.1, license included).
+License:        CC-BY-SA-4.0 AND OFL-1.1
 %{?systemd_requires}
 
 %description -n basalt-grub2-theme
-GRUB theme (background, mark, menu and fonts) and the /etc/grub.d hook that
-enables it in grub.cfg (applied at the next grub2-mkconfig run). Because GRUB
-reads its files before the encrypted root is unlocked, the theme is copied
-from /usr/share/basalt/grub2 to /boot/grub2/themes on install and by
-basalt-grub-theme.service at boot when the package version changed.
+GRUB theme for the screen (background, Basalt OS lockup, entries on a dark
+panel with icons, a countdown line and the keys) and the /etc/grub.d hook
+that puts it in grub.cfg. The serial console keeps GRUB's text menu, and
+without a graphics mode the screen does too. The theme is only images and
+a theme file: it uses the font inside Fedora's signed GRUB, so it looks the
+same with Secure Boot on or off. Because GRUB reads its files before the
+encrypted root is unlocked, the theme is copied from /usr/share/basalt/grub2
+to /boot/grub2/themes on install and by basalt-grub-theme.service at boot
+when the package version changed. An existing grub.cfg is written again
+when its theme block is out of date.
 
 %package -n basalt-backgrounds
 Summary:        Basalt OS desktop wallpapers
@@ -101,11 +108,20 @@ if [ -d /boot/grub2 ]; then
     %{_libexecdir}/basalt/basalt-grub-theme-sync >/dev/null 2>&1 || :
 fi
 
+%posttrans -n basalt-grub2-theme
+# A grub.cfg written with an older theme block (or none): write it again.
+# Not on a fresh install, where grub.cfg does not exist yet.
+%{_libexecdir}/basalt/basalt-grub-theme-sync --refresh-config >/dev/null 2>&1 || :
+
 %preun -n basalt-grub2-theme
 %systemd_preun basalt-grub-theme.service
 
 %postun -n basalt-grub2-theme
 %systemd_postun basalt-grub-theme.service
+# Removed: take the theme block out of grub.cfg (the hook is gone).
+if [ $1 -eq 0 ] && [ -f /boot/grub2/grub.cfg ] && grep -q '^### basalt-grub2-theme ###' /boot/grub2/grub.cfg; then
+    grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1 || :
+fi
 
 %postun -n plymouth-theme-basalt
 if [ $1 -eq 0 ]; then
@@ -140,6 +156,7 @@ fi
 
 %files -n basalt-grub2-theme
 %license %{_datadir}/licenses/%{name}/COPYING
+%license %{_datadir}/licenses/%{name}/Inter-OFL.txt
 %dir %{_datadir}/basalt
 %dir %{_datadir}/basalt/grub2
 %dir %{_datadir}/basalt/grub2/themes
@@ -172,6 +189,18 @@ fi
 %{_datadir}/plymouth/themes/spinner/watermark.png
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- New GRUB theme: Basalt OS lockup, entries on a dark panel with icons (a
+  clock for the snapshot entries), terra roxa edge on the selected entry,
+  thin countdown line, key hints, black box for the editor and command line.
+- No font files: with Secure Boot on, Fedora's signed GRUB refuses fonts
+  from disk, so the old theme fell back to a tiny default. All text GRUB
+  draws is Unifont 16 from its signed image; the key hints are an image.
+- grub.cfg prefers 1920x1080 and other common modes (readable on HiDPI
+  panels); GRUB_GFXMODE and GRUB_THEME in /etc/default/grub are honored,
+  and a serial-only GRUB_TERMINAL_OUTPUT gets no theme.
+- An existing grub.cfg with an out of date theme block is written again.
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-2
 - GRUB theme for traditional installs: /etc/grub.d/06_basalt_theme instead of
   the bootupd static configuration snippet; theme copied to /boot on install.

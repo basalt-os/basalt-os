@@ -1,19 +1,20 @@
 #!/usr/bin/bash
-# Copy the Basalt OS GRUB theme from the image (/usr) to /boot/grub2/themes,
-# where GRUB can read it before the encrypted root is unlocked. Runs at boot
-# (basalt-grub-theme.service) and does nothing when /boot is already current.
+# Copy the Basalt OS GRUB theme from /usr to /boot/grub2/themes, where GRUB
+# can read it before the encrypted root is unlocked. Runs at boot
+# (basalt-grub-theme.service) and from the package scriptlets, and does
+# nothing when /boot is already current (version stamp).
+#
+#   basalt-grub-theme-sync                   copy the theme when it changed
+#   basalt-grub-theme-sync --refresh-config  also write grub.cfg again when
+#                                            its theme block differs from
+#                                            what /etc/grub.d/06_basalt_theme
+#                                            writes now (package upgrade)
 set -euo pipefail
 
 src=/usr/share/basalt/grub2/themes/basalt
 dst=/boot/grub2/themes/basalt
-
-if [[ ! -d /boot/grub2 || ! -f "$src/theme.txt" ]]; then
-  echo "basalt-grub-theme-sync: nothing to do (no /boot/grub2 or no theme in $src)"
-  exit 0
-fi
-if cmp -s "$src/.basalt-version" "$dst/.basalt-version" 2>/dev/null; then
-  exit 0
-fi
+cfg=/boot/grub2/grub.cfg
+hook=/etc/grub.d/06_basalt_theme
 
 copy_theme() {
   mkdir -p "$(dirname "$dst")"
@@ -25,14 +26,58 @@ copy_theme() {
   echo "basalt-grub-theme-sync: installed $(cat "$dst/.basalt-version") into $dst"
 }
 
-if [[ -w /boot/grub2 ]]; then
-  copy_theme
-  exit 0
-fi
+sync_theme() {
+  if [[ ! -d /boot/grub2 || ! -f "$src/theme.txt" ]]; then
+    echo "basalt-grub-theme-sync: nothing to do (no /boot/grub2 or no theme in $src)"
+    return 0
+  fi
+  if cmp -s "$src/.basalt-version" "$dst/.basalt-version" 2>/dev/null; then
+    return 0
+  fi
+  if [[ -w /boot/grub2 ]]; then
+    copy_theme
+    return 0
+  fi
+  # A read-only /boot: remount it read-write only inside a private mount
+  # namespace, so the rest of the system keeps the read-only view.
+  export src dst
+  export -f copy_theme
+  unshare --mount --propagation private bash -c 'mount -o remount,rw /boot && copy_theme'
+}
 
-# Image-based systems mount /boot read-only. Remount it read-write only inside
-# a private mount namespace, so the rest of the system keeps the read-only view.
-export src dst
-export -f copy_theme
-exec unshare --mount --propagation private \
-  bash -c 'mount -o remount,rw /boot && copy_theme'
+# The theme block of grub.cfg as the hook writes it now, with the settings
+# grub2-mkconfig passes to the hooks (from /etc/default/grub).
+wanted_block() {
+  (
+    set -a
+    # shellcheck disable=SC1091
+    [[ -f /etc/default/grub ]] && . /etc/default/grub
+    set +a
+    if [[ -n "${GRUB_TERMINAL:-}" ]]; then
+      : "${GRUB_TERMINAL_INPUT:=$GRUB_TERMINAL}" "${GRUB_TERMINAL_OUTPUT:=$GRUB_TERMINAL}"
+      export GRUB_TERMINAL_INPUT GRUB_TERMINAL_OUTPUT
+    fi
+    "$hook"
+  )
+}
+
+refresh_config() {
+  # Only a grub.cfg that grub2-mkconfig wrote: a fresh install has none yet
+  # (the installer runs grub2-mkconfig itself, after the packages).
+  [[ -f "$cfg" && -x "$hook" ]] || return 0
+  grep -q '^### BEGIN /etc/grub.d/00_header ###' "$cfg" || return 0
+  command -v grub2-mkconfig >/dev/null || return 0
+  local current wanted
+  current="$(sed -n '/^### basalt-grub2-theme ###$/,/^### end basalt-grub2-theme ###$/p' "$cfg")"
+  wanted="$(wanted_block)"
+  if [[ "$current" == "$wanted" ]]; then
+    return 0
+  fi
+  echo "basalt-grub-theme-sync: theme block of $cfg is out of date, running grub2-mkconfig"
+  grub2-mkconfig -o "$cfg"
+}
+
+sync_theme
+if [[ "${1:-}" == --refresh-config ]]; then
+  refresh_config
+fi

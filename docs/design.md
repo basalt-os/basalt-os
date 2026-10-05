@@ -344,6 +344,46 @@ regenerating `grub.cfg`. Basalt OS uses a small generator instead:
   add `basalt.snapshot=N` to the kernel command line, which is how the tools
   know the system was started from this menu.
 
+### The boot menu on the screen
+
+`basalt-grub2-theme` draws the GRUB menu on the screen with the Basalt look:
+the lockup, the entries on a dark panel with icons (a clock for the
+snapshot submenu and its entries), the countdown and the keys. The serial
+console keeps GRUB's text menu with the same entries at the same time, so a
+server with only a serial line loses nothing, and the snapshot submenu and
+its `s` key work in both.
+
+- `/etc/grub.d/06_basalt_theme` writes the theme block into `grub.cfg`. It
+  adds `gfxterm` next to the serial terminal only when graphics work and
+  the theme files are on `/boot`; otherwise the screen keeps the text menu.
+  It follows `/etc/default/grub`: a `GRUB_TERMINAL_OUTPUT` without `console`
+  or `gfxterm` (e.g. `serial`) means no theme, `GRUB_GFXMODE` replaces the
+  list of preferred modes, and a `GRUB_THEME` of your own is left to GRUB's
+  `00_header`.
+- GRUB reads the theme before the encrypted root is unlocked, so
+  `basalt-grub-theme-sync` copies it from `/usr/share/basalt/grub2` to
+  `/boot/grub2/themes/basalt` (package scriptlets, and at boot after a
+  rollback changed the package version). A package upgrade that changes
+  the theme block writes `grub.cfg` again.
+- No fonts are shipped. With Secure Boot on, Fedora's signed GRUB loads
+  fonts only from the memdisk inside its own signed image and refuses font
+  files from disk; that is why a theme with its own fonts falls back to a
+  tiny default. All the text GRUB draws (entries, countdown, editor) is
+  Unifont 16 from that image, so the menu is the same with Secure Boot on or
+  off, and the key hints are an image. Images and the theme file are data,
+  allowed under Secure Boot; nothing in the boot chain changes.
+- The menu asks for 1920x1080 first, then other common modes, then the
+  firmware's own: on a 4K panel the 16 pixel text is shown at 1920x1080 and
+  stays readable. The layout is relative to the screen, from 1024x768 up.
+- The TPM unlock is bound to PCR 7 (the Secure Boot state), which the menu
+  does not touch; the theme only changes PCRs 8 and 9, like any `grub.cfg`
+  change.
+
+The live installer and live desktop ISOs use the same theme block and files
+(`packages/basalt-installer/live/build-live.sh`). `scripts/lab/grub-theme-test.sh`
+renders the theme with Fedora's signed shim and GRUB under Secure Boot in
+QEMU, without installing a system, and takes screenshots at several modes.
+
 ## Release upgrades
 
 Fedora releases about every six months. A Basalt OS system moves to the next

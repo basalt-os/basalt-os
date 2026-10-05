@@ -10,5 +10,7 @@ Basalt OS project. Distributions derived from Basalt OS that are not
 published by the project should replace this package with their own
 artwork (as generic-logos does for derivatives of Fedora).
 
-The wordmark outlines were drawn with the Inter typeface
-(https://rsms.me/inter/), licensed under the SIL Open Font License 1.1.
+The wordmark outlines and the key hints image of the GRUB theme were drawn
+with the Inter typeface (https://rsms.me/inter/), licensed under the SIL
+Open Font License 1.1 (Inter-OFL.txt next to this file). No font files are
+included: the GRUB theme uses the font built into GRUB itself.

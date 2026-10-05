@@ -1,10 +1,50 @@
 #!/usr/bin/sh
-# Basalt OS (basalt-grub2-theme): add the Basalt GRUB theme to grub.cfg.
-# The snippet loads the theme only when its files are on /boot and a
-# graphics mode is available, and keeps any serial terminal.
+# Basalt OS (basalt-grub2-theme): put the Basalt GRUB theme in grub.cfg.
+#
+# grub2-mkconfig runs this after 00_header. The theme lives on /boot
+# (/boot/grub2/themes/basalt, copied from /usr/share/basalt/grub2 by
+# basalt-grub-theme-sync), because GRUB reads it before the encrypted root
+# is unlocked. Settings from /etc/default/grub:
+#
+#   GRUB_TERMINAL_OUTPUT  "serial console" (Basalt's default): the screen gets
+#                         the theme, the serial console the text menu.
+#                         Without console or gfxterm (e.g. "serial" alone)
+#                         there is no screen to theme: nothing is written.
+#                         With gfxterm, 00_header already switched to it.
+#   GRUB_THEME            unset or the Basalt theme: the Basalt theme.
+#                         Any other theme: left to 00_header (which needs
+#                         gfxterm in GRUB_TERMINAL_OUTPUT to use it).
+#   GRUB_GFXMODE          unset: a list that prefers 1920x1080 and other
+#                         common modes, so the text stays readable on HiDPI
+#                         panels (GRUB's text is a 16 pixel font, see
+#                         theme.txt). Set: used as is.
 set -e
-snippet=/usr/share/basalt/grub2/basalt-theme.cfg
-[ -r "$snippet" ] || exit 0
+
+template=/usr/share/basalt/grub2/basalt-theme.cfg
+themes=/usr/share/basalt/grub2/themes/basalt
+[ -r "$template" ] || exit 0
+
+has() { # has WORD LIST
+  case " $2 " in *" $1 "*) return 0 ;; esac
+  return 1
+}
+
+out="${GRUB_TERMINAL_OUTPUT:-console}"
+switch=""
+if has gfxterm "$out"; then
+  # 00_header switched to gfxterm already.
+  switch="set basalt_gfx=y"
+elif ! has console "$out"; then
+  exit 0
+fi
+case "${GRUB_THEME:-}" in
+  "" | "$themes"/theme.txt | /boot/grub2/themes/basalt/theme.txt) ;;
+  *) exit 0 ;;
+esac
+
 echo "### basalt-grub2-theme ###"
-cat "$snippet"
+sed -e "s|@THEME_DIR@|\${prefix}/themes/basalt|" \
+  -e "${GRUB_GFXMODE:+s|^\( *set gfxmode=\).*|\1\"$GRUB_GFXMODE\"|}" \
+  -e "${switch:+s|^\( *\)if terminal_output --append gfxterm.*|\1$switch|}" \
+  "$template" | grep -v '^#'
 echo "### end basalt-grub2-theme ###"
