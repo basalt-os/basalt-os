@@ -19,6 +19,25 @@ fi
 
 : "${FEDORA_RELEASE:=44}"
 : "${BASALT_VERSION:=$(tr -d "[:space:]" <"$REPO_ROOT/VERSION")}"
+# Version and stage (docs/versioning.md): BASALT_VERSION is <fedora>.<n>
+# (VERSION file), BASALT_STAGE one of dev, alpha.N, beta.N, rc.N or final
+# (the official release), BASALT_BUILD the build date (YYYYMMDD, UTC).
+# BASALT_FULL_VERSION names the images: 44.0-dev.20261005, 44.0-alpha.1, 44.0.
+: "${BASALT_STAGE:=dev}"
+: "${BASALT_BUILD:=$(date -u +%Y%m%d)}"
+[[ "$BASALT_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] || { printf 'error: BASALT_VERSION must be <fedora>.<n>, got %s\n' "$BASALT_VERSION" >&2; exit 1; }
+[[ "$BASALT_STAGE" =~ ^(dev|final|(alpha|beta|rc)\.[1-9][0-9]*)$ ]] ||
+  { printf 'error: BASALT_STAGE must be dev, alpha.N, beta.N, rc.N or final, got %s\n' "$BASALT_STAGE" >&2; exit 1; }
+[[ "$BASALT_BUILD" =~ ^20[0-9]{6}$ ]] || { printf 'error: BASALT_BUILD must be a date (YYYYMMDD), got %s\n' "$BASALT_BUILD" >&2; exit 1; }
+case "$BASALT_STAGE" in
+  dev) BASALT_FULL_VERSION="$BASALT_VERSION-dev.$BASALT_BUILD" ;;
+  final) BASALT_FULL_VERSION="$BASALT_VERSION" ;;
+  *) BASALT_FULL_VERSION="$BASALT_VERSION-$BASALT_STAGE" ;;
+esac
+export BASALT_VERSION BASALT_STAGE BASALT_BUILD BASALT_FULL_VERSION
+# Image file name without .iso: basalt-os-<full version>-<edition>-<arch>,
+# plus an optional suffix for lab and test variants.
+iso_name() { printf 'basalt-os-%s-%s-%s%s' "$BASALT_FULL_VERSION" "$1" "$ARCH" "${2:+-$2}"; }
 # BUILD_ID in os-release: UTC build date and the commit of this tree.
 : "${BASALT_BUILD_ID:=$(date -u +%Y%m%d).$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo local)}"
 : "${PODMAN:=sudo podman}"

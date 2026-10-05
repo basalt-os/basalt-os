@@ -90,6 +90,9 @@ func installSummary(pv session.Preview, st session.Status, keyWhere []string, lo
 	if p.Repos.Tools == nil || *p.Repos.Tools {
 		line(i18n.T("              basalt-tools %s"), tools)
 	}
+	if t := p.Repos.Testing; t != nil && *t {
+		line("%s", i18n.T("              basalt-testing (pre-release packages) on"))
+	}
 	if t := p.Repos.ThirdParty.TUITools; t == nil || *t {
 		line("%s", i18n.T("              tui-tools (third party)"))
 	}

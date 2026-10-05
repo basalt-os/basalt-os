@@ -340,7 +340,7 @@
  99. Create the install record directory
      $ mkdir -p /mnt/sysroot/var/log/basalt-installer
 100. Record the plan (without secrets)
-     $ write /mnt/sysroot/var/log/basalt-installer/plan.json (mode 0600, 1180 bytes)
+     $ write /mnt/sysroot/var/log/basalt-installer/plan.json (mode 0600, 1202 bytes)
        | {
        |   "apiVersion": "basalt-install-plan/v1",
        |   "edition": "server",
@@ -399,6 +399,7 @@
        |     },
        |     "fedora": {},
        |     "tools": true,
+       |     "testing": false,
        |     "third_party": {
        |       "tui_tools": true
        |     }

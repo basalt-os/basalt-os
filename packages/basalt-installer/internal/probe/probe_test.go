@@ -2,6 +2,7 @@ package probe
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -75,6 +76,29 @@ func TestHumanSize(t *testing.T) {
 	for in, want := range map[int64]string{512: "512 B", 32212254720: "30.0 GiB", 1000204886016: "931.5 GiB"} {
 		if got := HumanSize(in); got != want {
 			t.Errorf("%d: %s, want %s", in, got, want)
+		}
+	}
+}
+
+func TestOSReleaseFedoraRelease(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		in   string
+		want int
+	}{
+		{"NAME=\"Basalt OS\"\nVERSION_ID=44.0\nPLATFORM_ID=\"platform:f44\"\n", 44},
+		{"VERSION_ID=\"45.1\"\n", 45},
+		{"NAME=Fedora Linux\nVERSION_ID=44\n", 44},
+		{"VERSION_ID=0.0.1\nPLATFORM_ID=\"platform:f44\"\n", 44},
+		{"VERSION_ID=rawhide\nPLATFORM_ID=\"platform:f46\"\n", 46},
+		{"NAME=x\n", 0},
+	} {
+		f := filepath.Join(dir, "os-release")
+		if err := os.WriteFile(f, []byte(c.in), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := osRelease(f); got != c.want {
+			t.Errorf("osRelease(%q) = %d, want %d", c.in, got, c.want)
 		}
 	}
 }

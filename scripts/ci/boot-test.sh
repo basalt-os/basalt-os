@@ -37,7 +37,7 @@ export LAB_REPO_URL="http://10.0.2.2:$CI_REPO_PORT"
 export REPO_DIR="$BUILD_DIR/repo"
 export SITE_DIR="$LAB_DIR/site"
 export SITE_NAME=ci
-iso="$BUILD_DIR/iso/basalt-os-$BASALT_VERSION-$ARCH-$SITE_NAME.iso"
+iso="$BUILD_DIR/iso/$(iso_name server "netinst-$SITE_NAME").iso"
 vmdir="$BUILD_DIR/vm"
 
 prepare() {
@@ -65,7 +65,7 @@ run_vm() {
     -e SSH_PORT="$CI_SSH_PORT" -e REPO_PORT="$CI_REPO_PORT" -e HOST_OWNER="$(id -u):$(id -g)" \
     -e VM_MEMORY_MB="${VM_MEMORY_MB:-4096}" -e VM_VCPUS="${CI_VM_VCPUS:-2}" \
     -e INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-3600}" \
-    -e EXPECT_FEDORA_RELEASE="$FEDORA_RELEASE" -e EXPECT_BASALT_VERSION="$BASALT_VERSION" \
+    -e EXPECT_FEDORA_RELEASE="$FEDORA_RELEASE" -e EXPECT_BASALT_VERSION="$BASALT_VERSION" -e EXPECT_BASALT_STAGE="$BASALT_STAGE" \
     "$FEDORA_IMAGE" /ci/vm-test.sh || rc=$?
   # VM disk and firmware state are large and hold the throwaway keys' results;
   # only the logs are kept.

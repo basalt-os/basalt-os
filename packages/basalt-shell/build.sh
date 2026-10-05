@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the basalt-shell RPMs (binary, -selinux, source) in a Fedora
+# Build the basalt-shell RPMs (binary, -selinux, -niri, basalt-desktop, source) in a Fedora
 # container from github.com/basalt-os/basalt-shell at the commit pinned in
 # packages/basalt-shell/source.conf, and copy them to OUT_DIR (default
 # $BUILD_DIR/rpms/<fedora>/testing/: the shell ships in basalt-testing while
@@ -53,6 +53,8 @@ in_fedora -v "$work:/rpmbuild" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
     -ba /rpmbuild/SPECS/basalt-shell.spec >/rpmbuild/build.log 2>&1 || { tail -60 /rpmbuild/build.log; exit 1; }
 '
 mkdir -p "$out"
-sudo find "$work/RPMS" "$work/SRPMS" -name "basalt-shell*.rpm" -exec cp {} "$out/" \;
+# basalt-shell, -selinux, -niri and basalt-desktop (the desktop edition's
+# package set) all come from the shell's spec.
+sudo find "$work/RPMS" "$work/SRPMS" \( -name "basalt-shell*.rpm" -o -name "basalt-desktop-*.rpm" \) -exec cp {} "$out/" \;
 sudo chown -R "$(id -u):$(id -g)" "$out"
-find "$out" -name "basalt-shell*.rpm" -printf "%P  %s bytes\n" | sort
+find "$out" \( -name "basalt-shell*.rpm" -o -name "basalt-desktop-*.rpm" \) -printf "%P  %s bytes\n" | sort

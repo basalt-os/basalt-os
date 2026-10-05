@@ -222,6 +222,15 @@ apt/dists/<suite>/main/binary-<arch>/by-hash/SHA256/<sha256>
   `Signed-By`), installs the packages, runs `<binary> version`, and checks
   that apt refuses a tampered `InRelease` (local trees) and another key.
 
+## Images from the published repositories
+
+`scripts/release/mirror-published.sh OUT_DIR` (with `OB_REPO`) copies a
+published repository byte-identical: it checks the signature of
+`repomd.xml` (packages subkey, release key), every metadata file against
+the signed `repomd.xml` and every RPM against the signed primary metadata.
+`LIVE_SOURCE=obpkg` image builds use it, so an image holds only packages
+signed with the release key (see docs/installer.md).
+
 ## Later publishes
 
 The metadata from `sign.sh` lists only the packages of its input. A later

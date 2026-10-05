@@ -17,7 +17,7 @@ Defaults from the first boot:
 | Area | Default |
 |---|---|
 | Base | Fedora 44 packages from Fedora's own mirrors; only Basalt's few packages come from the Basalt repository |
-| Identity | `basalt-release` replaces `fedora-release` (`ID=basalt`, `ID_LIKE=fedora`, `VERSION_ID` = the Fedora release so tools that key on it behave as on Fedora, `VERSION="44 (Basalt 0.0.1)"`, `BASALT_VERSION`, `BUILD_ID`); `basalt-logos` replaces `fedora-logos` |
+| Identity | `basalt-release` replaces `fedora-release` (`ID=basalt`, `ID_LIKE=fedora`, `VERSION_ID=44.0` = the Basalt OS version whose major number is the Fedora release, `VERSION="44.0 (dev)"`, `PLATFORM_ID="platform:f44"`, `BASALT_STAGE`, `BASALT_BUILD`, `BUILD_ID`; see [docs/versioning.md](docs/versioning.md)); `basalt-logos` replaces `fedora-logos` |
 | SELinux | enforcing, targeted policy |
 | Disk | btrfs with zstd compression on LUKS2; TPM2 unlock bound to the Secure Boot state (PCR 7), or network unlock through Tang, or both, and always a recovery key; encryption can be turned off at install |
 | Boot | Secure Boot with Fedora's signed chain; Basalt's kernel module CA can be enrolled as a MOK, or the firmware can trust only Basalt's own keys; kernel lockdown and module signature enforcement on the command line (modules built with DKMS or akmods are signed with your own MOK, see [docs/secure-boot.md](docs/secure-boot.md)) |

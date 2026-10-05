@@ -1,0 +1,4 @@
+# Live desktop: the desktop shell comes from basalt-testing (pre-release
+# packages), so the live system reads it too.
+[basalt-testing]
+enabled=1

@@ -23,7 +23,7 @@ source "$(dirname "$0")/../../../scripts/lib.sh"
 tests="$REPO_ROOT/packages/basalt-installer/tests"
 : "${SSH_PORT:=2291}"
 : "${REPO_PORT:=8191}"
-iso="$BUILD_DIR/live/basalt-os-$BASALT_VERSION-$ARCH-live-lab.iso"
+iso="$BUILD_DIR/live/$(iso_name server lab).iso"
 
 build_iso() {
   [[ -f "$LAB_DIR/keys/vm_ed25519.pub" ]] || die "no lab SSH key (make lab-keys)"
@@ -71,7 +71,8 @@ run_vm() {
 }
 
 run_kickstart() {
-  local vmdir="$BUILD_DIR/installer-test/kickstart" ks_iso="$BUILD_DIR/iso/basalt-os-$BASALT_VERSION-$ARCH-$SITE_NAME.iso" rc=0
+  local vmdir="$BUILD_DIR/installer-test/kickstart" ks_iso rc=0
+  ks_iso="$BUILD_DIR/iso/$(iso_name server "netinst-$SITE_NAME").iso"
   [[ -f "$ks_iso" ]] || die "no kickstart ISO at $ks_iso (scripts/iso.sh build with SITE_DIR set)"
   sudo rm -rf "$vmdir"
   mkdir -p "$vmdir"

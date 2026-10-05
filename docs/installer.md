@@ -83,6 +83,7 @@ has one.
 | `repos.basalt.installed_tools_url` | `https://obpkg.org/basalt-tools` with the default repository, else `<installed_url>/tools` (a lab or mirror) | the basalt-tools repository of the installed system (`/etc/dnf/vars/basalt_tools_url`) |
 | `repos.basalt.gpg_key` | the media's key | the repository key used during the installation; the preview says whether it is the OpenBasalt release key (fingerprint `3601734842BD4E482D19DE4AE4EED5ECA395B302`) or another one, such as a lab key. The installed system trusts the key that `basalt-release` ships |
 | `repos.fedora.baseurl`, `updates_baseurl` | Fedora's mirrors | for a local mirror |
+| `repos.testing` | `false` | `true` turns on `basalt-testing` (pre-release packages): read at install time from `basalt/testing` on the media when the media carries it, else from `<installed_url>/testing` (or https://obpkg.org/basalt-testing with the default repository), and turned on in the installed system with a dnf repository override. The live desktop's plan sets it, because the desktop shell is pre-release |
 | `repos.tools` | `true` | the `basalt-tools` repository that `basalt-release` ships stays enabled (metadata only, nothing installed unless chosen, ADR 0005); `false` turns it off with a dnf repository override |
 | `repos.third_party.tui_tools` | `true` | the tui-tools repository with its key; the key's fingerprint is pinned in the installer and checked before it is written |
 | `assistant` | `true` | `basalt-assistant` installed and its daemon enabled |
@@ -345,7 +346,8 @@ the files in `packages/basalt-installer/live/desktop/`.
   and `basalt-live-owners.service` gives those and the live home their
   owners back before anyone logs in. Only those few files are copied up
   into the overlay, which lives in memory.
-- A plan at `basalt/plans/default.yaml` with `edition: desktop` and
+- A plan at `basalt/plans/default.yaml` (from `live/desktop/plans/`, or
+  `LIVE_PLANS`) with `edition: desktop`, `repos.testing: true` and
   `packages.extra: [basalt-desktop, ...]` makes the installer install the
   desktop edition.
 
@@ -355,8 +357,35 @@ the files in `packages/basalt-installer/live/desktop/`.
 make rpm-installer     # basalt-installer, basalt-installer-gui, source RPM
 make installer-test    # go vet + go test in a container
 make repo              # sign and publish (with the other packages)
-make live-iso          # build/live/basalt-os-<version>-x86_64-live.iso
+make live-iso          # build/live/basalt-os-<version>-server-x86_64.iso
+make live-desktop-iso  # build/live/basalt-os-<version>-desktop-x86_64.iso
 ```
+
+Images are named as in [versioning.md](versioning.md):
+`basalt-os-<version>-<edition>-<arch>.iso`, the version taken from
+`VERSION`, `BASALT_STAGE` (default `dev`) and `BASALT_BUILD` (default
+today, UTC), for example `basalt-os-44.0-dev.20261005-server-x86_64.iso`;
+`LIVE_NAME` adds a suffix for test variants (`-lab`). Each build rewrites
+`build/live/SHA256SUMS` over the images of that version.
+
+`LIVE_SOURCE=obpkg` builds from the published repositories instead of
+`REPO_DIR`: `scripts/release/mirror-published.sh` mirrors
+https://obpkg.org/basalt (and, for the desktop, basalt-testing)
+byte-identical after checking the metadata signature and every checksum,
+mkosi installs from that mirror with `gpgcheck` and `repo_gpgcheck`, and
+the media carries it as `basalt/repo` and `basalt/testing`. Such an image
+holds only packages signed with the OpenBasalt release key:
+
+```sh
+LIVE_SOURCE=obpkg make live-iso
+LIVE_SOURCE=obpkg make live-desktop-iso
+```
+
+The live menu needs `basalt-grub2-theme` 0.2.0 or later in the
+repository: 0.1.0 looked for the theme next to GRUB on the EFI image and
+loaded font files, which Fedora's signed GRUB refuses under Secure Boot,
+so the screen showed the plain text menu. The build stops when the image
+has no theme or an older one.
 
 Go toolchain: the text installer is built on
 [tui-kit](https://github.com/tui-tools/tui-kit) as a module dependency, so

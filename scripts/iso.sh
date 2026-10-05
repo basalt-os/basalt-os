@@ -6,7 +6,7 @@
 #
 #   scripts/iso.sh fetch    download the Fedora netinst ISO and verify it
 #                           (signed CHECKSUM file, Fedora's published keys)
-#   scripts/iso.sh build    write $BUILD_DIR/iso/basalt-os-<version>-<arch>[-<site>].iso
+#   scripts/iso.sh build    write $BUILD_DIR/iso/basalt-os-<version>-server-<arch>-netinst[-<site>].iso
 #
 # SITE_DIR (optional) holds site.conf and site.ks for unattended installs
 # (accounts, encryption choice, end action); the ISO name then gets the
@@ -49,7 +49,7 @@ build() {
   mkdir -p "$add/basalt/repo/$FEDORA_RELEASE"
   cp -a "$REPO_DIR/$FEDORA_RELEASE/$ARCH" "$add/basalt/repo/$FEDORA_RELEASE/"
   cp "$REPO_DIR/RPM-GPG-KEY-basalt" "$add/basalt/"
-  name="basalt-os-$BASALT_VERSION-$ARCH"
+  name="$(iso_name server netinst)"
   if [[ -n "$SITE_DIR" ]]; then
     [[ -f "$SITE_DIR/site.conf" || -f "$SITE_DIR/site.ks" ]] || die "SITE_DIR=$SITE_DIR has no site.conf or site.ks"
     cp "$SITE_DIR"/site.conf "$SITE_DIR"/site.ks "$add/basalt/" 2>/dev/null || true
@@ -77,7 +77,7 @@ build() {
         -c 'console=tty0 console=ttyS0,115200n8 inst.text' \
         -r 'quiet rhgb rd.live.check' \
         -V '$volid' \
-        -R 'Fedora $FEDORA_RELEASE' 'Basalt OS $BASALT_VERSION (Fedora $FEDORA_RELEASE base)' \
+        -R 'Fedora $FEDORA_RELEASE' 'Basalt OS $BASALT_FULL_VERSION (Fedora $FEDORA_RELEASE base)' \
         -R 'set default=\"1\"' 'set default=\"0\"' \
         -R 'set timeout=60' 'set timeout=5' \
         /in/$iso /out/$name.iso

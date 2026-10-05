@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Unattended install of the lab ISO into a new VM, then the first boot.
 #
-#   scripts/lab/install.sh [ISO]     default: $BUILD_DIR/iso/basalt-os-<version>-<arch>-<site>.iso
+#   scripts/lab/install.sh [ISO]     default: $BUILD_DIR/iso/basalt-os-<version>-server-<arch>-netinst-<site>.iso
 #
 # Steps, each timed: network and repository server up, VM created with
 # Secure Boot firmware and a fresh vTPM, kickstart install from the ISO (the
@@ -12,7 +12,7 @@ source "$(dirname "$0")/../lib.sh"
 L="$REPO_ROOT/scripts/lab"
 : "${VM_NAME:=basalt-lab-vm}"
 : "${SITE_NAME:=site}"
-iso="${1:-$BUILD_DIR/iso/basalt-os-$BASALT_VERSION-$ARCH-$SITE_NAME.iso}"
+iso="${1:-$BUILD_DIR/iso/$(iso_name server "netinst-$SITE_NAME").iso}"
 [[ -f "$iso" ]] || die "no ISO at $iso (make iso)"
 vm() { "$L/vm.sh" ssh "$@"; }
 

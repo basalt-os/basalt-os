@@ -400,14 +400,26 @@ func memoryMiB(meminfo string) int {
 	return 0
 }
 
+// osRelease returns the Fedora release of the running system: the major
+// number of VERSION_ID (Basalt OS: 44.0, Fedora: 44), else PLATFORM_ID
+// (platform:f44).
 func osRelease(path string) int {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0
 	}
+	kv := map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
-		if v, ok := strings.CutPrefix(line, "VERSION_ID="); ok {
-			n, _ := strconv.Atoi(strings.Trim(v, `"'`))
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
+			kv[k] = strings.Trim(v, `"'`)
+		}
+	}
+	major, _, _ := strings.Cut(kv["VERSION_ID"], ".")
+	if n, err := strconv.Atoi(major); err == nil && n > 0 {
+		return n
+	}
+	if v, ok := strings.CutPrefix(kv["PLATFORM_ID"], "platform:f"); ok {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n
 		}
 	}

@@ -83,6 +83,11 @@ func (s *Session) Suggest(ctx context.Context) (plan.Plan, probe.Facts, error) {
 		s.planSrc, s.planErr = src, err
 		s.mu.Unlock()
 		if err == nil {
+			// A plan without a disk (the live desktop's default plan)
+			// takes the suggested one; the person still confirms it.
+			if loaded.Target.Disk == "" {
+				loaded.Target.Disk = disk
+			}
 			return loaded, f, nil
 		}
 		// The wizard starts from the defaults and says why.

@@ -13,15 +13,27 @@
 # builds replace it with their own key through BASALT_GPG_PUBKEY.
 
 %global dist_version %{fedora}
-%{!?basalt_version:%global basalt_version 0.0.1}
+# Version and stage (docs/versioning.md, scripts/lib.sh passes them):
+# basalt_version <fedora>.<n> (44.0), basalt_stage dev, alpha.N, beta.N,
+# rc.N or final, basalt_build the build date (YYYYMMDD).
+%{!?basalt_version:%global basalt_version %{dist_version}.0}
+%{!?basalt_stage:%global basalt_stage dev}
+%{!?basalt_build:%global basalt_build 0}
 # BUILD_ID in os-release: <UTC date>.<git commit> of the tree that built it
 # (scripts/lib.sh passes it); "local" when built by hand.
 %{!?basalt_build_id:%global basalt_build_id local}
-%global basalt_codename pre-alpha
+# VERSION in os-release: "44.0 (dev)", "44.0 (alpha.1)", "44.0" when final.
+%if "%{basalt_stage}" == "final"
+%global basalt_version_text %{basalt_version}
+%global basalt_release_type stable
+%else
+%global basalt_version_text %{basalt_version} (%{basalt_stage})
+%global basalt_release_type development
+%endif
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        7%{?dist}
+Release:        8%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -91,22 +103,26 @@ cp -p %{sources} .
 
 %install
 # --- identity ---------------------------------------------------------------
-# VERSION_ID is the Fedora release, as on Fedora remixes, so tools that key
-# on it (Ansible, cloud-init, installers of third-party repositories) behave
-# as on Fedora. The Basalt OS version is in VERSION, BASALT_VERSION and the
-# BUILD_ID of the build.
+# Version numbers follow docs/versioning.md (ADR 0015): VERSION_ID is the
+# Basalt OS version, <fedora>.<n> (44.0), so the Fedora base is its major
+# number; PLATFORM_ID and the system-release(releasever) Provides carry the
+# Fedora release itself for dnf and for tools that need it. BASALT_STAGE
+# (dev, alpha.N, beta.N, rc.N, final) and BASALT_BUILD (date) say which
+# build of that version this is.
 install -d %{buildroot}%{_prefix}/lib %{buildroot}%{_sysconfdir}
 cat >%{buildroot}%{_prefix}/lib/os-release <<EOF
 NAME="Basalt OS"
-VERSION="%{dist_version} (Basalt %{basalt_version})"
-RELEASE_TYPE=development
+VERSION="%{basalt_version_text}"
+RELEASE_TYPE=%{basalt_release_type}
 ID=basalt
 ID_LIKE=fedora
-VERSION_ID=%{dist_version}
+VERSION_ID=%{basalt_version}
+PLATFORM_ID="platform:f%{dist_version}"
 BUILD_ID=%{basalt_build_id}
 BASALT_VERSION=%{basalt_version}
-BASALT_CODENAME=%{basalt_codename}
-PRETTY_NAME="Basalt OS %{dist_version} (Basalt %{basalt_version}, %{basalt_codename})"
+BASALT_STAGE=%{basalt_stage}
+BASALT_BUILD=%{basalt_build}
+PRETTY_NAME="Basalt OS %{basalt_version_text}"
 VARIANT="Server"
 VARIANT_ID=server
 ANSI_COLOR="0;38;2;163;71;46"
@@ -119,7 +135,7 @@ EOF
 ln -s ../usr/lib/os-release %{buildroot}%{_sysconfdir}/os-release
 
 # Several tools read these names; keep them, with Basalt content.
-echo "Basalt OS release %{dist_version} (Basalt %{basalt_version})" \
+echo "Basalt OS release %{basalt_version_text}" \
   >%{buildroot}%{_prefix}/lib/fedora-release
 echo "cpe:/o:basalt-os:basalt-os:%{basalt_version}" >%{buildroot}%{_prefix}/lib/system-release-cpe
 ln -s ../usr/lib/fedora-release %{buildroot}%{_sysconfdir}/fedora-release
@@ -233,6 +249,12 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 44-8
+- Version numbers of ADR 0015 (docs/versioning.md): VERSION_ID=44.0,
+  VERSION "44.0 (dev)", PRETTY_NAME "Basalt OS 44.0 (dev)"; new fields
+  BASALT_STAGE (dev, alpha.N, beta.N, rc.N, final) and BASALT_BUILD (the
+  build date), PLATFORM_ID with the Fedora release; BASALT_CODENAME gone.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 44-7
 - Preset: enable basalt-resolver.service (per-session default-deny
   egress) and basalt-ledger.service (the audit ledger), installed by

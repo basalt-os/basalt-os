@@ -18,7 +18,7 @@ source "$(dirname "$0")/../lib.sh"
 export REPO_DIR="$BUILD_DIR/repo-unsigned"
 export SITE_DIR=""
 : "${CI_OUT:=$BUILD_DIR/ci-out}"
-iso_name="basalt-os-$BASALT_VERSION-$ARCH.iso"
+iso_name="$(iso_name server netinst).iso"
 
 rpms() {
   "$REPO_ROOT/scripts/build-rpms.sh"
@@ -45,7 +45,7 @@ collect() {
   fedora_iso="$(cat "$BUILD_DIR/iso-cache/latest" 2>/dev/null || echo unknown)"
   cat >"$CI_OUT/BUILD-INFO.txt" <<EOF
 Basalt OS CI build (UNSIGNED, for testing only)
-version:        $BASALT_VERSION
+version:        $BASALT_FULL_VERSION
 fedora release: $FEDORA_RELEASE
 architecture:   $ARCH
 commit:         $(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)

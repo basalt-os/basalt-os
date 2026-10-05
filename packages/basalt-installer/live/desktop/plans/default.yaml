@@ -1,0 +1,24 @@
+# Basalt OS desktop edition, the starting plan of the live desktop's
+# installer. The disk is the installer's suggestion; nothing is written
+# before the person reviews the steps and types the disk name.
+apiVersion: basalt-install-plan/v1
+edition: desktop
+layout:
+  mode: automatic
+encryption:
+  enabled: true
+  unlock: tpm2
+profile: auto
+hostname: basalt
+repos:
+  basalt:
+    url: media
+  # The desktop shell is pre-release: basalt-testing at install time (from
+  # the media) and on the installed system.
+  testing: true
+packages:
+  extra:
+    - basalt-desktop
+    - basalt-shell-selinux
+    - basalt-voice
+finish: reboot

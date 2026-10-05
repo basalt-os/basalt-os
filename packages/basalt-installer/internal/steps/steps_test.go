@@ -318,3 +318,70 @@ func TestDescribeBasaltKey(t *testing.T) {
 		t.Fatalf("missing key: %q", missing)
 	}
 }
+
+func TestTestingRepository(t *testing.T) {
+	// Off by default: no install-time repository, no override.
+	_, list := generate(t, basePlan("/dev/vda"), facts("kvm", true))
+	if _, s := find(list, "basalt-testing"); s.Title != "" {
+		t.Fatalf("basalt-testing without repos.testing: %q", s.Title)
+	}
+	// On, with an http repository: <url>/testing at install time and on the system.
+	p := basePlan("/dev/vda")
+	p.Repos.Testing = plan.Bool(true)
+	_, list = generate(t, p, facts("kvm", true))
+	var repos, override, vars string
+	for _, s := range list {
+		if s.Write == nil {
+			continue
+		}
+		switch {
+		case strings.HasSuffix(s.Write.Path, "basalt-install.repo"):
+			repos = s.Write.Content
+		case strings.HasSuffix(s.Write.Path, "80-basalt-installer.repo"):
+			override = s.Write.Content
+		case strings.HasSuffix(s.Write.Path, "/etc/dnf/vars/basalt_testing_url"):
+			vars = s.Write.Content
+		}
+	}
+	if !strings.Contains(repos, "[basalt-install-testing]") || !strings.Contains(repos, "baseurl=http://10.0.2.2:8098/testing/$releasever/$basearch/") {
+		t.Errorf("install-time repositories:\n%s", repos)
+	}
+	if !strings.Contains(override, "[basalt-testing]\nenabled=1") {
+		t.Errorf("override:\n%s", override)
+	}
+	if vars != "http://10.0.2.2:8098/testing\n" {
+		t.Errorf("basalt_testing_url = %q", vars)
+	}
+	// From the media with a basalt/testing tree: read there; the installed
+	// system keeps the published basalt-testing.
+	media := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(media, "basalt", "testing"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p.Repos.Basalt.URL = "media"
+	opt := fixed()
+	opt.MediaDir = media
+	r, err := Resolve(p, facts("kvm", true), opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err = Generate(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repos, vars = "", ""
+	for _, s := range list {
+		if s.Write != nil && strings.HasSuffix(s.Write.Path, "basalt-install.repo") {
+			repos = s.Write.Content
+		}
+		if s.Write != nil && strings.HasSuffix(s.Write.Path, "/etc/dnf/vars/basalt_testing_url") {
+			vars = s.Write.Content
+		}
+	}
+	if !strings.Contains(repos, "baseurl=file://"+filepath.Join(media, "basalt", "testing")+"/$releasever/$basearch/") {
+		t.Errorf("install-time repositories from the media:\n%s", repos)
+	}
+	if vars != plan.DefaultTestingURL+"\n" {
+		t.Errorf("basalt_testing_url from the media = %q", vars)
+	}
+}

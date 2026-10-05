@@ -68,7 +68,7 @@ choices get their own ISO from a site variant:
 scripts/lab/site-variant.sh tang BASALT_UNLOCK=tang BASALT_TANG_URL=http://<gateway>:7500 \
   BASALT_TANG_THP="$(scripts/lab/tang-serve.sh thp)" BASALT_PROFILE=minimal
 SITE_DIR=$LAB_DIR/site-tang SITE_NAME=lab-tang make iso
-VM_NAME=<name> VM_HOST=13 scripts/lab/install.sh build/iso/basalt-os-<version>-x86_64-lab-tang.iso
+VM_NAME=<name> VM_HOST=13 scripts/lab/install.sh build/iso/basalt-os-<version>-server-x86_64-netinst-lab-tang.iso
 ```
 
 ## Tests

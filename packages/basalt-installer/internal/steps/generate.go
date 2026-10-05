@@ -279,6 +279,9 @@ func (g *gen) all() error {
 	if u := g.installedRepoURL(); u != "" {
 		g.write("Point the Basalt repository at its URL", g.t("/etc/dnf/vars/basalt_repo_url"), 0o644, u+"\n")
 		g.write("Point the basalt-tools repository at its URL", g.t("/etc/dnf/vars/basalt_tools_url"), 0o644, g.installedToolsURL(u)+"\n")
+		if g.testing() {
+			g.write("Point the basalt-testing repository at its URL", g.t("/etc/dnf/vars/basalt_testing_url"), 0o644, g.installedTestingURL(u)+"\n")
+		}
 	}
 	g.run("Create the temporary repository directory", "install", "-d", "-m", "0700", r.ReposDir())
 	g.write("Write the install-time repositories (Fedora, Basalt)", filepath.Join(r.ReposDir(), "basalt-install.repo"), 0o600, g.installRepos())
@@ -475,6 +478,34 @@ func (g *gen) installedToolsURL(u string) string {
 	return u + "/tools"
 }
 
+// testing reports whether the plan turns basalt-testing on.
+func (g *gen) testing() bool {
+	t := g.r.Plan.Repos.Testing
+	return t != nil && *t
+}
+
+// installedTestingURL is the basalt-testing base URL that goes with the
+// installed Basalt repository u.
+func (g *gen) installedTestingURL(u string) string {
+	if u == plan.DefaultRepoURL {
+		return plan.DefaultTestingURL
+	}
+	return u + "/testing"
+}
+
+// testingInstallURL is where the installer reads basalt-testing: the
+// media's basalt/testing tree when the Basalt repository is the media and
+// carries one, else the installed system's basalt-testing URL.
+func (g *gen) testingInstallURL() string {
+	if g.r.Plan.Repos.Basalt.URL == "media" {
+		dir := filepath.Join(g.r.MediaDir, "basalt", "testing")
+		if st, err := os.Stat(dir); err == nil && st.IsDir() {
+			return "file://" + dir
+		}
+	}
+	return g.installedTestingURL(g.installedRepoURL())
+}
+
 func (g *gen) basaltKey() string {
 	if k := g.r.Plan.Repos.Basalt.GPGKey; k != "" {
 		return k
@@ -561,13 +592,31 @@ func (g *gen) repos() error {
 	// the basalt_tools_url variable written above. A plan without tools
 	// turns it off with a dnf repository override, as
 	// `dnf config-manager setopt basalt-tools.enabled=0` would.
+	var override []string
 	if p.Repos.Tools != nil && !*p.Repos.Tools {
-		g.write("Turn the basalt-tools repository off (ADR 0005)", g.t("/etc/dnf/repos.override.d/80-basalt-installer.repo"), 0o644,
-			`# Written by the Basalt OS installer: the plan leaves basalt-tools off.
+		override = append(override, `# The plan leaves basalt-tools off.
 # Turn it on with: dnf config-manager setopt basalt-tools.enabled=1
 [basalt-tools]
 enabled=0
 `)
+	}
+	if g.testing() {
+		override = append(override, `# The plan turns basalt-testing on (pre-release packages).
+# Turn it off with: dnf config-manager setopt basalt-testing.enabled=0
+[basalt-testing]
+enabled=1
+`)
+	}
+	if len(override) > 0 {
+		title := "Turn the basalt-tools repository off (ADR 0005)"
+		switch {
+		case len(override) == 2:
+			title = "Turn basalt-tools off and basalt-testing on"
+		case g.testing():
+			title = "Turn the basalt-testing repository on (pre-release packages)"
+		}
+		g.write(title, g.t("/etc/dnf/repos.override.d/80-basalt-installer.repo"), 0o644,
+			"# Written by the Basalt OS installer.\n"+strings.Join(override, "\n"))
 	}
 	if t := p.Repos.ThirdParty.TUITools; t == nil || *t {
 		fpr, err := pgpkey.Fingerprint(TUIToolsKey)
@@ -755,6 +804,18 @@ func (g *gen) installRepos() string {
 		updates = "baseurl=" + p.Repos.Fedora.UpdatesBaseURL
 	}
 	fkey := "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch"
+	testing := ""
+	if g.testing() {
+		// Same key as the Basalt repository: one packages subkey signs both.
+		testing = fmt.Sprintf(`
+[basalt-install-testing]
+name=Basalt OS testing $releasever - $basearch
+baseurl=%s/$releasever/$basearch/
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file://%s
+`, strings.TrimRight(g.testingInstallURL(), "/"), g.basaltKey())
+	}
 	return fmt.Sprintf(`# Install-time repositories of the Basalt OS installer (live system only).
 # Basalt repository key: %s
 [basalt-install-fedora]
@@ -775,7 +836,7 @@ baseurl=%s/$releasever/$basearch/
 gpgcheck=1
 repo_gpgcheck=1
 gpgkey=file://%s
-`, describeBasaltKey(g.basaltKey()), fedora, fkey, updates, fkey, g.basaltInstallURL(), g.basaltKey())
+`, describeBasaltKey(g.basaltKey()), fedora, fkey, updates, fkey, g.basaltInstallURL(), g.basaltKey()) + testing
 }
 
 // describeBasaltKey says whether a repository key file holds the OpenBasalt

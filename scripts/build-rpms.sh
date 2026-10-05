@@ -77,10 +77,11 @@ cp -p "$logos/basalt-logos.spec" "$work/SPECS/"
 
 log "building in $FEDORA_IMAGE"
 in_fedora -v "$work:/rpmbuild" -e LAB="$lab" -e BASALT_VERSION="$BASALT_VERSION" \
-  -e BASALT_BUILD_ID="$BASALT_BUILD_ID" "$FEDORA_IMAGE" bash -euc '
+  -e BASALT_STAGE="$BASALT_STAGE" -e BASALT_BUILD="$BASALT_BUILD" -e BASALT_BUILD_ID="$BASALT_BUILD_ID" "$FEDORA_IMAGE" bash -euc '
   dnf -q -y install rpm-build systemd-rpm-macros >/dev/null 2>&1 || { echo "dnf install failed"; exit 1; }
   for spec in /rpmbuild/SPECS/*.spec; do
     rpmbuild --define "_topdir /rpmbuild" --define "basalt_version $BASALT_VERSION" \
+      --define "basalt_stage $BASALT_STAGE" --define "basalt_build $BASALT_BUILD" \
       --define "basalt_build_id $BASALT_BUILD_ID" -ba "$spec" >/rpmbuild/$(basename "$spec").log 2>&1 ||
       { tail -40 /rpmbuild/$(basename "$spec").log; exit 1; }
   done

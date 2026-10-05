@@ -158,6 +158,10 @@ msgid "              basalt-tools %s"
 msgstr "                  basalt-tools %s"
 
 #: cmd/basalt-installer/summary.go:94
+msgid "              basalt-testing (pre-release packages) on"
+msgstr "                  basalt-testing (pacotes de pré-lançamento) ligado"
+
+#: cmd/basalt-installer/summary.go:97
 msgid "              tui-tools (third party)"
 msgstr "                  tui-tools (terceiros)"
 

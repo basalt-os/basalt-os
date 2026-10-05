@@ -3,7 +3,7 @@
 # and a graphical frontend (Quickshell) in the -gui subpackage.
 
 Name:           basalt-installer
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
@@ -113,6 +113,17 @@ done
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
+- The Fedora release of the live system comes from the major number of
+  os-release's VERSION_ID (44.0 since basalt-release 44-8), else
+  PLATFORM_ID.
+- New plan field repos.testing: basalt-testing at install time (from the
+  media's basalt/testing tree when there is one) and turned on in the
+  installed system; the desktop edition needs it while its shell is
+  pre-release.
+- A starting plan without target.disk (the live desktop's plan on the
+  media) takes the suggested disk.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
 - Owner decisions of 2026-10-04: the recovery key is never written to a
   disk by default; the person can save a copy to a USB stick (text

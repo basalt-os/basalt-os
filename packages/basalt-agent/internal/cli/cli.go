@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -291,11 +292,20 @@ func cmdImage(args []string) error {
 	return err
 }
 
+// osReleaseVersion is the Fedora release the container images build on:
+// the major number of VERSION_ID (Basalt OS 44.0 runs on Fedora 44).
 func osReleaseVersion() string {
 	b, _ := os.ReadFile("/etc/os-release")
-	for _, l := range strings.Split(string(b), "\n") {
-		if v, ok := strings.CutPrefix(l, "VERSION_ID="); ok {
-			return strings.Trim(v, `"`)
+	return fedoraFromOSRelease(string(b))
+}
+
+func fedoraFromOSRelease(osRelease string) string {
+	for _, l := range strings.Split(osRelease, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "VERSION_ID="); ok {
+			major, _, _ := strings.Cut(strings.Trim(v, `"'`), ".")
+			if _, err := strconv.Atoi(major); err == nil {
+				return major
+			}
 		}
 	}
 	return "44"

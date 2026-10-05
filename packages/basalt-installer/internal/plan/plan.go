@@ -191,6 +191,12 @@ type Repos struct {
 	Basalt     BasaltRepo `json:"basalt" yaml:"basalt"`
 	Fedora     FedoraRepo `json:"fedora,omitempty" yaml:"fedora,omitempty"`
 	Tools      *bool      `json:"tools,omitempty" yaml:"tools,omitempty"`
+	// Testing turns the basalt-testing repository on (pre-release packages,
+	// off by default): at install time, read from the media when it carries
+	// basalt/testing, else from <URL>/testing (a lab or mirror) or
+	// DefaultTestingURL; on the installed system with a dnf repository
+	// override. The desktop edition needs it while its shell is pre-release.
+	Testing    *bool      `json:"testing,omitempty" yaml:"testing,omitempty"`
 	ThirdParty ThirdParty `json:"third_party,omitempty" yaml:"third_party,omitempty"`
 }
 
@@ -345,6 +351,9 @@ func (p *Plan) ApplyDefaults() {
 	}
 	if p.Repos.Tools == nil {
 		p.Repos.Tools = Bool(true)
+	}
+	if p.Repos.Testing == nil {
+		p.Repos.Testing = Bool(false)
 	}
 	if p.Repos.ThirdParty.TUITools == nil {
 		p.Repos.ThirdParty.TUITools = Bool(true)

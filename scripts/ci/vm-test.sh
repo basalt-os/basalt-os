@@ -12,8 +12,9 @@
 # 2. First boot from the disk: the LUKS2 volume must unlock through the TPM
 #    (nobody types anything; a passphrase prompt on the serial console fails
 #    the test), then SSH.
-# 3. Smoke checks over SSH: identity (os-release: VERSION_ID is the Fedora
-#    release, the Basalt version in VERSION, BASALT_VERSION and BUILD_ID),
+# 3. Smoke checks over SSH: identity (os-release: VERSION_ID is the Basalt
+#    version <fedora>.<n>, PLATFORM_ID the Fedora release, the stage in
+#    VERSION and BASALT_STAGE, BUILD_ID set),
 #    the minimal profile picked on a VM, Secure Boot on, SELinux enforcing
 #    with 0 AVC denials, 0 failed units, TPM2 and recovery key slots, snapper
 #    pre/post snapshots around a dnf install, basalt-rollback dry run, the
@@ -42,6 +43,7 @@ set -euo pipefail
 # os-release values the build must produce (boot-test.sh passes them).
 : "${EXPECT_FEDORA_RELEASE:=44}"
 : "${EXPECT_BASALT_VERSION:=}"
+: "${EXPECT_BASALT_STAGE:=}"
 : "${INSTALL_MODE:=kickstart}"
 
 W=/work
@@ -251,14 +253,18 @@ vm 'systemctl is-system-running --wait >/dev/null 2>&1 || true'
 
 # --- 3. smoke checks ------------------------------------------------------------------
 
-osr="$(vm '. /etc/os-release; printf "%s|%s|%s|%s|%s|%s\n" "$ID" "$ID_LIKE" "$VERSION_ID" "$VERSION" "$BASALT_VERSION" "$BUILD_ID"')"
-IFS='|' read -r o_id o_like o_vid o_ver o_bver o_build <<<"$osr"
-want_ver="$EXPECT_FEDORA_RELEASE (Basalt ${EXPECT_BASALT_VERSION:-$o_bver})"
-if [[ "$o_id" == basalt && "$o_like" == fedora && "$o_vid" == "$EXPECT_FEDORA_RELEASE" && "$o_ver" == "$want_ver" &&
-      -n "$o_bver" && ( -z "$EXPECT_BASALT_VERSION" || "$o_bver" == "$EXPECT_BASALT_VERSION" ) && -n "$o_build" ]]; then
-  result PASS "os-release" "ID=$o_id VERSION_ID=$o_vid VERSION=\"$o_ver\" BASALT_VERSION=$o_bver BUILD_ID=$o_build"
+osr="$(vm '. /etc/os-release; printf "%s|%s|%s|%s|%s|%s|%s|%s\n" "$ID" "$ID_LIKE" "$VERSION_ID" "$VERSION" "$BASALT_VERSION" "$BUILD_ID" "$PLATFORM_ID" "$BASALT_STAGE"')"
+IFS='|' read -r o_id o_like o_vid o_ver o_bver o_build o_plat o_stage <<<"$osr"
+# docs/versioning.md: VERSION_ID = BASALT_VERSION = <fedora>.<n>, VERSION
+# "<version> (<stage>)" before a final release.
+want_bver="${EXPECT_BASALT_VERSION:-$o_bver}" want_stage="${EXPECT_BASALT_STAGE:-$o_stage}"
+want_ver="$want_bver ($want_stage)"
+[[ "$want_stage" == final ]] && want_ver="$want_bver"
+if [[ "$o_id" == basalt && "$o_like" == fedora && "$o_vid" == "$want_bver" && "${o_vid%%.*}" == "$EXPECT_FEDORA_RELEASE" &&
+      "$o_ver" == "$want_ver" && "$o_plat" == "platform:f$EXPECT_FEDORA_RELEASE" && -n "$o_stage" && -n "$o_build" ]]; then
+  result PASS "os-release" "ID=$o_id VERSION_ID=$o_vid VERSION=\"$o_ver\" BASALT_STAGE=$o_stage PLATFORM_ID=$o_plat BUILD_ID=$o_build"
 else
-  result FAIL "os-release" "$osr (want VERSION_ID=$EXPECT_FEDORA_RELEASE, VERSION=\"$want_ver\", BUILD_ID set)"
+  result FAIL "os-release" "$osr (want VERSION_ID=$want_bver with major $EXPECT_FEDORA_RELEASE, VERSION=\"$want_ver\", PLATFORM_ID=platform:f$EXPECT_FEDORA_RELEASE, BUILD_ID set)"
 fi
 # The installer picks the minimal profile on a virtual machine by itself.
 # The kickstart writes the line to /root/basalt-install-pre.log, the Basalt

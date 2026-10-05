@@ -10,7 +10,7 @@ label="${1:-snapshot}"
 vm() { "$REPO_ROOT/scripts/lab/vm.sh" ssh "$@"; }
 
 echo "== measurements: $label ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-iso="$BUILD_DIR/iso/basalt-os-$BASALT_VERSION-$ARCH-$SITE_NAME.iso"
+iso="$BUILD_DIR/iso/$(iso_name server "netinst-$SITE_NAME").iso"
 if [[ -f "$iso" ]]; then
   echo "-- ISO"
   echo "$(basename "$iso"): $(( $(stat -c %s "$iso") / 1048576 )) MiB"

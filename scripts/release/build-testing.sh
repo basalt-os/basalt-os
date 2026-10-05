@@ -6,7 +6,8 @@
 #   scripts/release/build-testing.sh OUT_DIR
 #
 # Packages: basalt-shell (the desktop shell, from github.com/basalt-os/basalt-shell
-# at the commit pinned in packages/basalt-shell/source.conf) and basalt-voice
+# at the commit pinned in packages/basalt-shell/source.conf, with -selinux,
+# -niri and basalt-desktop, the desktop edition's package set) and basalt-voice
 # (whisper.cpp speech to text from its release archive, pinned by version and
 # SHA-256 in packages/basalt-voice/build.sh; no speech model is packaged:
 # basalt-voice-fetch downloads them on the person's machine, checked against

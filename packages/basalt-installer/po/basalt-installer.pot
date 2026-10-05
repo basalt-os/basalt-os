@@ -26,22 +26,26 @@ msgstr ""
 msgid "The recovery key could not be written to the USB stick the plan names. Store this key now:"
 msgstr ""
 
-#: cmd/basalt-installer/summary.go:101
-#, c-format
-msgid "Recovery key: %s"
-msgstr ""
-
-#: cmd/basalt-installer/summary.go:103
-#, c-format
-msgid "Time:         %s"
+#: cmd/basalt-installer/summary.go:102
+msgid "not stored"
 msgstr ""
 
 #: cmd/basalt-installer/summary.go:104
 #, c-format
+msgid "Recovery key: %s"
+msgstr ""
+
+#: cmd/basalt-installer/summary.go:106
+#, c-format
+msgid "Time:         %s"
+msgstr ""
+
+#: cmd/basalt-installer/summary.go:107
+#, c-format
 msgid "Install log:  %s (a copy is in /var/log/basalt-installer/ on the new system)"
 msgstr ""
 
-#: cmd/basalt-installer/summary.go:137
+#: cmd/basalt-installer/summary.go:140
 #, c-format
 msgid "this process runs in the SELinux context %s, which cannot enter install_t (the installer's domain); start it as a service: systemd-run --pty --wait --collect basalt-installer %s"
 msgstr ""
@@ -156,11 +160,11 @@ msgid "              basalt-tools %s"
 msgstr ""
 
 #: cmd/basalt-installer/summary.go:94
-msgid "              tui-tools (third party)"
+msgid "              basalt-testing (pre-release packages) on"
 msgstr ""
 
-#: cmd/basalt-installer/summary.go:99
-msgid "not stored"
+#: cmd/basalt-installer/summary.go:97
+msgid "              tui-tools (third party)"
 msgstr ""
 
 #: internal/plan/validate.go:118

@@ -9,7 +9,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-agent
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        Run AI coding agents confined by SELinux (container or native)
 License:        Apache-2.0
@@ -176,6 +176,11 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_agent.if
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.1-1
+- Container images build on the Fedora release from the major number of
+  os-release's VERSION_ID (Basalt OS 44.0 is Fedora 44), as basalt-release
+  44-8 writes VERSION_ID=44.0 (docs/versioning.md).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
 - Security: API keys never enter an agent session. The agent gets a
   placeholder and a plain-HTTP base URL for its provider (for example
