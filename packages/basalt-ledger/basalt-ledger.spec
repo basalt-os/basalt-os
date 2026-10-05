@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-ledger
-Version:        0.2.1
+Version:        0.2.2
 Release:        1%{?dist}
 Summary:        Append-only, hash-chained system audit service
 License:        Apache-2.0
@@ -122,6 +122,10 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_ledger.if
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.2-1
+- Records from Basalt desktop app domains (basalt_app_*_t) are refused:
+  apps read the ledger (Security and Activity), they never write it.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
 - Plain-English sentences for basalt-agent 0.3.0's credential.use (a
   session proxy used a key by name; the value is never recorded) and

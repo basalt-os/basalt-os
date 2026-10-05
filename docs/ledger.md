@@ -124,6 +124,9 @@ the kernel's view of it (`SO_PEERCRED`, `SO_PEERSEC`):
 
 - an unprivileged user may write as `basalt-agent` or `basalt-shell` only
   (`user_producers`), and only records of their own uid;
+- Basalt desktop apps (SELinux domains `basalt_app_*_t`, such as Security
+  and Activity from github.com/basalt-os/basalt-apps) read the ledger and
+  are refused as writers, like confined agent domains;
 - `basalt-resolver` records are accepted only from root in
   `basalt_resolver_t`;
 - the producer names of the built-in collectors (`selinux`, `polkit`,

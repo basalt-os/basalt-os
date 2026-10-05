@@ -63,6 +63,14 @@ func TestProducerRules(t *testing.T) {
 	if _, err := l.Accept(agent, agentRec("egress.deny")); err == nil {
 		t.Error("agent domain accepted")
 	}
+	// A Basalt desktop app domain reads, never writes.
+	app := Peer{UID: 1000, PID: 2, Context: "unconfined_u:unconfined_r:basalt_app_secact_t:s0-s0:c0.c1023"}
+	if _, err := l.Accept(app, agentRec("egress.deny")); err == nil {
+		t.Error("desktop app domain accepted")
+	}
+	if recs, err := l.Query(app, Filter{}); err != nil || len(recs) == 0 {
+		t.Errorf("desktop app domain cannot read its user's records: %v", err)
+	}
 	// The resolver: root in its own domain only.
 	res := record.Incoming{V: 1, Producer: "basalt-resolver", UID: intp(1000), Event: "dns.deny", Outcome: "denied"}
 	if _, err := l.Accept(Peer{UID: 0, Context: "system_u:system_r:basalt_resolver_t:s0"}, res); err != nil {

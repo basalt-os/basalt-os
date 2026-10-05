@@ -154,6 +154,11 @@ func (l *Ledger) check(p Peer, in record.Incoming) (record.Record, error) {
 	if t := ContextType(p.Context); strings.HasPrefix(t, "basalt_agent") || strings.HasPrefix(t, "container_") {
 		return r, refused("confined agents cannot write to the ledger")
 	}
+	// Basalt desktop apps (basalt_app_<name>_t, github.com/basalt-os/basalt-apps)
+	// read the ledger and never write it.
+	if t := ContextType(p.Context); strings.HasPrefix(t, "basalt_app_") {
+		return r, refused("desktop apps read the ledger; they cannot write to it")
+	}
 	if Reserved[in.Producer] {
 		return r, refused("producer %q is reserved for the ledger's own collectors", in.Producer)
 	}
