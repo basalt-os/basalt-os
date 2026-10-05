@@ -28,7 +28,11 @@ func TestDescribe(t *testing.T) {
 	cases := map[string]Record{
 		"Agent claude (s-0123456789ab) was stopped from reaching example.com:443 (not in the session allowlist)": mk("egress.deny", "denied",
 			map[string]any{"host": "example.com", "port": 443, "reason": "not in the session allowlist"}),
-		"Agent claude (s-0123456789ab) started in native mode on ~/src/app":                                       mk("session.start", "ok", nil),
+		"Agent claude (s-0123456789ab) started in native mode on ~/src/app": mk("session.start", "ok", nil),
+		"Agent claude (s-0123456789ab) used the key ANTHROPIC_API_KEY on api.anthropic.com (the key stays in the session proxy; the agent never sees it)": mk("credential.use", "ok",
+			map[string]any{"credential": "ANTHROPIC_API_KEY", "host": "api.anthropic.com", "port": 443}),
+		"Agent claude (s-0123456789ab) sent credential headers (Authorization, X-Api-Key) to example.com:443; they were removed, keys go only to their own provider": mk("credential.strip", "denied",
+			map[string]any{"headers": []any{"Authorization", "X-Api-Key"}, "host": "example.com", "port": 443}),
 		"Agent claude (s-0123456789ab) tried to connect straight to 1.1.1.1:443 without an allowed name; dropped": mk("egress.drop", "denied", map[string]any{"dst": "1.1.1.1", "port": 443}),
 	}
 	for want, r := range cases {

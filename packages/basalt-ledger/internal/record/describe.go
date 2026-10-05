@@ -22,6 +22,8 @@ var templates = map[string]string{
 	"grant.apply":              "{agent} was given more access ({kind} {value}) after administrator approval",
 	"relabel":                  "{agent} was handed {path} ({count} files labeled for its session)",
 	"install":                  "{agent} tools were installed ({method} {package})",
+	"credential.use":           "{agent} used the key {credential} on {host} (the key stays in the session proxy; the agent never sees it)",
+	"credential.strip":         "{agent} sent credential headers ({headers}) to {host}:{port}; they were removed, keys go only to their own provider",
 	"egress.session.start":     "Network for {agent} session is closed by default; {n_allow} names allowed",
 	"egress.session.end":       "Network rules for {agent} session were removed ({reason})",
 	"egress.session.refused":   "A request to filter cgroup {cgroup} was refused: {reason}",
