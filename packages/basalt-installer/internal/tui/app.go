@@ -87,6 +87,14 @@ const (
 	scDone
 	scFailed
 	scWaiting
+	scDiskUse
+	scHome
+	scHomePick
+	scHomePass
+	scHomeOwner
+	scHomeUser
+	scHomeTPM
+	scScope
 )
 
 type model struct {
@@ -108,6 +116,14 @@ type model struct {
 	initCmd            tea.Cmd
 
 	diskPicker kit.RowPicker
+	diskUse    kit.RowPicker
+	homePick   kit.RowPicker
+	homeOwner  kit.RowPicker
+	homeCands  []probe.Partition
+	homeDev    string
+	homeLUKS   bool
+	homePass   string
+	inspection session.HomeInspection
 	picker     ui.Picker
 	form       kit.Form
 	checklist  kit.Checklist
@@ -316,7 +332,7 @@ func (m *model) enter(s screen) {
 		m.form = kit.NewForm("Partition sizes", "The system partition holds the btrfs file system (encrypted unless you turn that off). Leave its size empty to use the rest of the disk.", esp, boot, sys)
 	case scSubvols:
 		m.checklist = kit.Checklist{Title: "btrfs subvolumes", Body: "Data in its own subvolume survives a system rollback. Required ones cannot be turned off."}
-		for _, sv := range plan.Subvolumes() {
+		for _, sv := range m.subvolumes() {
 			m.checklist.Items = append(m.checklist.Items, kit.CheckItem{Label: fmt.Sprintf("%-20s %s", sv.Name, sv.Mountpoint), Detail: sv.Purpose,
 				On: contains(p.Layout.Subvolumes, sv.Name), Locked: sv.Required})
 		}
@@ -337,7 +353,8 @@ func (m *model) enter(s screen) {
 		if !m.facts.TPM2 {
 			title = i18n.T("Disk encryption (LUKS2); no TPM 2.0 on this machine")
 		}
-		m.picker = ui.NewPicker(title, []string{tpm, recovery, tang, tpmTang, off}, cur)
+		_ = off
+		m.picker = ui.NewPicker(title, []string{tpm, recovery, tang, tpmTang}, cur)
 	case scTang:
 		u, th := kit.TextField("Tang URL", p.Encryption.Tang.URL, "http://tang.example:7500"), kit.TextField("Thumbprint", p.Encryption.Tang.Thumbprint, "tang-show-keys on the server")
 		th.Optional = true
@@ -401,6 +418,8 @@ func (m *model) enter(s screen) {
 		// the first line of the text, where it wraps.
 		m.pager.Title = fmt.Sprintf(i18n.N("Review: %d step, exactly what will run", "Review: %d steps, exactly what will run", len(pv.Steps)), len(pv.Steps))
 		m.pager.Text = "# " + m.p.Summary() + "\n\n" + issuesText(pv.Issues) + pv.Text
+	case scDiskUse, scHome, scHomePick, scHomePass, scHomeOwner, scHomeUser, scHomeTPM, scScope:
+		m.enterStorage(s)
 	case scConfirm:
 		word := m.preview.ConfirmWord()
 		m.confirm = ui.NewInput(fmt.Sprintf("Erase %s and install Basalt OS?", m.preview.Resolved.Disk.Path), "", "")
@@ -469,7 +488,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err.Error()
 		}
-		m.p, m.facts, m.note = msg.p, msg.f, strings.TrimSpace(m.note+" "+msg.note)
+		note := strings.TrimSpace(m.note)
+		if note != "" && !strings.HasSuffix(note, ".") {
+			note += "."
+		}
+		m.p, m.facts, m.note = msg.p, msg.f, strings.TrimSpace(note+" "+msg.note)
 		m.back = nil
 		m.enter(scWelcome)
 		return m, nil
@@ -502,6 +525,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ack.Error, m.ack.Note = "", fmt.Sprintf(i18n.T("A copy is on %s. Keep that stick somewhere safe, then type the first group to confirm."), msg.where)
 			}
 		}
+		return m, nil
+	case candidatesMsg:
+		if msg.err != nil {
+			m.err = msg.err.Error()
+			return m, nil
+		}
+		m.onCandidates(msg)
+		return m, nil
+	case inspectedMsg:
+		m.onInspected(msg, m.homePass)
 		return m, nil
 	case netDoneMsg:
 		if f, err := m.opt.Session.Facts(context.Background(), true); err == nil {
@@ -569,7 +602,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	// Cursor blink and other messages go to the focused text input.
 	switch m.scr {
-	case scLayoutSizes, scTang, scSystem, scAccounts, scStatic, scRepoURL:
+	case scLayoutSizes, scTang, scSystem, scAccounts, scStatic, scRepoURL, scHomePass, scHomeUser:
 		cmd, _ := m.form.Update(msg)
 		return m, cmd
 	case scConfirm:
@@ -704,7 +737,7 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// plan's wipe flag; the typed disk name after the review is the
 			// confirmation that authorizes it.
 			p.Target.Disk, p.Target.Wipe = m.facts.Disks[m.diskPicker.Cursor].Path, true
-			m.go_(scLayout)
+			return m, m.afterDisk()
 		}
 	case scLayout:
 		m.picker.Update(k)
@@ -719,7 +752,7 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				p.Layout = plan.Layout{Mode: "automatic"}
 				p.ApplyDefaults()
-				m.go_(scEncryption)
+				m.go_(scScope)
 			}
 		}
 	case scLayoutSizes:
@@ -747,12 +780,12 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				break
 			}
 			p.Layout.Subvolumes = nil
-			for i, sv := range plan.Subvolumes() {
+			for i, sv := range m.subvolumes() {
 				if m.checklist.Items[i].On {
 					p.Layout.Subvolumes = append(p.Layout.Subvolumes, sv.Name)
 				}
 			}
-			m.go_(scEncryption)
+			m.go_(scScope)
 		}
 	case scEncryption:
 		m.picker.Update(k)
@@ -828,6 +861,7 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if old != nil && old.Name == v[1] {
 					// What the form does not show stays as the plan set it.
 					u.FullName, u.Admin = old.FullName, old.Admin
+					u.UID, u.GID, u.HomeDir = old.UID, old.GID, old.HomeDir
 					if u.Admin == nil {
 						u.Admin = plan.Bool(true)
 					}
@@ -923,6 +957,14 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.startInstall()
 		}
 		return m, cmd
+	case scDiskUse, scHome, scHomePick, scHomePass, scHomeOwner, scHomeUser, scHomeTPM, scScope:
+		if m.scr == scHomePass {
+			m.homePass = ""
+			if len(m.form.Fields) > 0 {
+				m.homePass = m.form.Value(0)
+			}
+		}
+		return m, m.onStorageKey(k)
 	case scProgress, scWaiting:
 		// Keys do nothing while the installation runs (ctrl+c asks to cancel).
 	case scDone:
@@ -1054,7 +1096,9 @@ func (m *model) View() string {
 	subtitle := map[screen]string{scWelcome: "welcome", scDisk: "disk", scLayout: "layout", scLayoutSizes: "layout", scSubvols: "layout",
 		scEncryption: "encryption", scTang: "encryption", scSystem: "system", scProfile: "packages", scAccounts: "accounts",
 		scNetwork: "network", scStatic: "network", scRepos: "repositories", scRepoURL: "repositories", scReview: "review",
-		scConfirm: "confirm", scProgress: "installing", scDone: "done", scFailed: "failed", scWaiting: "unattended"}[m.scr]
+		scConfirm: "confirm", scProgress: "installing", scDone: "done", scFailed: "failed", scWaiting: "unattended",
+		scDiskUse: "disk", scHome: "home", scHomePick: "home", scHomePass: "home", scHomeOwner: "home", scHomeUser: "home",
+		scHomeTPM: "home", scScope: "encryption"}[m.scr]
 	f := m.facts
 	var facts []ui.Fact
 	if m.remote == nil {
@@ -1109,10 +1153,16 @@ func (m *model) View() string {
 		body = center(lines, w, bodyH)
 	case scDisk:
 		body = m.diskPicker.View(t, w, bodyH)
-	case scLayout, scEncryption, scProfile, scNetwork:
+	case scLayout, scEncryption, scProfile, scNetwork, scHome, scHomeTPM, scScope:
 		body = m.picker.View(t, w, bodyH)
-	case scLayoutSizes, scTang, scSystem, scAccounts, scStatic, scRepoURL:
+	case scLayoutSizes, scTang, scSystem, scAccounts, scStatic, scRepoURL, scHomePass, scHomeUser:
 		body = m.form.View(t, w, bodyH)
+	case scDiskUse:
+		body = m.diskUse.View(t, w, bodyH)
+	case scHomePick:
+		body = m.homePick.View(t, w, bodyH)
+	case scHomeOwner:
+		body = m.homeOwner.View(t, w, bodyH)
 	case scSubvols, scRepos:
 		body = m.checklist.View(t, w, bodyH)
 	case scReview:
@@ -1303,3 +1353,16 @@ func autoProfile(f probe.Facts) string {
 // IsSerial reports whether the terminal is a serial line (ttyS*, ttyAMA*,
 // hvc*), where the TUI falls back to ASCII borders.
 func IsSerial() bool { return earlyterm.Serial() }
+
+// subvolumes are the optional and required subvolumes for the plan (no
+// home subvolume when /home is a partition of its own).
+func (m *model) subvolumes() []plan.Subvolume {
+	var out []plan.Subvolume
+	for _, sv := range plan.Subvolumes() {
+		if sv.Name == "home" && m.p.HomeElsewhere() {
+			continue
+		}
+		out = append(out, sv)
+	}
+	return out
+}

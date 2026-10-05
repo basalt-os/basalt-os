@@ -114,8 +114,8 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	} else if strings.HasPrefix(p.Target.Disk, "/dev/md") || strings.HasPrefix(p.Target.Disk, "/dev/mapper/") || strings.HasPrefix(p.Target.Disk, "/dev/dm-") {
 		add(Error, "target.disk", "%s is a RAID, multipath or device-mapper device: %s", p.Target.Disk, KickstartHint)
 	}
-	if !p.Target.Wipe {
-		add(Error, "target.wipe", "must be true: the whole disk %s is erased", p.Target.Disk)
+	if p.Target.ESP != "" && p.Target.Wipe {
+		add(Error, "target.esp", "%s", i18n.T("an existing EFI system partition can only be shared when the disk is not erased (wipe: false)"))
 	}
 	var disk probe.Disk
 	haveDisk := false
@@ -136,8 +136,11 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 		if haveDisk && disk.Removable {
 			add(Warning, "target.disk", "%s is a removable disk", disk.Path)
 		}
-		if haveDisk && disk.Contents != "empty" {
+		if haveDisk && disk.Contents != "empty" && p.Target.Wipe {
 			add(Warning, "target.disk", "%s is not empty (%s); everything on it is erased", disk.Path, disk.Contents)
+		}
+		if haveDisk && !p.Target.Wipe {
+			validateFreeSpace(p, disk, add)
 		}
 	}
 
@@ -160,18 +163,15 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 		if p.Layout.ESPMiB != DefaultESPMiB || p.Layout.BootMiB != DefaultBootMiB {
 			add(Error, "layout", "sizes can only be changed in manual mode")
 		}
-		if !sameSet(p.Layout.Subvolumes, defaultSubvolumeNames()) {
+		if !sameSet(p.Layout.Subvolumes, DefaultSubvolumeNames(p)) {
 			add(Error, "layout.subvolumes", "the subvolume list can only be changed in manual mode")
 		}
 	}
 	if p.Layout.RootGiB < 0 || (p.Layout.RootGiB > 0 && p.Layout.RootGiB < 8) {
 		add(Error, "layout.root_gib", "the system partition needs at least 8 GiB, got %d", p.Layout.RootGiB)
 	}
-	if haveDisk {
-		need := int64(p.Layout.ESPMiB+p.Layout.BootMiB)<<20 + 8<<30 + 2<<20
-		if p.Layout.RootGiB > 0 {
-			need = int64(p.Layout.ESPMiB+p.Layout.BootMiB)<<20 + int64(p.Layout.RootGiB)<<30 + 2<<20
-		}
+	if haveDisk && p.Target.Wipe {
+		need := NeededBytes(p)
 		if need > disk.SizeBytes {
 			add(Error, "layout", "the partitions need %s, the disk has %s", probe.HumanSize(need), probe.HumanSize(disk.SizeBytes))
 		}
@@ -187,9 +187,31 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 		seen[s] = true
 	}
 	for _, s := range Subvolumes() {
+		if s.Name == "home" && p.HomeElsewhere() {
+			if seen["home"] {
+				add(Error, "layout.subvolumes", "%s", i18n.T("/home is on a partition of its own (encryption scope home, or an existing /home): leave the home subvolume out"))
+			}
+			continue
+		}
 		if s.Required && !seen[s.Name] {
 			add(Error, "layout.subvolumes", "subvolume %q (%s) is required", s.Name, s.Mountpoint)
 		}
+	}
+
+	// --- encryption scope and /home ------------------------------------------------------
+	switch p.Encryption.Scope {
+	case "", "system", "home", "none":
+	default:
+		add(Error, "encryption.scope", i18n.T("must be system, home or none, got %q"), p.Encryption.Scope)
+	}
+	if p.Encryption.Scope == "home" && p.Home.Existing != nil {
+		add(Error, "encryption.scope", "%s", i18n.T("scope home creates a new encrypted /home; with an existing /home use system or none"))
+	}
+	if p.Encryption.Scope == "home" {
+		add(Warning, "encryption.scope", "%s", i18n.T("only /home is encrypted: the system, its settings in /etc, the logs and /var (containers, virtual machines, databases) are not"))
+	}
+	if e := p.Home.Existing; e != nil {
+		validateExistingHome(p, *e, f, add)
 	}
 
 	// --- encryption ------------------------------------------------------------------
@@ -319,6 +341,18 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 			add(Error, "accounts.user.full_name", "must not contain colons or line breaks")
 		}
 		checkKeys("accounts.user.ssh_keys", u.SSHKeys)
+		if u.HomeDir != "" && (!strings.HasPrefix(u.HomeDir, "/home/") || strings.Contains(u.HomeDir, "..") || len(strings.TrimPrefix(u.HomeDir, "/home/")) == 0) {
+			add(Error, "accounts.user.home_dir", i18n.T("must be a directory under /home, got %q"), u.HomeDir)
+		}
+		if u.UID != 0 && (u.UID < 1000 || u.UID > 60000) {
+			add(Error, "accounts.user.uid", i18n.T("must be from 1000 to 60000, got %d"), u.UID)
+		}
+		if u.GID != 0 && (u.GID < 1000 || u.GID > 60000) {
+			add(Error, "accounts.user.gid", i18n.T("must be from 1000 to 60000, got %d"), u.GID)
+		}
+		if p.Home.Existing != nil && u.UID == 0 {
+			add(Warning, "accounts.user.uid", "%s", i18n.T("no uid given: the files on the existing /home may belong to another number than the new user"))
+		}
 		checkPassword("accounts.user.password", u.Password, u.PasswordHash)
 		userAccess := len(u.SSHKeys) > 0 || u.Password != "" || u.PasswordHash != ""
 		if !userAccess {
@@ -451,12 +485,122 @@ var partitionPath = regexp.MustCompile(`^/dev/((sd|vd|hd|xvd)[a-z]+[0-9]+|(nvme[
 
 func isPartitionPath(s string) bool { return partitionPath.MatchString(s) }
 
-func defaultSubvolumeNames() []string {
+// DefaultSubvolumeNames is the automatic layout's subvolume list for a
+// plan (without home when /home is a partition of its own).
+func DefaultSubvolumeNames(p Plan) []string {
 	var out []string
 	for _, s := range Subvolumes() {
+		if s.Name == "home" && p.HomeElsewhere() {
+			continue
+		}
 		out = append(out, s.Name)
 	}
 	return out
+}
+
+// Sizes of the parts a plan creates.
+const (
+	// DefaultSystemGiBWithHome is the system partition's size when a new
+	// /home partition takes the rest of the space.
+	DefaultSystemGiBWithHome = 64
+	MinHomeGiB               = 8
+)
+
+// NeededBytes is the space the new partitions need at least.
+func NeededBytes(p Plan) int64 {
+	esp := int64(p.Layout.ESPMiB) << 20
+	if p.Target.ESP != "" {
+		esp = 0
+	}
+	sys := int64(8) << 30
+	if p.Layout.RootGiB > 0 {
+		sys = int64(p.Layout.RootGiB) << 30
+	}
+	need := esp + int64(p.Layout.BootMiB)<<20 + sys + 2<<20
+	if p.EncryptsHome() {
+		need += int64(MinHomeGiB) << 30
+	}
+	return need
+}
+
+func validateFreeSpace(p Plan, disk probe.Disk, add func(Severity, string, string, ...any)) {
+	if disk.Table != "gpt" {
+		if len(disk.Partitions) == 0 {
+			add(Error, "target.wipe", "%s", i18n.T("the disk has no partition table: there is nothing to keep, so erase it (wipe: true)"))
+		} else {
+			add(Error, "target.wipe", i18n.T("the disk has a %s partition table: installing next to other systems needs GPT (UEFI)"), disk.Table)
+		}
+		return
+	}
+	free, ok := disk.LargestFree()
+	need := NeededBytes(p)
+	if !ok || free.Bytes < need {
+		add(Error, "target.wipe", i18n.T("the largest free space on %s is %s; the new partitions need %s (shrink another system's partition first)"),
+			disk.Path, probe.HumanSize(free.Bytes), probe.HumanSize(need))
+	}
+	if len(disk.Partitions) >= 124 {
+		add(Error, "target.wipe", "%s", i18n.T("the partition table has no free entries"))
+	}
+	for _, part := range disk.Partitions {
+		if part.Mountpoint != "" {
+			add(Error, "target.disk", i18n.T("%s is mounted on %s"), part.Path, part.Mountpoint)
+		}
+	}
+	if p.Target.ESP != "" {
+		var esp *probe.Partition
+		for i := range disk.Partitions {
+			if disk.Partitions[i].Path == p.Target.ESP {
+				esp = &disk.Partitions[i]
+			}
+		}
+		switch {
+		case esp == nil:
+			add(Error, "target.esp", i18n.T("%s is not a partition of %s"), p.Target.ESP, disk.Path)
+		case esp.Type != probe.TypeESP || esp.FSType != "vfat":
+			add(Error, "target.esp", i18n.T("%s is not an EFI system partition (FAT)"), p.Target.ESP)
+		case esp.Bytes < 100<<20:
+			add(Error, "target.esp", i18n.T("%s is too small to share (%s)"), p.Target.ESP, probe.HumanSize(esp.Bytes))
+		default:
+			add(Warning, "target.esp", "%s", i18n.T("the shared EFI system partition gets Fedora's boot files in EFI/fedora (shim, GRUB): another Fedora on it would be replaced"))
+		}
+	}
+}
+
+func validateExistingHome(p Plan, e ExistingHome, f *probe.Facts, add func(Severity, string, string, ...any)) {
+	if !strings.HasPrefix(e.Device, "/dev/") {
+		add(Error, "home.existing.device", i18n.T("must be a partition such as /dev/nvme1n1p1, got %q"), e.Device)
+		return
+	}
+	if f == nil {
+		return
+	}
+	part, ok := f.Partition(e.Device)
+	if !ok {
+		add(Error, "home.existing.device", i18n.T("%s is not a partition on this machine"), e.Device)
+		return
+	}
+	if part.Disk == p.Target.Disk && p.Target.Wipe {
+		add(Error, "home.existing.device", i18n.T("%s is on %s, the disk that is erased"), e.Device, part.Disk)
+	}
+	if part.Mountpoint != "" {
+		add(Error, "home.existing.device", i18n.T("%s is mounted on %s"), e.Device, part.Mountpoint)
+	}
+	switch part.FSType {
+	case "crypto_LUKS":
+		if e.Passphrase == "" {
+			add(Error, "home.existing.passphrase", "%s", i18n.T("the existing /home is encrypted: its passphrase is needed to open it during the installation"))
+		}
+	case "ext4", "xfs", "btrfs":
+		if e.Passphrase != "" || e.TPM2 {
+			add(Error, "home.existing", "%s", i18n.T("the existing /home is not encrypted: no passphrase or TPM"))
+		}
+		add(Warning, "home.existing", "%s", i18n.T("the existing /home is not encrypted"))
+	default:
+		add(Error, "home.existing.device", i18n.T("%s holds %q, not a LUKS volume or a Linux file system (ext4, xfs, btrfs)"), e.Device, part.FSType)
+	}
+	if e.TPM2 && !f.TPM2 {
+		add(Error, "home.existing.tpm2", "%s", i18n.T("no TPM 2.0 on this machine"))
+	}
 }
 
 func sameSet(a, b []string) bool {

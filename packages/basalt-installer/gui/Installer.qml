@@ -31,6 +31,47 @@ Item {
     property bool recoveryAcked: false
     property string ackError: ""
     property bool askCancel: false
+    // An existing /home (ADR 0002 addendum): candidates, inspection result.
+    property var homeCands: []
+    property var homeOwners: []
+    property string homePass: ""
+    property string homeNote: ""
+
+    function targetDisk() {
+        if (!root.facts || !root.plan) return null;
+        return root.facts.disks.find(d => d.path === root.plan.target.disk) || null;
+    }
+    function largestFree(d) {
+        return (d && d.free ? d.free : []).reduce((a, r) => Math.max(a, r.size_bytes), 0);
+    }
+    function existingESP(d) {
+        const e = (d && d.partitions ? d.partitions : []).find(x => x.type === "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" && x.fstype === "vfat");
+        return e ? e.path : "";
+    }
+    // The home subvolume exists only while /home is not a partition of its own.
+    function fixSubvols(p) {
+        const elsewhere = (p.home && p.home.existing) || (p.encryption.scope === "home" && p.encryption.enabled !== false);
+        let s = (p.layout.subvolumes || []).filter(x => x !== "home");
+        if (!elsewhere) s.unshift("home");
+        p.layout.subvolumes = s;
+    }
+    function loadHomeCands() {
+        Api.call("home_candidates", {}, (ok, res) => {
+            const d = root.plan ? root.plan.target : null;
+            root.homeCands = ok ? (res || []).filter(c => !(d && c.disk === d.disk && d.wipe)) : [];
+        });
+    }
+    function inspectHome() {
+        root.homeNote = qsTr("Opening the partition read-only.");
+        root.homeOwners = [];
+        Api.call("inspect_home", { device: root.plan.home.existing.device, passphrase: root.homePass }, (ok, res) => {
+            if (!ok) { root.homeNote = res; return; }
+            root.homeOwners = res.owners || [];
+            root.homeNote = root.homeOwners.length ? qsTr("Choose whose home it is: the new user gets the same name, uid and gid.") : qsTr("No home directories found on it.");
+            edit(p => { p.home.existing.passphrase = root.homePass; });
+        });
+    }
+
     // Copies of the recovery key on removable media.
     property var keyMedia: []
     property bool keyMediaShown: false
@@ -248,10 +289,74 @@ Item {
                 width: parent.width
                 spacing: Theme.s6
                 Section {
+                    title: qsTr("Disk use")
+                    visible: { const d = root.targetDisk(); return d !== null && d.table === "gpt" && (d.partitions || []).length > 0; }
+                    detail: { const d = root.targetDisk(); return d ? qsTr("%1 holds partitions: %2").arg(d.path).arg((d.partitions || []).map(x => x.path + " " + root.human(x.size_bytes) + " " + (x.fstype || "")).join(", ")) : ""; }
+                    Choice { width: pageCol.width; title: qsTr("Erase the whole disk"); detail: qsTr("Everything on it is deleted")
+                        checked: root.plan && root.plan.target.wipe
+                        onPicked: root.edit(p => { p.target.wipe = true; delete p.target.esp; }) }
+                    Choice { width: pageCol.width; title: qsTr("Keep the partitions, use the free space (dual boot)")
+                        detail: qsTr("Free: %1. The other systems and their EFI partition are not touched.").arg(root.human(root.largestFree(root.targetDisk())))
+                        checked: root.plan && !root.plan.target.wipe && !root.plan.target.esp
+                        onPicked: root.edit(p => { p.target.wipe = false; delete p.target.esp; }) }
+                    Choice { width: pageCol.width; visible: root.existingESP(root.targetDisk()) !== ""
+                        title: qsTr("Keep the partitions, share the EFI partition %1").arg(root.existingESP(root.targetDisk()))
+                        detail: qsTr("Fedora's boot files go into EFI/fedora on it")
+                        checked: root.plan && !root.plan.target.wipe && !!root.plan.target.esp
+                        onPicked: root.edit(p => { p.target.wipe = false; p.target.esp = root.existingESP(root.targetDisk()); }) }
+                }
+                Section {
+                    title: qsTr("Home directories (/home)")
+                    Choice { width: pageCol.width; title: qsTr("A new /home on this disk"); checked: root.plan && !(root.plan.home && root.plan.home.existing)
+                        onPicked: root.edit(p => { p.home = {}; root.fixSubvols(p); }) }
+                    Choice { width: pageCol.width; title: qsTr("An existing /home partition: keep its files")
+                        detail: qsTr("It is never formatted: it is opened, mounted on /home and set up to open at boot")
+                        checked: root.plan && !!(root.plan.home && root.plan.home.existing)
+                        onPicked: { root.loadHomeCands(); root.edit(p => { p.home = { existing: { device: "", tpm2: false } }; if (p.encryption.scope === "home") p.encryption.scope = "system"; root.fixSubvols(p); }); } }
+                    Repeater {
+                        model: root.plan && root.plan.home && root.plan.home.existing ? root.homeCands : []
+                        Choice {
+                            width: pageCol.width
+                            title: modelData.path + "    " + root.human(modelData.size_bytes) + "    " + modelData.fstype + (modelData.label ? "    " + modelData.label : "")
+                            checked: root.plan.home.existing.device === modelData.path
+                            onPicked: { root.homeOwners = []; root.homeNote = ""; root.edit(p => { p.home.existing.device = modelData.path; }); }
+                        }
+                    }
+                    Row {
+                        visible: root.plan && root.plan.home && root.plan.home.existing && root.plan.home.existing.device !== ""
+                        width: parent.width; spacing: Theme.s3
+                        Field { width: (parent.width - Theme.s3) / 2; secret: true; label: qsTr("Its passphrase (checked now, never stored)"); onTextChanged: root.homePass = text; onAccepted: root.inspectHome() }
+                        Btn { text: qsTr("Open read-only"); variant: "outline"; anchors.bottom: parent.bottom; onClicked: root.inspectHome() }
+                    }
+                    Txt { width: parent.width; color: Theme.textMuted; text: root.homeNote; visible: root.homeNote !== "" }
+                    Repeater {
+                        model: root.homeOwners
+                        Choice {
+                            width: pageCol.width
+                            title: "/home/" + modelData.name; detail: "uid " + modelData.uid + ", gid " + modelData.gid
+                            checked: root.plan && root.plan.accounts.user && root.plan.accounts.user.uid === modelData.uid && root.plan.accounts.user.name === modelData.name
+                            onPicked: root.edit(p => {
+                                p.accounts.user = p.accounts.user || { admin: true };
+                                p.accounts.user.name = modelData.name; p.accounts.user.uid = modelData.uid; p.accounts.user.gid = modelData.gid;
+                                p.accounts.user.home_dir = "/home/" + modelData.name + "-basalt";
+                            })
+                        }
+                    }
+                    Field { width: parent.width; label: qsTr("Home directory of the new user")
+                        visible: root.plan && root.plan.home && root.plan.home.existing && root.plan.accounts.user
+                        help: qsTr("A directory of its own keeps Basalt OS settings apart from the other system's. Nothing in the other directories is changed.")
+                        text: root.plan && root.plan.accounts.user ? (root.plan.accounts.user.home_dir || "") : ""
+                        onTextChanged: if (root.plan && root.plan.accounts.user && text !== (root.plan.accounts.user.home_dir || "")) root.edit(p => { p.accounts.user.home_dir = text; }) }
+                    Check { width: pageCol.width; visible: root.plan && root.plan.home && root.plan.home.existing && root.facts && root.facts.tpm2
+                        title: qsTr("Also open it with this machine's TPM"); detail: qsTr("The passphrase keeps working for the other system")
+                        checked: root.plan && root.plan.home && root.plan.home.existing && root.plan.home.existing.tpm2 === true
+                        onToggled: on => root.edit(p => { p.home.existing.tpm2 = on; }) }
+                }
+                Section {
                     title: "Partitioning"
                     detail: "EFI system partition, /boot, and one btrfs file system with subvolumes, so data survives a system rollback."
                     Choice { title: "Automatic (recommended)"; detail: "The Basalt layout on the whole disk"; checked: root.plan && root.plan.layout.mode === "automatic"
-                        onPicked: root.edit(p => { p.layout = { mode: "automatic", esp_mib: 600, boot_mib: 1024, subvolumes: root.subvols.map(s => s.name) }; }) }
+                        onPicked: root.edit(p => { p.layout = { mode: "automatic", esp_mib: 600, boot_mib: 1024, subvolumes: root.subvols.map(s => s.name) }; root.fixSubvols(p); }) }
                     Choice { title: "Manual"; detail: "Choose the sizes and the optional subvolumes"; checked: root.plan && root.plan.layout.mode === "manual"
                         onPicked: root.edit(p => { p.layout.mode = "manual"; }) }
                     Row {
@@ -286,19 +391,36 @@ Item {
                     detail: root.facts && !root.facts.tpm2 ? "No TPM 2.0 was found on this machine." : "A recovery key is always generated and shown once."
                     Repeater {
                         model: [
-                            { u: "tpm2", t: "Unlock with the TPM (recommended)", d: "Sealed to the Secure Boot state (PCR 7): the disk opens by itself while the boot chain is unchanged" },
-                            { u: "recovery-only", t: "Unlock with the recovery key", d: "Typed at every boot" },
-                            { u: "tang", t: "Unlock from a Tang server", d: "Network-bound encryption (Clevis)" },
-                            { u: "tpm2+tang", t: "TPM and Tang, both required", d: "Opens only on this machine and on this network" },
-                            { u: "off", t: "Do not encrypt", d: "Not recommended" }
+                            { v: "system", t: qsTr("Encrypt the whole system (recommended)"), d: qsTr("Everything on the disk: the system, its settings, the logs and the users' files") },
+                            { v: "home", t: qsTr("Encrypt only /home"), d: qsTr("The users' files only: the system, its settings in /etc, the logs and /var (containers, virtual machines, databases) stay unencrypted") },
+                            { v: "none", t: qsTr("Encrypt nothing"), d: qsTr("Only for servers in a controlled place") }
                         ]
                         Choice {
                             width: pageCol.width
+                            visible: !(modelData.v === "home" && root.plan && root.plan.home && root.plan.home.existing)
                             title: modelData.t; detail: modelData.d
-                            checked: root.plan && (modelData.u === "off" ? root.plan.encryption.enabled === false : (root.plan.encryption.enabled !== false && root.plan.encryption.unlock === modelData.u))
+                            checked: root.plan && (modelData.v === "none" ? root.plan.encryption.enabled === false : (root.plan.encryption.enabled !== false && (root.plan.encryption.scope || "system") === modelData.v))
                             onPicked: root.edit(p => {
-                                if (modelData.u === "off") { p.encryption.enabled = false; p.encryption.tang = {}; return; }
-                                p.encryption.enabled = true;
+                                p.encryption.scope = modelData.v;
+                                p.encryption.enabled = modelData.v !== "none";
+                                if (modelData.v === "none") p.encryption.tang = {};
+                                root.fixSubvols(p);
+                            })
+                        }
+                    }
+                    Repeater {
+                        model: [
+                            { u: "tpm2", t: "Unlock with the TPM (recommended)", d: "Sealed to the Secure Boot state (PCR 7): the disk opens by itself while the boot chain is unchanged" },
+                            { u: "recovery-only", t: "Unlock with the recovery key", d: "Typed at every boot" },
+                            { u: "tang", t: "Unlock from a Tang server", d: "Network-bound encryption (Clevis)" },
+                            { u: "tpm2+tang", t: "TPM and Tang, both required", d: "Opens only on this machine and on this network" }
+                        ]
+                        Choice {
+                            width: pageCol.width
+                            visible: root.plan && root.plan.encryption.enabled !== false
+                            title: modelData.t; detail: modelData.d
+                            checked: root.plan && root.plan.encryption.enabled !== false && root.plan.encryption.unlock === modelData.u
+                            onPicked: root.edit(p => {
                                 p.encryption.unlock = modelData.u;
                                 if (modelData.u.indexOf("tang") < 0) p.encryption.tang = {};
                             })

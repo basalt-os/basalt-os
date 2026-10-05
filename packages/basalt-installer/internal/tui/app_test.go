@@ -26,6 +26,11 @@ const lsblk = `{"blockdevices":[{"name":"vda","path":"/dev/vda","size":322122547
 // network interface) at 80x24, the size of a serial console.
 func testModel(t *testing.T, cmdline string) *model {
 	t.Helper()
+	return testModelWith(t, cmdline, lsblk, nil)
+}
+
+func testModelWith(t *testing.T, cmdline, lsblk string, inspector session.HomeInspector) *model {
+	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
 		"sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c": "\x06\x00\x00\x00\x01",
@@ -51,9 +56,10 @@ func testModel(t *testing.T, cmdline string) *model {
 			}
 			return "kvm\n", nil
 		}},
-		Steps:   steps.Options{Root: filepath.Join(dir, "sysroot"), Work: filepath.Join(dir, "work"), MediaDir: filepath.Join(dir, "media")},
-		Engine:  engine.Options{Runner: &engine.FakeRunner{}, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock")},
-		Cmdline: filepath.Join(root, "proc/cmdline"),
+		Steps:         steps.Options{Root: filepath.Join(dir, "sysroot"), Work: filepath.Join(dir, "work"), MediaDir: filepath.Join(dir, "media")},
+		Engine:        engine.Options{Runner: &engine.FakeRunner{}, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock")},
+		Cmdline:       filepath.Join(root, "proc/cmdline"),
+		HomeInspector: inspector,
 	})
 	m := &model{opt: Options{Session: ss, Version: "0.2.0", ASCII: true}, t: theme.FromPalette(BasaltPalette()), be: ss, w: 80, h: 24}
 	s := suggest(ss)

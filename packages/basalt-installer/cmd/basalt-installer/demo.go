@@ -22,7 +22,9 @@ const demoLsblk = `{"blockdevices":[
   "children":[{"name":"sda1","path":"/dev/sda1","size":2000397885440,"type":"part","rm":false,"ro":false,"rota":true,"model":null,"serial":null,"tran":"sata","fstype":"linux_raid_member","mountpoints":[null],"label":"old:0"}]},
  {"name":"sdb","path":"/dev/sdb","size":15376318464,"type":"disk","rm":true,"ro":false,"rota":false,"model":"USB stick","serial":"D3","tran":"usb","fstype":"iso9660","mountpoints":["/run/basalt/media"],"label":"BASALT-INST"},
  {"name":"sdc","path":"/dev/sdc","size":8012345344,"type":"disk","rm":true,"ro":false,"rota":false,"model":"Key stick","serial":"D4","tran":"usb","fstype":null,"mountpoints":[null],"label":null,
-  "children":[{"name":"sdc1","path":"/dev/sdc1","size":8011296768,"type":"part","rm":true,"ro":false,"rota":false,"model":null,"serial":null,"tran":"usb","fstype":"vfat","mountpoints":[null],"label":"KEYS"}]}]}`
+  "children":[{"name":"sdc1","path":"/dev/sdc1","size":8011296768,"type":"part","rm":true,"ro":false,"rota":false,"model":null,"serial":null,"tran":"usb","fstype":"vfat","mountpoints":[null],"label":"KEYS"}]},
+ {"name":"nvme1n1","path":"/dev/nvme1n1","size":1600321314816,"type":"disk","rm":false,"ro":false,"rota":false,"model":"Example NVMe 1.6TB","serial":"D5","tran":"nvme","fstype":null,"mountpoints":[null],"label":null,"pttype":"gpt","log-sec":512,
+  "children":[{"name":"nvme1n1p1","path":"/dev/nvme1n1p1","size":1500000000000,"type":"part","fstype":"crypto_LUKS","mountpoints":[null],"label":null,"uuid":"6f1d2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b","parttype":"0fc63daf-8483-4772-8e79-3d69d8477de4","partn":1,"start":2048}]}]}`
 
 func demoProber() probe.Prober {
 	root, _ := os.MkdirTemp("", "basalt-installer-demo-machine-")

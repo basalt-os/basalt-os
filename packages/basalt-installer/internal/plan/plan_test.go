@@ -69,7 +69,7 @@ func TestValidationErrors(t *testing.T) {
 		field  string
 		substr string
 	}{
-		{"wipe not confirmed", func(p *Plan) { p.Target.Wipe = false }, "target.wipe", "erased"},
+		{"keep partitions of an empty disk", func(p *Plan) { p.Target.Wipe = false }, "target.wipe", "nothing to keep"},
 		{"no disk", func(p *Plan) { p.Target.Disk = "" }, "target.disk", "no target disk"},
 		{"partition", func(p *Plan) { p.Target.Disk = "/dev/vda2" }, "target.disk", "partition"},
 		{"nvme partition", func(p *Plan) { p.Target.Disk = "/dev/nvme0n1p3" }, "target.disk", "partition"},

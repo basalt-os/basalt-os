@@ -243,6 +243,17 @@ func (s *Server) handle(ctx context.Context, req Request) (any, error) {
 			return nil, err
 		}
 		return nil, ss.AckRecoveryKey(a.Proof)
+	case "home_candidates":
+		return ss.HomeCandidates(ctx)
+	case "inspect_home":
+		a, err := decode[struct {
+			Device     string `json:"device"`
+			Passphrase string `json:"passphrase"`
+		}](req.Args)
+		if err != nil {
+			return nil, err
+		}
+		return ss.InspectHome(ctx, a.Device, a.Passphrase)
 	case "key_media":
 		return ss.KeyMedia(ctx)
 	case "save_recovery_key":

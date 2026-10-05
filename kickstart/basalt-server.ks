@@ -272,6 +272,8 @@ glibc-langpack-en
 snapper
 libdnf5-plugin-actions
 dnf5-plugins
+zram-generator
+zram-generator-defaults
 PKG
   if [ "$network_unlock" = 1 ]; then
     printf '%s\n' clevis clevis-luks clevis-dracut
@@ -336,73 +338,12 @@ basalt_key_write() {
 # basalt.recovery-key=media:LABEL: no question, the stick was checked in %pre.
 basalt_key_to_media() {
   local d where
-  d="$(blkid -L "$1")" || { log "no file system labeled $1: the recovery key is shown instead"; basalt_key_ack; return; }
+  d="$(blkid -L "$1")" || { log "no file system labeled $1: the recovery key is shown instead"; return 1; }
   if where="$(basalt_key_write "$d")"; then
     log "recovery key written to $where"
   else
-    log "could not write the recovery key to $d: it is shown instead"; basalt_key_ack
+    log "could not write the recovery key to $d: it is shown instead"; return 1
   fi
-}
-# Removable file systems a copy can go to: "device label fstype size".
-basalt_key_media() {
-  local name fs label size parent prm ptran
-  lsblk -rnpo NAME,FSTYPE,LABEL,SIZE | while read -r name fs label size; do
-    case "$fs" in vfat|exfat|ext4|ext3|ext2|btrfs|xfs) ;; *) continue ;; esac
-    [ "$label" = BASALT-INST ] && continue
-    parent="$(lsblk -ndo PKNAME "$name" 2>/dev/null)"; [ -n "$parent" ] || parent="${name#/dev/}"
-    prm="$(lsblk -ndo RM "/dev/${parent#/dev/}" | tr -d ' ')"; ptran="$(lsblk -ndo TRAN "/dev/${parent#/dev/}" | tr -d ' ')"
-    if [ "$prm" = 1 ] || [ "$ptran" = usb ]; then echo "$name ${label:--} $fs $size"; fi
-  done
-}
-# The default: show the key on every console, then wait on the main console
-# until its first group is typed; "save" writes a copy to a USB stick first.
-basalt_key_ack() {
-  local tty first answer n choice media where c
-  first="$(cut -d- -f1 "$key")"
-  tty="$(awk '$3 ~ /C/ {print $1; exit}' /proc/consoles 2>/dev/null)"
-  [ -n "$tty" ] || tty=console
-  [ "$tty" = tty0 ] && tty=tty1
-  exec 3<>"/dev/$tty" || { log "no console to show the recovery key on"; return 1; }
-  stty -F "/dev/$tty" icrnl echo icanon 2>/dev/null || :
-  for c in /dev/console "/dev/$tty"; do
-    { printf '\n\n================ Basalt OS disk recovery key ================\n\n  %s\n\n' "$(tr -d '\n' <"$key")"
-      printf 'This key opens the disk when the TPM refuses (Secure Boot changed, the\n'
-      printf 'disk moved to another machine). It is shown only this once and is not\n'
-      printf 'stored on any disk. Write it down, or type "save" to put a copy on a USB stick.\n'
-      printf 'The installation goes on when its first group is typed on %s.\n\n' "$tty"; } >"$c" 2>/dev/null || :
-  done
-  while :; do
-    printf 'First group of the recovery key (or "save"): ' >&3
-    IFS= read -r answer <&3 || { sleep 2; continue; }
-    answer="$(printf '%s' "$answer" | tr -d '\r ' | tr 'A-Z' 'a-z')"
-    if [ "$answer" = "$first" ]; then
-      printf 'Recovery key acknowledged.\n\n' >&3
-      log "recovery key shown and acknowledged on $tty"
-      break
-    fi
-    if [ "$answer" = save ]; then
-      media="$(basalt_key_media)"
-      if [ -z "$media" ]; then
-        printf 'No USB stick with a FAT, exFAT or ext4 file system found. Plug one in and type save again.\n' >&3
-        continue
-      fi
-      printf '%s\n' "$media" | awk '{printf "  %d. %s  %s  %s  %s\n", NR, $1, $2, $3, $4}' >&3
-      printf 'Number of the stick to write the key to: ' >&3
-      IFS= read -r choice <&3 || continue
-      choice="$(printf '%s' "$choice" | tr -dc '0-9')"
-      n="$(printf '%s\n' "$media" | sed -n "${choice:-0}p" | cut -d' ' -f1)"
-      [ -n "$n" ] || { printf 'No such stick.\n' >&3; continue; }
-      if where="$(basalt_key_write "$n")"; then
-        printf 'A copy is on %s. Keep that stick somewhere safe.\n' "$where" >&3
-        log "recovery key copy written to $where"
-      else
-        printf 'The key could not be written to %s.\n' "$n" >&3
-      fi
-      continue
-    fi
-    printf 'That is not the first group of the recovery key.\n' >&3
-  done
-  exec 3>&-
 }
 
 # Lab or private repository URL for the installed system (default: the
@@ -523,12 +464,19 @@ notice (rm /root/basalt-recovery-key.txt /etc/motd.d/basalt-recovery-key).
 EOF
       log "recovery key left in /root/basalt-recovery-key.txt (basalt.recovery-key=store)" ;;
     media:*)
-      basalt_key_to_media "${BASALT_RECOVERY_KEY#media:}" ;;
+      if basalt_key_to_media "${BASALT_RECOVERY_KEY#media:}"; then pending=0; else pending=1; fi ;;
     *)
-      basalt_key_ack ;;
+      pending=1 ;;
   esac
-  shred -u "$key"
-  umount "$keydir" && rmdir "$keydir"
+  if [ "${pending:-0}" = 1 ]; then
+    # Shown and acknowledged by the next %post (outside the chroot, in a
+    # window of Anaconda's terminal); the key stays in its tmpfs until then.
+    : >"$keydir/pending"
+    log "recovery key kept in memory for the console"
+  else
+    shred -u "$key"
+    umount "$keydir" && rmdir "$keydir"
+  fi
 fi
 rm -f /root/.basalt-install.env
 
@@ -545,4 +493,106 @@ basalt-snapshots-setup --no-initial-snapshot
 
 restorecon -R /etc /root /boot /var/log 2>/dev/null || :
 log "done"
+%end
+
+# The recovery key, shown and acknowledged (basalt.recovery-key=show, or a
+# USB stick that could not be written): in a window of its own in
+# Anaconda's text interface (tmux), so the installer's screen does not draw
+# over it; on the console when there is no tmux. The installation goes on
+# when the first group is typed; "save" first writes a copy to a USB stick.
+%post --nochroot --log=/mnt/sysroot/root/basalt-install-key.log
+#!/bin/bash
+set -u
+log() { echo "basalt-key: $*"; }
+keydir=""
+for d in /mnt/sysroot/run/basalt-recovery-key /run/basalt-recovery-key; do
+  if [ -e "$d/pending" ] && [ -s "$d/key" ]; then keydir="$d"; break; fi
+done
+[ -n "$keydir" ] || { log "no recovery key waiting"; exit 0; }
+cat >/tmp/basalt-key-ack.sh <<'SCRIPT'
+#!/bin/bash
+# Runs on a terminal: shows the key, offers a USB copy, waits for the first group.
+keydir="$1"; key="$keydir/key"; done="$keydir/acknowledged"
+host="$(cat /mnt/sysroot/etc/hostname 2>/dev/null || echo basalt)"
+first="$(cut -d- -f1 "$key")"
+media() {
+  lsblk -rnpo NAME,FSTYPE,LABEL,SIZE | while read -r name fs label size; do
+    case "$fs" in vfat|exfat|ext4|ext3|ext2|btrfs|xfs) ;; *) continue ;; esac
+    [ "$label" = BASALT-INST ] && continue
+    parent="$(lsblk -ndo PKNAME "$name" 2>/dev/null)"; [ -n "$parent" ] || parent="${name#/dev/}"
+    if [ "$(lsblk -ndo RM "/dev/${parent#/dev/}" | tr -d ' ')" = 1 ] || [ "$(lsblk -ndo TRAN "/dev/${parent#/dev/}" | tr -d ' ')" = usb ]; then
+      echo "$name ${label:--} $fs $size"
+    fi
+  done
+}
+write() {
+  local mnt name
+  mnt="$(mktemp -d /tmp/basalt-key-media.XXXXXX)"
+  mount -o rw,nosuid,nodev,noexec "$1" "$mnt" || { rmdir "$mnt"; return 1; }
+  name="basalt-recovery-key-$host-$(date -u +%Y%m%d-%H%M%S).txt"
+  if ( umask 0277
+       printf 'Basalt OS disk recovery key\n\n%s\n\nHost: %s\nCreated: %s\n\n' "$(tr -d '\n' <"$key")" "$host" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+       printf 'Type this key at the disk unlock prompt when the TPM does not open the disk\n(Secure Boot changed, the disk moved to another machine). Keep it off the\nmachine it protects, and keep this file somewhere safe.\n' ) >"$mnt/$name" && sync -f "$mnt/$name"; then
+    umount "$mnt"; rmdir "$mnt"; echo "$1: $name"; return 0
+  fi
+  umount "$mnt"; rmdir "$mnt"; return 1
+}
+clear
+printf '\n================ Basalt OS disk recovery key ================\n\n  %s\n\n' "$(tr -d '\n' <"$key")"
+printf 'This key opens the disk when the TPM refuses (Secure Boot changed, the\n'
+printf 'disk moved to another machine). It is shown only this once and is not\n'
+printf 'stored on any disk. Write it down, or type "save" to put a copy on a USB stick.\n\n'
+while :; do
+  printf 'First group of the recovery key (or "save"): '
+  IFS= read -r answer || { sleep 2; continue; }
+  answer="$(printf '%s' "$answer" | tr -d '\r ' | tr 'A-Z' 'a-z')"
+  if [ "$answer" = "$first" ]; then
+    printf 'Recovery key acknowledged.\n'
+    : >"$done"
+    sleep 1
+    exit 0
+  fi
+  if [ "$answer" = save ]; then
+    m="$(media)"
+    if [ -z "$m" ]; then printf 'No USB stick with a FAT, exFAT or ext4 file system found. Plug one in and type save again.\n'; continue; fi
+    printf '%s\n' "$m" | awk '{printf "  %d. %s  %s  %s  %s\n", NR, $1, $2, $3, $4}'
+    printf 'Number of the stick to write the key to: '
+    IFS= read -r choice || continue
+    choice="$(printf '%s' "$choice" | tr -dc '0-9')"
+    n="$(printf '%s\n' "$m" | sed -n "${choice:-0}p" | cut -d' ' -f1)"
+    [ -n "$n" ] || { printf 'No such stick.\n'; continue; }
+    if where="$(write "$n")"; then
+      printf 'A copy is on %s. Keep that stick somewhere safe.\n' "$where"
+      echo "$where" >>"$keydir/copies"
+    else
+      printf 'The key could not be written to %s.\n' "$n"
+    fi
+    continue
+  fi
+  printf 'That is not the first group of the recovery key.\n'
+done
+SCRIPT
+chmod 0700 /tmp/basalt-key-ack.sh
+if command -v tmux >/dev/null && tmux has-session -t anaconda 2>/dev/null; then
+  tmux new-window -t anaconda -n recovery-key "/tmp/basalt-key-ack.sh $keydir"
+  log "recovery key shown in a window of Anaconda's terminal"
+  until [ -e "$keydir/acknowledged" ]; do
+    # The person may close the window: open it again.
+    tmux list-windows -t anaconda -F '#W' 2>/dev/null | grep -qx recovery-key ||
+      tmux new-window -t anaconda -n recovery-key "/tmp/basalt-key-ack.sh $keydir"
+    sleep 2
+  done
+  tmux select-window -t anaconda:1 2>/dev/null || :
+else
+  tty="$(awk '$3 ~ /C/ {print $1; exit}' /proc/consoles 2>/dev/null)"
+  [ -n "$tty" ] && [ "$tty" != tty0 ] || tty=tty1
+  until [ -e "$keydir/acknowledged" ]; do
+    setsid /tmp/basalt-key-ack.sh "$keydir" <"/dev/$tty" >"/dev/$tty" 2>&1 || sleep 2
+  done
+fi
+[ -s "$keydir/copies" ] && log "copies written to: $(tr '\n' ' ' <"$keydir/copies")"
+log "recovery key acknowledged"
+shred -u "$keydir/key"
+rm -f "$keydir/pending" "$keydir/acknowledged" "$keydir/copies" /tmp/basalt-key-ack.sh
+umount "$keydir" 2>/dev/null && rmdir "$keydir"
 %end

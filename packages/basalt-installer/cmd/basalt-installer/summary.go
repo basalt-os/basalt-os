@@ -27,13 +27,25 @@ func installSummary(pv session.Preview, st session.Status, keyWhere []string, lo
 		disk += ", " + r.Disk.Model
 	}
 	line(i18n.T("Disk:         %s"), disk)
+	if len(r.Kept) > 0 {
+		var news []string
+		for _, np := range r.NewParts {
+			news = append(news, np.Dev)
+		}
+		line(i18n.T("Partitions:   %d kept as they were, new %s"), len(r.Kept), strings.Join(news, " "))
+	}
 	line(i18n.T("Edition:      %s, profile %s (%s)"), p.Edition, r.Profile, r.ProfileReason)
 	line(i18n.T("Host name:    %s"), p.Hostname)
 	switch {
 	case !p.Encrypted():
 		line("%s", i18n.T("Encryption:   none (plain btrfs)"))
+	case p.EncryptsHome():
+		line(i18n.T("Encryption:   /home only, LUKS2, unlocks with %s"), p.Encryption.Unlock)
 	default:
 		line(i18n.T("Encryption:   LUKS2, unlocks with %s"), p.Encryption.Unlock)
+	}
+	if e := r.Existing; e != nil {
+		line(i18n.T("Home:         existing %s (%s), kept as it was"), e.Device, e.FSType)
 	}
 	switch {
 	case !r.TPM2:
@@ -64,6 +76,9 @@ func installSummary(pv session.Preview, st session.Status, keyWhere []string, lo
 			role = i18n.T("administrator")
 		}
 		line(i18n.T("User:         %s (%s): %s"), u.Name, role, strings.Join(how, ", "))
+		if u.HomeDir != "" || u.UID != 0 {
+			line(i18n.T("              home %s, uid %d, gid %d"), u.HomeDir, u.UID, u.GID)
+		}
 	}
 	net := p.Network.Mode
 	if p.Network.Mode == "static" {

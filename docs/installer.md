@@ -60,9 +60,13 @@ has one.
 | Field | Default | Notes |
 |---|---|---|
 | `edition` | `server` | `desktop` is accepted and marked experimental: the server system plus `packages.extra` |
-| `target.disk`, `target.wipe` | | the whole disk; `wipe: true` is required |
+| `target.disk` | | the disk Basalt OS goes on |
+| `target.wipe` | `false` | `true` erases the whole disk; `false` keeps every partition on it and installs into its largest free region (dual boot, GPT only); a plan for an empty disk must say `true` |
+| `target.esp` | none | with `wipe: false`, an existing EFI system partition to share (for example Windows'); by default Basalt OS gets its own in the free space |
 | `layout.mode` | `automatic` | `manual`: `esp_mib`, `boot_mib`, `root_gib` (0 = rest), `subvolumes` (root, home and var_log required) |
 | `encryption.enabled` | `true` | LUKS2 under btrfs (ADR 0002) |
+| `encryption.scope` | `system` | `system` (everything), `home` (a new /home partition of its own only: the system, `/etc`, the logs and `/var` stay unencrypted; the system partition is 64 GiB unless `layout.root_gib` says otherwise) or `none` (servers in a controlled place; same as `enabled: false`) |
+| `home.existing` | none | adopt a partition that already holds home directories: `device`, `passphrase` (LUKS; checked before anything is written, never stored), `tpm2` (also enroll this machine's TPM, the passphrase keeps working). It is never formatted |
 | `encryption.unlock` | `tpm2` | `tpm2` (sealed to PCR 7), `tang`, `tpm2+tang`, `recovery-only`; `tpm2_pcrs` must be `[7]` |
 | `encryption.passphrase` | none | an extra key slot typed at boot (desktops) |
 | `encryption.store_recovery_key` | `false` | `true` also leaves the key in `/root/basalt-recovery-key.txt` on the disk it protects (labs; the kickstart's `basalt.recovery-key=store`) |
@@ -71,7 +75,7 @@ has one.
 | `hostname`, `timezone`, `locale`, `keymap` | `basalt`, `Etc/UTC`, `en_US.UTF-8`, `us` | |
 | `lockdown` | `true` | `lockdown=integrity module.sig_enforce=1` on the kernel command line |
 | `accounts.root` | locked | `ssh_keys`, `password` or `password_hash` |
-| `accounts.user` | none | `name`, `password` or `password_hash`, `ssh_keys`, `admin` (wheel, default true) |
+| `accounts.user` | none | `name`, `password` or `password_hash`, `ssh_keys`, `admin` (wheel, default true), `home_dir` (default `/home/<name>`), `uid` and `gid` (the numbers of the files on an existing /home) |
 | `ssh.password_auth` | `false` | Basalt OS accepts public keys only; `true` adds a drop-in and a warning |
 | `network.mode` | `dhcp` | `static`: `interface`, `address` (CIDR), `gateway`, `dns` |
 | `repos.basalt.url` | `media` | the repository on the installer image, or an http(s) URL |
@@ -87,8 +91,43 @@ has one.
 
 Validation reports errors (blocking) and warnings (shown in the review).
 It rejects what this version does not handle and points to the kickstart:
-partitions, RAID members and md devices, multipath, iSCSI, device-mapper
-devices, disks in use, BIOS boots, disks under 16 GiB.
+partitions as targets, RAID members and md devices, multipath, iSCSI,
+device-mapper devices, disks in use, BIOS boots, disks under 16 GiB, MBR
+disks whose partitions should be kept.
+
+## Storage choices
+
+Owner decisions of 2026-10-04 (encryption scope, an existing /home, dual
+boot); every frontend offers them and the plan records them.
+
+- Next to other systems. When the chosen disk already has partitions, the
+  wizard asks whether to erase it or to use its free space. With the free
+  space, the preview's partition step names every partition that is kept
+  and every new one with its exact sectors; the new partitions take the
+  lowest free numbers inside the largest free region, nothing else on the
+  disk is written, and a failure deletes only the new partitions. Basalt
+  OS gets its own EFI system partition unless the plan shares an existing
+  one (`target.esp`; then Fedora's boot files go into `EFI/fedora` on it).
+  The firmware boot menu lists "Basalt OS" next to the other systems.
+  Making room (shrinking Windows) is done beforehand, in Windows.
+- What is encrypted. The whole system (default), only a new /home
+  partition, or nothing. With "/home only" the wizard says what stays
+  readable: the system, its settings, the logs and `/var` with containers,
+  virtual machines and databases; the recovery key and the unlock method
+  apply to the /home volume, which opens after the system has started.
+  Memory is never swapped to a disk (zram only).
+- An existing /home. The wizard lists the LUKS volumes and Linux file
+  systems of the machine (not on a disk that is erased), asks for the
+  passphrase once and opens the volume read-only to list who owns its
+  directories; the new user gets the same name, uid and gid and, by
+  default, a directory of its own (`/home/<name>-basalt`, editable), so the
+  other system's settings stay apart. The installation checks the
+  passphrase before it writes anything, mounts the partition on /home
+  without formatting it, writes crypttab (the passphrase is asked for at
+  boot, or also the TPM when chosen; the passphrase slot stays) and fstab,
+  creates only the new user's directory and labels only that directory
+  (and the /home mount point) for SELinux: the other files keep their
+  contents, owners and labels.
 
 ## What an installation does
 
@@ -375,8 +414,8 @@ ends show.
 
 ## Complex storage
 
-RAID, multipath, iSCSI, several disks, existing partitions to keep or
-LVM: use the kickstart installer and write the storage section yourself
+RAID, multipath, iSCSI, a system over several disks, MBR disks or LVM:
+use the kickstart installer and write the storage section yourself
 (see `kickstart/basalt-server.ks` and Anaconda's kickstart reference). The
 Basalt parts (encryption enrollment, snapshots setup, services) are in its
 `%post`.
@@ -386,7 +425,8 @@ Basalt parts (encryption enrollment, snapshots setup, services) are in its
 - Offline installs (Fedora packages on the media).
 - Joining a Wi-Fi network from the graphical installer (the text
   installer opens `nmtui`).
-- Several disks, existing partitions, dual boot; BIOS boot.
+- Resizing another system's partition; using a chosen region other than
+  the largest free one; BIOS boot.
 - A desktop package set for `edition: desktop`.
 - The tui-tools repository file moves into `basalt-third-party` once it
   exists (`basalt-tools` is already in `basalt-release`); the installer

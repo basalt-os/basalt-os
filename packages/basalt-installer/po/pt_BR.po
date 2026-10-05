@@ -11,24 +11,39 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: cmd/basalt-installer/main.go:234
+#: cmd/basalt-installer/main.go:239
 msgid "the disk is encrypted: give --recovery-key-out FILE (or - to print it), or name a USB stick in the plan (encryption.recovery_key_media), so the recovery key is not lost"
 msgstr "o disco é criptografado: use --recovery-key-out ARQUIVO (ou - para mostrá-la), ou indique um pendrive no plano (encryption.recovery_key_media), para que a chave de recuperação não se perca"
 
-#: cmd/basalt-installer/main.go:274 cmd/basalt-installer/main.go:292 internal/tui/app.go:1031
+#: cmd/basalt-installer/main.go:279 cmd/basalt-installer/main.go:297 internal/tui/app.go:1073
 #, c-format
 msgid "recovery key written to %s"
 msgstr "chave de recuperação gravada em %s"
 
-#: cmd/basalt-installer/main.go:294
+#: cmd/basalt-installer/main.go:299
 msgid "printed on standard output"
 msgstr "mostrada na saída padrão"
 
-#: cmd/basalt-installer/main.go:306
+#: cmd/basalt-installer/main.go:311
 msgid "The recovery key could not be written to the USB stick the plan names. Store this key now:"
 msgstr "Não foi possível gravar a chave de recuperação no pendrive indicado pelo plano. Guarde esta chave agora:"
 
-#: cmd/basalt-installer/summary.go:122
+#: cmd/basalt-installer/summary.go:101
+#, c-format
+msgid "Recovery key: %s"
+msgstr "Chave de recup.:  %s"
+
+#: cmd/basalt-installer/summary.go:103
+#, c-format
+msgid "Time:         %s"
+msgstr "Tempo:            %s"
+
+#: cmd/basalt-installer/summary.go:104
+#, c-format
+msgid "Install log:  %s (a copy is in /var/log/basalt-installer/ on the new system)"
+msgstr "Log:              %s (uma cópia fica em /var/log/basalt-installer/ no novo sistema)"
+
+#: cmd/basalt-installer/summary.go:137
 #, c-format
 msgid "this process runs in the SELinux context %s, which cannot enter install_t (the installer's domain); start it as a service: systemd-run --pty --wait --collect basalt-installer %s"
 msgstr "este processo roda no contexto SELinux %s, que não pode entrar em install_t (o domínio do instalador); inicie-o como serviço: systemd-run --pty --wait --collect basalt-installer %s"
@@ -42,117 +57,239 @@ msgstr "O Basalt OS está instalado."
 msgid "Disk:         %s"
 msgstr "Disco:            %s"
 
-#: cmd/basalt-installer/summary.go:30
+#: cmd/basalt-installer/summary.go:35
+#, c-format
+msgid "Partitions:   %d kept as they were, new %s"
+msgstr "Partições:        %d mantidas como estavam, novas %s"
+
+#: cmd/basalt-installer/summary.go:37
 #, c-format
 msgid "Edition:      %s, profile %s (%s)"
 msgstr "Edição:           %s, perfil %s (%s)"
 
-#: cmd/basalt-installer/summary.go:31
+#: cmd/basalt-installer/summary.go:38
 #, c-format
 msgid "Host name:    %s"
 msgstr "Nome do host:     %s"
 
-#: cmd/basalt-installer/summary.go:34
+#: cmd/basalt-installer/summary.go:41
 msgid "Encryption:   none (plain btrfs)"
 msgstr "Criptografia:     nenhuma (btrfs simples)"
 
-#: cmd/basalt-installer/summary.go:36
+#: cmd/basalt-installer/summary.go:43
+#, c-format
+msgid "Encryption:   /home only, LUKS2, unlocks with %s"
+msgstr "Criptografia:     só /home, LUKS2, desbloqueio por %s"
+
+#: cmd/basalt-installer/summary.go:45
 #, c-format
 msgid "Encryption:   LUKS2, unlocks with %s"
 msgstr "Criptografia:     LUKS2, desbloqueio por %s"
 
-#: cmd/basalt-installer/summary.go:40
+#: cmd/basalt-installer/summary.go:48
+#, c-format
+msgid "Home:         existing %s (%s), kept as it was"
+msgstr "Home:             %s existente (%s), mantida como estava"
+
+#: cmd/basalt-installer/summary.go:52
 msgid "TPM:          none found"
 msgstr "TPM:              nenhum encontrado"
 
-#: cmd/basalt-installer/summary.go:42
+#: cmd/basalt-installer/summary.go:54
 #, c-format
 msgid "TPM:          2.0, key sealed to PCR 7 (Secure Boot %s)"
 msgstr "TPM:              2.0, chave selada no PCR 7 (Secure Boot %s)"
 
-#: cmd/basalt-installer/summary.go:44
+#: cmd/basalt-installer/summary.go:56
 msgid "TPM:          2.0, not used by this plan"
 msgstr "TPM:              2.0, não usado por este plano"
 
-#: cmd/basalt-installer/summary.go:46
+#: cmd/basalt-installer/summary.go:58
 msgid "locked"
 msgstr "bloqueado"
 
-#: cmd/basalt-installer/summary.go:48 cmd/basalt-installer/summary.go:60
+#: cmd/basalt-installer/summary.go:60 cmd/basalt-installer/summary.go:72
 #, c-format
 msgid "%d SSH key"
 msgid_plural "%d SSH keys"
 msgstr[0] "%d chave SSH"
 msgstr[1] "%d chaves SSH"
 
-#: cmd/basalt-installer/summary.go:51 cmd/basalt-installer/summary.go:57
+#: cmd/basalt-installer/summary.go:63 cmd/basalt-installer/summary.go:69
 msgid "password"
 msgstr "senha"
 
-#: cmd/basalt-installer/summary.go:53
+#: cmd/basalt-installer/summary.go:65
 #, c-format
 msgid "Root:         %s"
 msgstr "Root:             %s"
 
-#: cmd/basalt-installer/summary.go:62
+#: cmd/basalt-installer/summary.go:74
 msgid "user"
 msgstr "usuário"
 
-#: cmd/basalt-installer/summary.go:64
+#: cmd/basalt-installer/summary.go:76
 msgid "administrator"
 msgstr "administrador"
 
-#: cmd/basalt-installer/summary.go:66
+#: cmd/basalt-installer/summary.go:78
 #, c-format
 msgid "User:         %s (%s): %s"
 msgstr "Usuário:          %s (%s): %s"
 
-#: cmd/basalt-installer/summary.go:72
+#: cmd/basalt-installer/summary.go:80
+#, c-format
+msgid "              home %s, uid %d, gid %d"
+msgstr "                  home %s, uid %d, gid %d"
+
+#: cmd/basalt-installer/summary.go:87
 #, c-format
 msgid "Network:      %s"
 msgstr "Rede:             %s"
 
-#: cmd/basalt-installer/summary.go:74
+#: cmd/basalt-installer/summary.go:89
 #, c-format
 msgid "Repositories: basalt %s"
 msgstr "Repositórios:     basalt %s"
 
-#: cmd/basalt-installer/summary.go:76
+#: cmd/basalt-installer/summary.go:91
 #, c-format
 msgid "              basalt-tools %s"
 msgstr "                  basalt-tools %s"
 
-#: cmd/basalt-installer/summary.go:79
+#: cmd/basalt-installer/summary.go:94
 msgid "              tui-tools (third party)"
 msgstr "                  tui-tools (terceiros)"
 
-#: cmd/basalt-installer/summary.go:84
+#: cmd/basalt-installer/summary.go:99
 msgid "not stored"
 msgstr "não guardada"
 
-#: cmd/basalt-installer/summary.go:86
-#, c-format
-msgid "Recovery key: %s"
-msgstr "Chave de recup.:  %s"
+#: internal/plan/validate.go:118
+msgid "an existing EFI system partition can only be shared when the disk is not erased (wipe: false)"
+msgstr "uma partição de sistema EFI existente só pode ser compartilhada quando o disco não é apagado (wipe: false)"
 
-#: cmd/basalt-installer/summary.go:88
-#, c-format
-msgid "Time:         %s"
-msgstr "Tempo:            %s"
+#: internal/plan/validate.go:192
+msgid "/home is on a partition of its own (encryption scope home, or an existing /home): leave the home subvolume out"
+msgstr "/home fica numa partição própria (escopo de criptografia home, ou um /home existente): deixe o subvolume home de fora"
 
-#: cmd/basalt-installer/summary.go:89
+#: internal/plan/validate.go:205
 #, c-format
-msgid "Install log:  %s (a copy is in /var/log/basalt-installer/ on the new system)"
-msgstr "Log:              %s (uma cópia fica em /var/log/basalt-installer/ no novo sistema)"
+msgid "must be system, home or none, got %q"
+msgstr "deve ser system, home ou none, veio %q"
 
-#: internal/plan/validate.go:245
+#: internal/plan/validate.go:208
+msgid "scope home creates a new encrypted /home; with an existing /home use system or none"
+msgstr "o escopo home cria um /home criptografado novo; com um /home existente use system ou none"
+
+#: internal/plan/validate.go:211
+msgid "only /home is encrypted: the system, its settings in /etc, the logs and /var (containers, virtual machines, databases) are not"
+msgstr "só o /home é criptografado: o sistema, as configurações em /etc, os logs e /var (contêineres, máquinas virtuais, bancos de dados) não são"
+
+#: internal/plan/validate.go:267
 msgid "the installer media is read-only: name the label of a USB stick or another removable file system"
 msgstr "a mídia do instalador é somente leitura: indique o rótulo de um pendrive ou de outro sistema de arquivos removível"
 
-#: internal/plan/validate.go:247
+#: internal/plan/validate.go:269
 #, c-format
 msgid "no removable file system labeled %q was found (plug in the USB stick that should take the recovery key)"
 msgstr "nenhum sistema de arquivos removível com o rótulo %q foi encontrado (conecte o pendrive que deve receber a chave de recuperação)"
+
+#: internal/plan/validate.go:345
+#, c-format
+msgid "must be a directory under /home, got %q"
+msgstr "deve ser um diretório dentro de /home, veio %q"
+
+#: internal/plan/validate.go:348 internal/plan/validate.go:351
+#, c-format
+msgid "must be from 1000 to 60000, got %d"
+msgstr "deve ser de 1000 a 60000, veio %d"
+
+#: internal/plan/validate.go:354
+msgid "no uid given: the files on the existing /home may belong to another number than the new user"
+msgstr "sem uid: os arquivos do /home existente podem pertencer a outro número que não o do novo usuário"
+
+#: internal/plan/validate.go:529
+msgid "the disk has no partition table: there is nothing to keep, so erase it (wipe: true)"
+msgstr "o disco não tem tabela de partições: não há nada a manter, então apague-o (wipe: true)"
+
+#: internal/plan/validate.go:531
+#, c-format
+msgid "the disk has a %s partition table: installing next to other systems needs GPT (UEFI)"
+msgstr "o disco tem tabela de partições %s: instalar ao lado de outros sistemas exige GPT (UEFI)"
+
+#: internal/plan/validate.go:538
+#, c-format
+msgid "the largest free space on %s is %s; the new partitions need %s (shrink another system's partition first)"
+msgstr "o maior espaço livre em %s é de %s; as novas partições precisam de %s (reduza antes a partição de outro sistema)"
+
+#: internal/plan/validate.go:542
+msgid "the partition table has no free entries"
+msgstr "a tabela de partições não tem entradas livres"
+
+#: internal/plan/validate.go:546 internal/plan/validate.go:586
+#, c-format
+msgid "%s is mounted on %s"
+msgstr "%s está montado em %s"
+
+#: internal/plan/validate.go:558
+#, c-format
+msgid "%s is not a partition of %s"
+msgstr "%s não é uma partição de %s"
+
+#: internal/plan/validate.go:560
+#, c-format
+msgid "%s is not an EFI system partition (FAT)"
+msgstr "%s não é uma partição de sistema EFI (FAT)"
+
+#: internal/plan/validate.go:562
+#, c-format
+msgid "%s is too small to share (%s)"
+msgstr "%s é pequena demais para compartilhar (%s)"
+
+#: internal/plan/validate.go:564
+msgid "the shared EFI system partition gets Fedora's boot files in EFI/fedora (shim, GRUB): another Fedora on it would be replaced"
+msgstr "a partição de sistema EFI compartilhada recebe os arquivos de boot do Fedora em EFI/fedora (shim, GRUB): outro Fedora nela seria substituído"
+
+#: internal/plan/validate.go:571
+#, c-format
+msgid "must be a partition such as /dev/nvme1n1p1, got %q"
+msgstr "deve ser uma partição como /dev/nvme1n1p1, veio %q"
+
+#: internal/plan/validate.go:579 internal/session/home.go:72
+#, c-format
+msgid "%s is not a partition on this machine"
+msgstr "%s não é uma partição desta máquina"
+
+#: internal/plan/validate.go:583
+#, c-format
+msgid "%s is on %s, the disk that is erased"
+msgstr "%s está em %s, o disco que é apagado"
+
+#: internal/plan/validate.go:591
+msgid "the existing /home is encrypted: its passphrase is needed to open it during the installation"
+msgstr "o /home existente é criptografado: a frase-senha dele é necessária para abri-lo durante a instalação"
+
+#: internal/plan/validate.go:595
+msgid "the existing /home is not encrypted: no passphrase or TPM"
+msgstr "o /home existente não é criptografado: sem frase-senha nem TPM"
+
+#: internal/plan/validate.go:597
+msgid "the existing /home is not encrypted"
+msgstr "o /home existente não é criptografado"
+
+#: internal/plan/validate.go:599
+#, c-format
+msgid "%s holds %q, not a LUKS volume or a Linux file system (ext4, xfs, btrfs)"
+msgstr "%s contém %q, não um volume LUKS nem um sistema de arquivos Linux (ext4, xfs, btrfs)"
+
+#: internal/plan/validate.go:602
+msgid "no TPM 2.0 on this machine"
+msgstr "esta máquina não tem TPM 2.0"
+
+#: internal/session/home.go:93
+msgid "that is not the passphrase of this partition"
+msgstr "essa não é a frase-senha desta partição"
 
 #: internal/session/keymedia.go:100
 msgid "no removable file system with that label"
@@ -210,288 +347,433 @@ msgstr "não foi possível ler o plano %s: %v"
 msgid "basalt.inst.confirm=%s does not name the disk the plan erases (%s): nothing was written"
 msgstr "basalt.inst.confirm=%s não indica o disco que o plano apaga (%s): nada foi gravado"
 
-#: internal/tui/app.go:1074
+#: internal/tui/app.go:1026
+msgid "Recovery key: write it down now"
+msgstr "Chave de recuperação: anote agora"
+
+#: internal/tui/app.go:1027
+msgid "This key opens the disk when the TPM refuses (Secure Boot changed, the disk moved to another machine). It is shown only this once and is not stored on any disk unless you save a copy to a USB stick (ctrl+o). Keep it off this machine."
+msgstr "Esta chave abre o disco quando o TPM recusa (Secure Boot alterado, disco levado para outra máquina). Ela é mostrada só desta vez e não fica gravada em disco nenhum, a menos que você salve uma cópia em um pendrive (ctrl+o). Guarde-a fora desta máquina."
+
+#: internal/tui/app.go:1028
+#, c-format
+msgid "Type the first group (%d characters) to confirm you stored it:"
+msgstr "Digite o primeiro grupo (%d caracteres) para confirmar que você a guardou:"
+
+#: internal/tui/app.go:1035
+msgid "save to a USB stick"
+msgstr "salvar em um pendrive"
+
+#: internal/tui/app.go:1118
 msgid "disk"
 msgstr "disco"
 
-#: internal/tui/app.go:1074
+#: internal/tui/app.go:1118
 msgid "plan"
 msgstr "plano"
 
-#: internal/tui/app.go:1084
+#: internal/tui/app.go:1128
 msgid "Welcome"
 msgstr "Boas-vindas"
 
-#: internal/tui/app.go:1086
+#: internal/tui/app.go:1130
 msgid "This installs Basalt OS, a Fedora remix with server and desktop editions: SELinux enforcing, btrfs with snapshots before every update, LUKS2 disk encryption unlocked by the TPM, and a local assistant that only proposes changes."
 msgstr "Isto instala o Basalt OS, um remix do Fedora com edições para servidor e desktop: SELinux em modo enforcing, btrfs com snapshots antes de cada atualização, criptografia de disco LUKS2 desbloqueada pelo TPM e um assistente local que só propõe mudanças."
 
-#: internal/tui/app.go:1097
+#: internal/tui/app.go:1141
 msgid "start"
 msgstr "começar"
 
-#: internal/tui/app.go:1099
+#: internal/tui/app.go:1143
 msgid "network and Wi-Fi"
 msgstr "rede e Wi-Fi"
 
-#: internal/tui/app.go:1101 internal/tui/app.go:1192 internal/tui/app.go:1194
+#: internal/tui/app.go:1145 internal/tui/app.go:1242 internal/tui/app.go:1244
 msgid "quit"
 msgstr "sair"
 
-#: internal/tui/app.go:1106
+#: internal/tui/app.go:1150
 msgid "Unattended installation"
 msgstr "Instalação sem perguntas"
 
-#: internal/tui/app.go:1107
+#: internal/tui/app.go:1151
 #, c-format
 msgid "The boot line names a plan (%s) and the disk it erases (%s). The installer engine reads the plan and starts on its own; this screen follows it."
 msgstr "A linha de boot indica um plano (%s) e o disco que ele apaga (%s). O motor do instalador lê o plano e começa sozinho; esta tela acompanha."
 
-#: internal/tui/app.go:1108
+#: internal/tui/app.go:1152
 msgid "Preparing"
 msgstr "Preparando"
 
-#: internal/tui/app.go:1150
+#: internal/tui/app.go:1200
 #, c-format
 msgid "Basalt OS is installed on %s"
 msgstr "O Basalt OS está instalado em %s"
 
-#: internal/tui/app.go:1151
+#: internal/tui/app.go:1201
 msgid "Install record on the new system: /var/log/basalt-installer/ (plan, summary, log). The first boot takes the first snapshot, and the disk unlocks by itself while Secure Boot is unchanged. Keep the recovery key off this machine."
 msgstr "Registro da instalação no novo sistema: /var/log/basalt-installer/ (plano, resumo, log). O primeiro boot tira o primeiro snapshot, e o disco se desbloqueia sozinho enquanto o Secure Boot não mudar. Guarde a chave de recuperação fora desta máquina."
 
-#: internal/tui/app.go:1154
+#: internal/tui/app.go:1204
 #, c-format
 msgid "A copy of the recovery key is on %s."
 msgstr "Há uma cópia da chave de recuperação em %s."
 
-#: internal/tui/app.go:1163
+#: internal/tui/app.go:1213
 msgid "The installer engine runs the plan's end action now."
 msgstr "O motor do instalador executa agora a ação final do plano."
 
-#: internal/tui/app.go:1165
+#: internal/tui/app.go:1215
 msgid "leave"
 msgstr "sair"
 
-#: internal/tui/app.go:1184
+#: internal/tui/app.go:1234
 msgid "The installation failed"
 msgstr "A instalação falhou"
 
-#: internal/tui/app.go:1189
+#: internal/tui/app.go:1239
 #, c-format
 msgid "What could be undone was rolled back. Log: %s"
 msgstr "O que podia ser desfeito foi desfeito. Log: %s"
 
-#: internal/tui/app.go:1192
+#: internal/tui/app.go:1242
 msgid "back to the review"
 msgstr "voltar à revisão"
 
-#: internal/tui/app.go:1194
+#: internal/tui/app.go:1244
 msgid "open the wizard with this plan"
 msgstr "abrir o assistente com este plano"
 
-#: internal/tui/app.go:1227
+#: internal/tui/app.go:1277
 msgid "Write the key down, then type its first group."
 msgstr "Anote a chave e depois digite o primeiro grupo."
 
-#: internal/tui/app.go:1229
+#: internal/tui/app.go:1279
 msgid "Every command and file is listed. enter: confirm"
 msgstr "Todos os comandos e arquivos estão listados. enter: confirmar"
 
-#: internal/tui/app.go:1231
+#: internal/tui/app.go:1281
 msgid "Unattended installation; ctrl+c cancels it"
 msgstr "Instalação sem perguntas; ctrl+c cancela"
 
-#: internal/tui/app.go:1235
+#: internal/tui/app.go:1285
 msgid "Waiting for the installer engine"
 msgstr "Aguardando o motor do instalador"
 
-#: internal/tui/app.go:176
+#: internal/tui/app.go:192
 #, c-format
 msgid "The plan %s could not be read (%v). The wizard starts from the defaults."
 msgstr "Não foi possível ler o plano %s (%v). O assistente começa com os valores padrão."
 
-#: internal/tui/app.go:178
+#: internal/tui/app.go:194
 #, c-format
 msgid "Plan loaded from %s. Every screen shows its values; nothing is written until you type the disk name."
 msgstr "Plano carregado de %s. Cada tela mostra os valores dele; nada é gravado até você digitar o nome do disco."
 
-#: internal/tui/app.go:261
+#: internal/tui/app.go:277
 msgid "TPM: opens by itself while Secure Boot is unchanged"
 msgstr "TPM: abre sozinho enquanto o Secure Boot não mudar"
 
-#: internal/tui/app.go:262
+#: internal/tui/app.go:278
 msgid "Recovery key: typed at every boot"
 msgstr "Chave de recuperação: digitada a cada boot"
 
-#: internal/tui/app.go:263
+#: internal/tui/app.go:279
 msgid "Tang: opens when a Tang server answers"
 msgstr "Tang: abre quando um servidor Tang responde"
 
-#: internal/tui/app.go:264
+#: internal/tui/app.go:280
 msgid "TPM and Tang: both are required"
 msgstr "TPM e Tang: os dois são necessários"
 
-#: internal/tui/app.go:265
+#: internal/tui/app.go:281
 msgid "Do not encrypt (not recommended)"
 msgstr "Não criptografar (não recomendado)"
 
-#: internal/tui/app.go:269
+#: internal/tui/app.go:285
 msgid "Automatic (DHCP) on every wired interface"
 msgstr "Automática (DHCP) em todas as interfaces cabeadas"
 
-#: internal/tui/app.go:269
+#: internal/tui/app.go:285
 msgid "Static address on one interface"
 msgstr "Endereço fixo em uma interface"
 
-#: internal/tui/app.go:273
+#: internal/tui/app.go:289
 msgid "Automatic: the Basalt layout on the whole disk"
 msgstr "Automático: o layout do Basalt no disco inteiro"
 
-#: internal/tui/app.go:273
+#: internal/tui/app.go:289
 msgid "Manual: the sizes and the optional subvolumes"
 msgstr "Manual: os tamanhos e os subvolumes opcionais"
 
-#: internal/tui/app.go:307
+#: internal/tui/app.go:323
 msgid "Partitioning (automatic is recommended)"
 msgstr "Particionamento (o automático é recomendado)"
 
-#: internal/tui/app.go:336
+#: internal/tui/app.go:352
 msgid "Disk encryption (LUKS2); the TPM is recommended"
 msgstr "Criptografia do disco (LUKS2); o TPM é recomendado"
 
-#: internal/tui/app.go:338
+#: internal/tui/app.go:354
 msgid "Disk encryption (LUKS2); no TPM 2.0 on this machine"
 msgstr "Criptografia do disco (LUKS2); sem TPM 2.0 nesta máquina"
 
-#: internal/tui/app.go:368
+#: internal/tui/app.go:385
 msgid "Interface"
 msgstr "Interface"
 
-#: internal/tui/app.go:370
+#: internal/tui/app.go:387
 #, c-format
 msgid "Detected: %s"
 msgstr "Detectadas: %s"
 
-#: internal/tui/app.go:385
+#: internal/tui/app.go:402
 msgid "Installed system uses"
 msgstr "Sistema instalado usa"
 
-#: internal/tui/app.go:385
+#: internal/tui/app.go:402
 msgid "empty: the default"
 msgstr "vazio: o padrão"
 
-#: internal/tui/app.go:387
+#: internal/tui/app.go:404
 #, c-format
 msgid "Empty: the URL above when it is http(s), otherwise %s."
 msgstr "Vazio: a URL acima quando ela for http(s), senão %s."
 
-#: internal/tui/app.go:402
+#: internal/tui/app.go:419
 #, c-format
 msgid "Review: %d step, exactly what will run"
 msgid_plural "Review: %d steps, exactly what will run"
 msgstr[0] "Revisão: %d passo, exatamente o que vai rodar"
 msgstr[1] "Revisão: %d passos, exatamente o que vai rodar"
 
-#: internal/tui/app.go:419
+#: internal/tui/app.go:438
 msgid "Root also has a password from the plan file (console logins only)."
 msgstr "O root também tem uma senha do arquivo de plano (só para login no console)."
 
-#: internal/tui/app.go:433
+#: internal/tui/app.go:452
 msgid "The plan file sets this password (as a hash): leave both fields empty to keep it, or type a new one."
 msgstr "O arquivo de plano define esta senha (como hash): deixe os dois campos vazios para mantê-la, ou digite uma nova."
 
-#: internal/tui/app.go:449
+#: internal/tui/app.go:468
 msgid "the administrator needs a password or an SSH key"
 msgstr "o administrador precisa de uma senha ou de uma chave SSH"
 
-#: internal/tui/app.go:486
+#: internal/tui/app.go:509
 msgid "The connection to the installer engine was lost; reconnecting."
 msgstr "A conexão com o motor do instalador caiu; reconectando."
 
-#: internal/tui/app.go:499
+#: internal/tui/app.go:522
 #, c-format
 msgid "The key was not saved: %v"
 msgstr "A chave não foi salva: %v"
 
-#: internal/tui/app.go:502 internal/tui/app.go:995
+#: internal/tui/app.go:525 internal/tui/app.go:1037
 #, c-format
 msgid "A copy is on %s. Keep that stick somewhere safe, then type the first group to confirm."
 msgstr "Há uma cópia em %s. Guarde esse pendrive em local seguro e depois digite o primeiro grupo para confirmar."
 
-#: internal/tui/app.go:535
+#: internal/tui/app.go:568
 #, c-format
 msgid "Writing the key to %s."
 msgstr "Gravando a chave em %s."
 
-#: internal/tui/app.go:552
+#: internal/tui/app.go:585
 msgid "Looking for USB sticks."
 msgstr "Procurando pendrives."
 
-#: internal/tui/app.go:587
+#: internal/tui/app.go:620
 #, c-format
 msgid "The installer engine does not answer (%v); trying again."
 msgstr "O motor do instalador não responde (%v); tentando de novo."
 
-#: internal/tui/app.go:598
+#: internal/tui/app.go:631
 #, c-format
 msgid "The unattended installation did not start: %s"
 msgstr "A instalação sem perguntas não começou: %s"
 
-#: internal/tui/app.go:617
+#: internal/tui/app.go:650
 #, c-format
 msgid "Unattended installation of Basalt OS on %s"
 msgstr "Instalação sem perguntas do Basalt OS em %s"
 
-#: internal/tui/app.go:652
+#: internal/tui/app.go:685
 msgid "No USB stick with a FAT, exFAT or ext4 file system was found. Plug one in and press ctrl+o again."
 msgstr "Nenhum pendrive com sistema de arquivos FAT, exFAT ou ext4 foi encontrado. Conecte um e tecle ctrl+o de novo."
 
-#: internal/tui/app.go:657
+#: internal/tui/app.go:690
 msgid "Save a copy of the recovery key"
 msgstr "Salvar uma cópia da chave de recuperação"
 
-#: internal/tui/app.go:658
+#: internal/tui/app.go:691
 msgid "The key is written as a text file to the stick you choose. Keep the stick away from this machine."
 msgstr "A chave é gravada como arquivo de texto no pendrive que você escolher. Guarde o pendrive longe desta máquina."
 
-#: internal/tui/app.go:659
+#: internal/tui/app.go:692
 msgid "Device"
 msgstr "Dispositivo"
 
-#: internal/tui/app.go:659
+#: internal/tui/app.go:692 internal/tui/storage.go:150
 msgid "Label"
 msgstr "Rótulo"
 
-#: internal/tui/app.go:659
+#: internal/tui/app.go:692
 msgid "Model"
 msgstr "Modelo"
 
-#: internal/tui/app.go:659
+#: internal/tui/app.go:692 internal/tui/storage.go:150
 msgid "Size"
 msgstr "Tamanho"
 
-#: internal/tui/app.go:675
+#: internal/tui/app.go:708
 msgid "The unattended installation goes on in the installer engine; this screen only follows it."
 msgstr "A instalação sem perguntas continua no motor do instalador; esta tela só acompanha."
 
-#: internal/tui/app.go:950
+#: internal/tui/app.go:992
 msgid "The unattended installation failed; its plan is loaded."
 msgstr "A instalação sem perguntas falhou; o plano dela está carregado."
 
-#: internal/tui/app.go:984
-msgid "Recovery key: write it down now"
-msgstr "Chave de recuperação: anote agora"
-
-#: internal/tui/app.go:985
-msgid "This key opens the disk when the TPM refuses (Secure Boot changed, the disk moved to another machine). It is shown only this once and is not stored on any disk unless you save a copy to a USB stick (ctrl+o). Keep it off this machine."
-msgstr "Esta chave abre o disco quando o TPM recusa (Secure Boot alterado, disco levado para outra máquina). Ela é mostrada só desta vez e não fica gravada em disco nenhum, a menos que você salve uma cópia em um pendrive (ctrl+o). Guarde-a fora desta máquina."
-
-#: internal/tui/app.go:986
+#: internal/tui/storage.go:120
 #, c-format
-msgid "Type the first group (%d characters) to confirm you stored it:"
-msgstr "Digite o primeiro grupo (%d caracteres) para confirmar que você a guardou:"
+msgid "%s already holds partitions"
+msgstr "%s já tem partições"
 
-#: internal/tui/app.go:993
-msgid "save to a USB stick"
-msgstr "salvar em um pendrive"
+#: internal/tui/storage.go:121
+#, c-format
+msgid "On it: %s. Basalt OS can erase the whole disk, or go into its free space and leave every other partition as it is (dual boot)."
+msgstr "Nele: %s. O Basalt OS pode apagar o disco inteiro, ou ocupar o espaço livre e deixar todas as outras partições como estão (dual boot)."
+
+#: internal/tui/storage.go:122
+msgid "Space"
+msgstr "Espaço"
+
+#: internal/tui/storage.go:122
+msgid "Use of the disk"
+msgstr "Uso do disco"
+
+#: internal/tui/storage.go:125
+#, c-format
+msgid "needs %s of free space"
+msgstr "precisa de %s de espaço livre"
+
+#: internal/tui/storage.go:128
+msgid "Erase the whole disk"
+msgstr "Apagar o disco inteiro"
+
+#: internal/tui/storage.go:129
+msgid "Keep the partitions, use the free space"
+msgstr "Manter as partições, usar o espaço livre"
+
+#: internal/tui/storage.go:132
+#, c-format
+msgid "Keep the partitions, share the EFI partition %s"
+msgstr "Manter as partições, compartilhar a partição EFI %s"
+
+#: internal/tui/storage.go:146
+msgid "Where /home (the users' files) lives"
+msgstr "Onde fica o /home (os arquivos dos usuários)"
+
+#: internal/tui/storage.go:148
+msgid "Which partition holds the existing /home?"
+msgstr "Qual partição tem o /home existente?"
+
+#: internal/tui/storage.go:149
+msgid "It is never formatted: it is opened, mounted on /home and set up to open at boot. Only the new user's directory is created on it."
+msgstr "Ela nunca é formatada: é aberta, montada em /home e configurada para abrir no boot. Só o diretório do novo usuário é criado nela."
+
+#: internal/tui/storage.go:150
+msgid "Contents"
+msgstr "Conteúdo"
+
+#: internal/tui/storage.go:150
+msgid "Partition"
+msgstr "Partição"
+
+#: internal/tui/storage.go:158
+msgid "Passphrase"
+msgstr "Frase-senha"
+
+#: internal/tui/storage.go:159
+msgid "The passphrase this partition opens with today. It is checked now and never stored."
+msgstr "A frase-senha com que esta partição abre hoje. Ela é conferida agora e nunca guardada."
+
+#: internal/tui/storage.go:160
+#, c-format
+msgid "Open %s"
+msgstr "Abrir %s"
+
+#: internal/tui/storage.go:162
+msgid "Whose home is it?"
+msgstr "De quem é esta home?"
+
+#: internal/tui/storage.go:163
+msgid "The new user gets the same name, uid and gid as these files, so they stay theirs."
+msgstr "O novo usuário recebe o mesmo nome, uid e gid desses arquivos, para que continuem sendo dele."
+
+#: internal/tui/storage.go:164
+msgid "Directory"
+msgstr "Diretório"
+
+#: internal/tui/storage.go:168
+msgid "None of these: a new user"
+msgstr "Nenhum destes: um usuário novo"
+
+#: internal/tui/storage.go:174
+msgid "User name"
+msgstr "Nome do usuário"
+
+#: internal/tui/storage.go:175
+msgid "Home directory"
+msgstr "Diretório home"
+
+#: internal/tui/storage.go:176
+msgid "A directory of its own keeps Basalt OS settings apart from the other system's. Nothing in the other directories is changed."
+msgstr "Um diretório próprio mantém as configurações do Basalt OS separadas das do outro sistema. Nada nos outros diretórios é alterado."
+
+#: internal/tui/storage.go:177
+msgid "Your user on the existing /home"
+msgstr "Seu usuário no /home existente"
+
+#: internal/tui/storage.go:180
+msgid "a directory under /home"
+msgstr "um diretório dentro de /home"
+
+#: internal/tui/storage.go:190
+msgid "Opening the existing /home at boot"
+msgstr "Abrir o /home existente no boot"
+
+#: internal/tui/storage.go:204
+msgid "What should be encrypted?"
+msgstr "O que deve ser criptografado?"
+
+#: internal/tui/storage.go:283
+msgid "Opening the partition read-only."
+msgstr "Abrindo a partição só para leitura."
+
+#: internal/tui/storage.go:90
+msgid "A new /home on this disk"
+msgstr "Um /home novo neste disco"
+
+#: internal/tui/storage.go:90
+msgid "An existing /home partition: keep its files"
+msgstr "Uma partição /home existente: manter os arquivos"
+
+#: internal/tui/storage.go:94
+msgid "Only /home: the system, logs and /var stay unencrypted"
+msgstr "Só o /home: o sistema, os logs e /var ficam sem criptografia"
+
+#: internal/tui/storage.go:94
+msgid "The whole system (recommended)"
+msgstr "O sistema inteiro (recomendado)"
+
+#: internal/tui/storage.go:95
+msgid "Nothing (servers in a controlled place)"
+msgstr "Nada (servidores em local controlado)"
+
+#: internal/tui/storage.go:99
+msgid "Also open it with this machine's TPM (passphrase kept)"
+msgstr "Abrir também com o TPM desta máquina (a frase-senha continua valendo)"
+
+#: internal/tui/storage.go:99
+msgid "Ask for its passphrase at every boot"
+msgstr "Pedir a frase-senha a cada boot"

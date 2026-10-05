@@ -135,6 +135,13 @@ done
   no swallowed keys); n on the welcome screen opens nmtui (network, Wi-Fi).
 - Translation catalogs (po/, Brazilian Portuguese) for the new and changed
   texts; a test keeps the template current and the translations complete.
+- Storage choices (ADR 0002 addendum): install into the free space of a
+  disk that keeps its partitions (dual boot, own or shared EFI system
+  partition, every partition change in the preview); encrypt the whole
+  system, only a new /home, or nothing; adopt an existing /home partition
+  (LUKS or plain, passphrase checked first, never formatted, crypttab with
+  a passphrase prompt or the TPM too, user with the same name, uid and gid
+  and a directory of its own, only that directory relabeled); zram swap.
 
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.3-1
 - The welcome text names the server and desktop editions, through a

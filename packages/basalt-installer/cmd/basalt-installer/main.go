@@ -143,6 +143,11 @@ func newSession(demo bool) (*session.Session, func(), error) {
 			}
 			return session.MountAndWrite(ctx, m, name, content)
 		}
+		// The demo's existing /home opens with any passphrase.
+		opt.HomeInspector = func(_ context.Context, part probe.Partition, _ string) (session.HomeInspection, error) {
+			return session.HomeInspection{Device: part.Path, LUKS: true, UUID: part.UUID, FSType: "ext4",
+				Owners: []session.HomeOwner{{Name: "ana", UID: 1000, GID: 1000}}}, nil
+		}
 		opt.Cmdline = filepath.Join(dir, "cmdline")
 		_ = os.WriteFile(opt.Cmdline, []byte("basalt.inst.repo=media basalt.inst.hostname=basalt-demo"), 0o644)
 	}

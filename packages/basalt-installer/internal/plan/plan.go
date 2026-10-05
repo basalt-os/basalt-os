@@ -41,6 +41,7 @@ type Plan struct {
 	Locale     string     `json:"locale" yaml:"locale"`
 	Keymap     string     `json:"keymap" yaml:"keymap"`
 	Lockdown   *bool      `json:"lockdown,omitempty" yaml:"lockdown,omitempty"`
+	Home       Home       `json:"home,omitempty" yaml:"home,omitempty"`
 	Accounts   Accounts   `json:"accounts" yaml:"accounts"`
 	SSH        SSH        `json:"ssh" yaml:"ssh"`
 	Network    Network    `json:"network" yaml:"network"`
@@ -50,12 +51,22 @@ type Plan struct {
 	Finish     string     `json:"finish" yaml:"finish"`
 }
 
-// Target is the disk the system is installed on. The whole disk is wiped.
+// Target is the disk the system is installed on.
 type Target struct {
 	Disk string `json:"disk" yaml:"disk"`
-	// Wipe must be true: it records that the author knows the disk is erased.
+	// Wipe true erases the whole disk. False keeps every partition on it
+	// and installs into its largest free region (dual boot): other
+	// operating systems and their EFI system partition are not touched.
 	Wipe bool `json:"wipe" yaml:"wipe"`
+	// ESP, with wipe false, is an existing EFI system partition to share
+	// (its path, for example the one Windows uses); empty creates a new
+	// one for Basalt OS in the free space.
+	ESP string `json:"esp,omitempty" yaml:"esp,omitempty"`
 }
+
+// KeepsPartitions reports whether the plan installs next to existing
+// partitions instead of erasing the disk.
+func (p Plan) KeepsPartitions() bool { return !p.Target.Wipe }
 
 // Layout describes the partitions and btrfs subvolumes.
 type Layout struct {
@@ -75,6 +86,10 @@ type Layout struct {
 // Encryption is LUKS2 under btrfs (ADR 0002).
 type Encryption struct {
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	// Scope is what is encrypted: "system" (the whole system, the
+	// default), "home" (only a new /home partition; the system, /var and
+	// the logs are not encrypted) or "none" (same as enabled: false).
+	Scope string `json:"scope,omitempty" yaml:"scope,omitempty"`
 	// Unlock is how the disk opens at boot: tpm2 (sealed to PCR 7), tang,
 	// tpm2+tang, or recovery-only (the recovery key is typed at every boot).
 	Unlock string `json:"unlock" yaml:"unlock"`
@@ -102,6 +117,28 @@ type Tang struct {
 	Thumbprint string `json:"thumbprint,omitempty" yaml:"thumbprint,omitempty"`
 }
 
+// Home is where /home lives.
+type Home struct {
+	// Existing adopts a partition that already holds home directories
+	// (LUKS2 or LUKS1, or a plain file system), usually on another disk. It
+	// is never formatted: it is opened, mounted on /home and listed in
+	// crypttab and fstab.
+	Existing *ExistingHome `json:"existing,omitempty" yaml:"existing,omitempty"`
+}
+
+// ExistingHome is an existing /home partition.
+type ExistingHome struct {
+	Device string `json:"device" yaml:"device"`
+	// Passphrase opens an encrypted partition during the installation
+	// (checked before anything is written). It is never stored; at boot the
+	// passphrase is asked for, unless TPM2 is set.
+	Passphrase string `json:"passphrase,omitempty" yaml:"passphrase,omitempty"`
+	// TPM2 also enrolls this machine's TPM (sealed to PCR 7) in the
+	// partition's LUKS header, so it opens without the passphrase; the
+	// passphrase keeps working (other systems on the machine use it).
+	TPM2 bool `json:"tpm2,omitempty" yaml:"tpm2,omitempty"`
+}
+
 // Accounts are the ways to log in to the installed system.
 type Accounts struct {
 	Root Root  `json:"root" yaml:"root"`
@@ -123,6 +160,14 @@ type User struct {
 	Password     string   `json:"password,omitempty" yaml:"password,omitempty"`
 	SSHKeys      []string `json:"ssh_keys,omitempty" yaml:"ssh_keys,omitempty"`
 	Admin        *bool    `json:"admin,omitempty" yaml:"admin,omitempty"`
+	// HomeDir is the home directory (default /home/<name>). With an
+	// existing /home, a directory of its own (for example
+	// /home/<name>-basalt) keeps the other system's settings apart.
+	HomeDir string `json:"home_dir,omitempty" yaml:"home_dir,omitempty"`
+	// UID and GID give the user the numbers of the files on an existing
+	// /home (0: the next free ones).
+	UID int `json:"uid,omitempty" yaml:"uid,omitempty"`
+	GID int `json:"gid,omitempty" yaml:"gid,omitempty"`
 }
 
 // SSH is the SSH server policy. Basalt OS allows public keys only.
@@ -248,13 +293,22 @@ func (p *Plan) ApplyDefaults() {
 	if p.Layout.BootMiB == 0 {
 		p.Layout.BootMiB = DefaultBootMiB
 	}
-	if len(p.Layout.Subvolumes) == 0 {
-		for _, s := range Subvolumes() {
-			p.Layout.Subvolumes = append(p.Layout.Subvolumes, s.Name)
-		}
+	switch {
+	case p.Encryption.Scope == "" && p.Encryption.Enabled != nil && !*p.Encryption.Enabled:
+		p.Encryption.Scope = "none"
+	case p.Encryption.Scope == "":
+		p.Encryption.Scope = "system"
 	}
 	if p.Encryption.Enabled == nil {
-		p.Encryption.Enabled = Bool(true)
+		p.Encryption.Enabled = Bool(p.Encryption.Scope != "none")
+	}
+	if len(p.Layout.Subvolumes) == 0 {
+		for _, s := range Subvolumes() {
+			if s.Name == "home" && p.HomeElsewhere() {
+				continue
+			}
+			p.Layout.Subvolumes = append(p.Layout.Subvolumes, s.Name)
+		}
 	}
 	if p.Encryption.Unlock == "" {
 		p.Encryption.Unlock = "tpm2"
@@ -303,8 +357,26 @@ func (p *Plan) ApplyDefaults() {
 	}
 }
 
-// Encrypted reports whether the disk is encrypted.
-func (p Plan) Encrypted() bool { return p.Encryption.Enabled == nil || *p.Encryption.Enabled }
+// Encrypted reports whether the installation creates an encrypted volume
+// (the system, or a new /home with scope "home").
+func (p Plan) Encrypted() bool {
+	if p.Encryption.Enabled != nil && !*p.Encryption.Enabled {
+		return false
+	}
+	return p.Encryption.Scope != "none"
+}
+
+// EncryptsSystem reports whether the system's btrfs is on LUKS2.
+func (p Plan) EncryptsSystem() bool {
+	return p.Encrypted() && (p.Encryption.Scope == "" || p.Encryption.Scope == "system")
+}
+
+// EncryptsHome reports whether a new encrypted /home partition is made.
+func (p Plan) EncryptsHome() bool { return p.Encrypted() && p.Encryption.Scope == "home" }
+
+// HomeElsewhere reports whether /home is not a subvolume of the system's
+// btrfs: an encrypted /home partition of its own, or an existing one.
+func (p Plan) HomeElsewhere() bool { return p.EncryptsHome() || p.Home.Existing != nil }
 
 // Load reads a plan from a YAML or JSON file (JSON is valid YAML) and fills
 // the defaults. Unknown fields are an error, so a typo never silently falls
@@ -346,6 +418,11 @@ func Parse(data []byte, ext string) (Plan, error) {
 func (p Plan) Redacted() Plan {
 	r := p
 	r.Encryption.Passphrase = redact(p.Encryption.Passphrase)
+	if p.Home.Existing != nil {
+		e := *p.Home.Existing
+		e.Passphrase = redact(e.Passphrase)
+		r.Home.Existing = &e
+	}
 	r.Accounts.Root.Password = redact(p.Accounts.Root.Password)
 	r.Accounts.Root.PasswordHash = redact(p.Accounts.Root.PasswordHash)
 	r.Accounts.Root.SSHKeys = append([]string(nil), p.Accounts.Root.SSHKeys...)
@@ -402,8 +479,19 @@ func (p Plan) IsAdminUser() bool {
 // Summary is a one-line description of the plan, for confirmations.
 func (p Plan) Summary() string {
 	enc := "plain btrfs"
-	if p.Encrypted() {
+	switch {
+	case p.EncryptsSystem():
 		enc = "LUKS2 + " + p.Encryption.Unlock
+	case p.EncryptsHome():
+		enc = "/home on LUKS2 + " + p.Encryption.Unlock
 	}
-	return strings.Join([]string{p.Edition, p.Target.Disk, enc, "profile " + p.Profile, p.Hostname}, ", ")
+	disk := p.Target.Disk
+	if p.KeepsPartitions() {
+		disk += " (free space)"
+	}
+	parts := []string{p.Edition, disk, enc}
+	if p.Home.Existing != nil {
+		parts = append(parts, "existing /home "+p.Home.Existing.Device)
+	}
+	return strings.Join(append(parts, "profile "+p.Profile, p.Hostname), ", ")
 }

@@ -126,6 +126,102 @@ type Disk struct {
 	// Complex says why this version of the installer does not handle the
 	// disk (RAID member, multipath, iSCSI), "" otherwise.
 	Complex string `json:"complex,omitempty"`
+	// Table is the partition table type (gpt, dos), "" when there is none.
+	Table string `json:"table,omitempty"`
+	// SectorSize is the logical sector size in bytes.
+	SectorSize int64 `json:"sector_size,omitempty"`
+	// Partitions are the existing partitions, in disk order.
+	Partitions []Partition `json:"partitions,omitempty"`
+	// Free lists the unused regions of a GPT disk large enough to matter
+	// (at least 1 MiB, aligned to 1 MiB), in disk order.
+	Free []Region `json:"free,omitempty"`
+}
+
+// Partition is one existing partition.
+type Partition struct {
+	Path    string `json:"path"`
+	Number  int    `json:"number"`
+	Start   int64  `json:"start"`   // first sector
+	Sectors int64  `json:"sectors"` // length in sectors
+	Bytes   int64  `json:"size_bytes"`
+	// Type is the GPT partition type GUID (lower case) or the MBR type.
+	Type       string `json:"type,omitempty"`
+	FSType     string `json:"fstype,omitempty"`
+	Label      string `json:"label,omitempty"`
+	UUID       string `json:"uuid,omitempty"`
+	Mountpoint string `json:"mountpoint,omitempty"`
+	// Disk is the whole disk the partition is on.
+	Disk string `json:"disk"`
+}
+
+// Region is a span of unused sectors.
+type Region struct {
+	Start   int64 `json:"start"`
+	Sectors int64 `json:"sectors"`
+	Bytes   int64 `json:"size_bytes"`
+}
+
+// GPT partition types the installer knows.
+const (
+	TypeESP       = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+	TypeMSR       = "e3c9e316-0b5c-4db8-817d-f92df00215ae"
+	TypeWindows   = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+	TypeWinRecov  = "de94bba4-06d1-4d40-a16a-bfd50179d6ac"
+	alignSectors  = 2048 // 1 MiB with 512 byte sectors
+	gptTailBlocks = 34   // backup GPT
+)
+
+// Describe is a one-line description of a partition.
+func (p Partition) Describe() string {
+	parts := []string{p.Path, HumanSize(p.Bytes)}
+	if p.FSType != "" {
+		parts = append(parts, p.FSType)
+	}
+	if p.Label != "" {
+		parts = append(parts, "\""+p.Label+"\"")
+	}
+	if n := TypeName(p.Type); n != "" {
+		parts = append(parts, n)
+	}
+	return strings.Join(parts, "  ")
+}
+
+// TypeName names the well-known partition types.
+func TypeName(t string) string {
+	switch strings.ToLower(t) {
+	case TypeESP:
+		return "EFI system"
+	case TypeMSR:
+		return "Microsoft reserved"
+	case TypeWindows:
+		return "Windows data"
+	case TypeWinRecov:
+		return "Windows recovery"
+	}
+	return ""
+}
+
+// LargestFree returns the largest free region of the disk.
+func (d Disk) LargestFree() (Region, bool) {
+	var best Region
+	for _, r := range d.Free {
+		if r.Sectors > best.Sectors {
+			best = r
+		}
+	}
+	return best, best.Sectors > 0
+}
+
+// Partition finds an existing partition by path on any disk.
+func (f Facts) Partition(path string) (Partition, bool) {
+	for _, d := range f.Disks {
+		for _, p := range d.Partitions {
+			if p.Path == path {
+				return p, true
+			}
+		}
+	}
+	return Partition{}, false
 }
 
 // SizeGiB is the size in GiB, rounded down.
@@ -207,7 +303,7 @@ func (p Prober) Probe(ctx context.Context) (Facts, error) {
 	f.Release = osRelease(p.path("/etc/os-release"))
 	f.Interfaces = interfaces(p.path("/sys/class/net"))
 	out, err := p.Read(ctx, "lsblk", "--json", "--bytes", "--tree", "--output",
-		"NAME,PATH,SIZE,TYPE,RM,RO,ROTA,MODEL,SERIAL,TRAN,FSTYPE,MOUNTPOINTS,LABEL")
+		"NAME,PATH,SIZE,TYPE,RM,RO,ROTA,MODEL,SERIAL,TRAN,FSTYPE,MOUNTPOINTS,LABEL,UUID,PARTTYPE,PARTN,START,LOG-SEC,PTTYPE")
 	if err != nil {
 		return f, fmt.Errorf("listing disks: %w", err)
 	}
@@ -384,6 +480,12 @@ type lsblkDev struct {
 	FSType      *string    `json:"fstype"`
 	Mountpoints []*string  `json:"mountpoints"`
 	Label       *string    `json:"label"`
+	UUID        *string    `json:"uuid"`
+	PartType    *string    `json:"parttype"`
+	PartN       flexInt    `json:"partn"`
+	Start       flexInt    `json:"start"`
+	LogSec      flexInt    `json:"log-sec"`
+	PTType      *string    `json:"pttype"`
 	Children    []lsblkDev `json:"children"`
 }
 
@@ -419,6 +521,7 @@ func ParseLsblk(data []byte) ([]Disk, error) {
 		disk.Contents = contents(d)
 		disk.InUse = inUse(d)
 		disk.Complex = complexReason(d)
+		partitions(&disk, d)
 		disks = append(disks, disk)
 	}
 	return disks, nil
@@ -497,4 +600,59 @@ func complexReason(d lsblkDev) string {
 		return ""
 	}
 	return walk(d)
+}
+
+// partitions fills the partition list and the free regions of a disk.
+func partitions(disk *Disk, d lsblkDev) {
+	disk.Table = str(d.PTType)
+	disk.SectorSize = int64(d.LogSec)
+	if disk.SectorSize <= 0 {
+		disk.SectorSize = 512
+	}
+	for _, c := range d.Children {
+		if c.Type != "part" {
+			continue
+		}
+		p := Partition{Path: c.Path, Number: int(c.PartN), Start: int64(c.Start), Bytes: int64(c.Size),
+			Type: strings.ToLower(str(c.PartType)), FSType: str(c.FSType), Label: str(c.Label), UUID: str(c.UUID), Disk: disk.Path}
+		if p.Path == "" {
+			p.Path = "/dev/" + c.Name
+		}
+		p.Sectors = p.Bytes / disk.SectorSize
+		for _, m := range c.Mountpoints {
+			if m != nil && *m != "" {
+				p.Mountpoint = *m
+				break
+			}
+		}
+		disk.Partitions = append(disk.Partitions, p)
+	}
+	sort.Slice(disk.Partitions, func(i, j int) bool { return disk.Partitions[i].Start < disk.Partitions[j].Start })
+	if disk.Table != "gpt" {
+		return
+	}
+	total := disk.SizeBytes / disk.SectorSize
+	align := int64(alignSectors) * 512 / disk.SectorSize
+	if align < 1 {
+		align = 1
+	}
+	pos, end := align, total-gptTailBlocks
+	add := func(from, to int64) { // [from, to)
+		from = (from + align - 1) / align * align
+		to = to / align * align
+		if to-from >= align {
+			disk.Free = append(disk.Free, Region{Start: from, Sectors: to - from, Bytes: (to - from) * disk.SectorSize})
+		}
+	}
+	for _, p := range disk.Partitions {
+		if p.Start > pos {
+			add(pos, p.Start)
+		}
+		if e := p.Start + p.Sectors; e > pos {
+			pos = e
+		}
+	}
+	if end > pos {
+		add(pos, end)
+	}
 }

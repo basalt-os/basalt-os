@@ -56,6 +56,8 @@ type Options struct {
 	// KeyWriter writes the recovery key to removable media (default
 	// MountAndWrite).
 	KeyWriter KeyWriter
+	// HomeInspector reads an existing /home (default InspectReadOnly).
+	HomeInspector HomeInspector
 }
 
 // Session is safe for concurrent use.

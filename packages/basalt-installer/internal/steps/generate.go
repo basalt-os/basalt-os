@@ -10,6 +10,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/pgpkey"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/probe"
 )
 
 // TUIToolsKey is the tui-tools repository signing key (ADR 0005: official
@@ -50,7 +51,9 @@ func Packages(r Resolved) (install, exclude []string) {
 		"policycoreutils-python-utils", "setools-console", "compsize", "glibc-langpack-en", "snapper",
 		// dnf5-plugins: `dnf config-manager` and the other dnf commands
 		// the documentation (obpkg.org) uses.
-		"libdnf5-plugin-actions", "dnf5-plugins", "selinux-policy-targeted"}
+		"libdnf5-plugin-actions", "dnf5-plugins", "selinux-policy-targeted",
+		// Swap in compressed memory only, nothing swapped to a disk (ADR 0002).
+		"zram-generator", "zram-generator-defaults"}
 	if p := r.Plan.Assistant; p == nil || *p {
 		install = append(install, "basalt-assistant", "basalt-assistant-selinux")
 	}
@@ -129,30 +132,67 @@ func (g *gen) all() error {
 	g.run("Wait for device events to settle", "udevadm", "settle", "--timeout=30")
 	g.run("Create the installer's work directory (memory only)", "install", "-d", "-m", "0700", r.Work)
 	g.run("Create the target mount point", "install", "-d", "-m", "0755", g.T)
+	if e := r.Existing; e != nil && e.LUKS {
+		g.add(Step{Title: "Check the passphrase of the existing /home " + e.Device + " (nothing is written to it)",
+			Argv:  []string{"cryptsetup", "open", "--test-passphrase", "--key-file=-", e.Device},
+			Stdin: p.Home.Existing.Passphrase, StdinShown: "<passphrase>"})
+	}
 
 	// --- disk ------------------------------------------------------------------------------
 	g.phase = "disk"
 	disk := r.Disk.Path
-	g.run("Erase the partition table of "+disk, "sgdisk", "--zap-all", disk).Note =
-		"from here on the previous contents of " + disk + " are gone"
-	g.run("Erase remaining file system signatures on "+disk, "wipefs", "--all", "--force", disk)
-	sysType, sysName := "8300", "basalt"
-	if p.Encrypted() {
-		sysType = "8309"
+	if p.Target.Wipe {
+		g.run("Erase the partition table of "+disk, "sgdisk", "--zap-all", disk).Note =
+			"from here on the previous contents of " + disk + " are gone"
+		g.run("Erase remaining file system signatures on "+disk, "wipefs", "--all", "--force", disk)
+		argv := []string{"sgdisk", "--clear"}
+		var roles []string
+		for _, np := range r.NewParts {
+			argv = append(argv, fmt.Sprintf("--new=%d:0:%s", np.Number, np.Size), fmt.Sprintf("--typecode=%d:%s", np.Number, np.TypeCode),
+				fmt.Sprintf("--change-name=%d:%s", np.Number, np.Name))
+			roles = append(roles, partRole(np.Role))
+		}
+		g.run("Partition "+disk+": "+strings.Join(roles, ", "), append(argv, disk)...)
+	} else {
+		// Other systems keep their partitions: only new ones are added, in
+		// free space, by number and exact sectors.
+		var kept []string
+		for _, k := range r.Kept {
+			d := fmt.Sprintf("%d %s", k.Number, probe.HumanSize(k.Bytes))
+			if n := probe.TypeName(k.Type); n != "" {
+				d += " " + n
+			} else if k.FSType != "" {
+				d += " " + k.FSType
+			}
+			kept = append(kept, d)
+		}
+		argv := []string{"sgdisk"}
+		undo := []string{"sgdisk"}
+		for _, np := range r.NewParts {
+			argv = append(argv, fmt.Sprintf("--new=%d:%d:%d", np.Number, np.Start, np.End), fmt.Sprintf("--typecode=%d:%s", np.Number, np.TypeCode),
+				fmt.Sprintf("--change-name=%d:%s", np.Number, np.Name))
+			undo = append(undo, fmt.Sprintf("--delete=%d", np.Number))
+		}
+		s := g.run("Add the Basalt OS partitions to the free space of "+disk, append(argv, disk)...)
+		s.ID, s.Undo = "new-partitions", append(undo, disk)
+		var made []string
+		for _, np := range r.NewParts {
+			made = append(made, fmt.Sprintf("%s %s (%s, sectors %d-%d)", np.Dev, probe.HumanSize(np.Bytes), partRole(np.Role), np.Start, np.End))
+		}
+		s.Note = "kept as they are: partitions " + strings.Join(kept, "; ") + ". New: " + strings.Join(made, "; ")
+		if r.ESPShared {
+			s.Note += ". The EFI system partition " + r.ESPDev + " is shared, not formatted"
+		}
 	}
-	sysSize := "0"
-	if p.Layout.RootGiB > 0 {
-		sysSize = fmt.Sprintf("+%dG", p.Layout.RootGiB)
-	}
-	g.run("Partition "+disk+": EFI system, /boot, system",
-		"sgdisk", "--clear",
-		fmt.Sprintf("--new=1:0:+%dM", p.Layout.ESPMiB), "--typecode=1:EF00", "--change-name=1:EFI System Partition",
-		fmt.Sprintf("--new=2:0:+%dM", p.Layout.BootMiB), "--typecode=2:8300", "--change-name=2:boot",
-		"--new=3:0:"+sysSize, "--typecode=3:"+sysType, "--change-name=3:"+sysName,
-		disk)
 	g.run("Wait for the new partitions", "udevadm", "settle", "--timeout=30")
-	g.run("Erase old signatures at the start of each partition", "wipefs", "--all", "--force", r.ESPDev, r.BootDev, r.SystemDev)
-	g.run("Format the EFI system partition (FAT32)", "mkfs.vfat", "-F", "32", "-n", "EFI", "-i", r.ESPVolID, r.ESPDev)
+	var newDevs []string
+	for _, np := range r.NewParts {
+		newDevs = append(newDevs, np.Dev)
+	}
+	g.run("Erase old signatures at the start of each new partition", append([]string{"wipefs", "--all", "--force"}, newDevs...)...)
+	if !r.ESPShared {
+		g.run("Format the EFI system partition (FAT32)", "mkfs.vfat", "-F", "32", "-n", "EFI", "-i", r.ESPVolID, r.ESPDev)
+	}
 	g.run("Format /boot (ext4, readable by GRUB)", "mkfs.ext4", "-q", "-F", "-L", "boot", "-U", r.BootUUID, r.BootDev)
 
 	// --- encryption ------------------------------------------------------------------------
@@ -162,9 +202,13 @@ func (g *gen) all() error {
 			Write: &FileWrite{Path: r.KeyFile(), Mode: 0o600, RandomChars: 64},
 			Undo:  []string{"rm", "-f", r.KeyFile()},
 			Note:  "it lives in memory only and is removed once the unlock method and the recovery key are enrolled"}).ID = "luks-key"
-		g.run("Encrypt the system partition (LUKS2)", "cryptsetup", "luksFormat", "--batch-mode", "--type", "luks2",
-			"--uuid", r.LUKSUUID, "--label", "basalt", "--key-file", r.KeyFile(), r.SystemDev).Weight = 3
-		s := g.run("Open the encrypted volume", "cryptsetup", "open", "--key-file", r.KeyFile(), r.SystemDev, r.CryptName())
+		what, label := "the system partition", "basalt"
+		if p.EncryptsHome() {
+			what, label = "the /home partition", "basalt-home"
+		}
+		g.run("Encrypt "+what+" (LUKS2)", "cryptsetup", "luksFormat", "--batch-mode", "--type", "luks2",
+			"--uuid", r.LUKSUUID, "--label", label, "--key-file", r.KeyFile(), r.LUKSDev()).Weight = 3
+		s := g.run("Open the encrypted volume", "cryptsetup", "open", "--key-file", r.KeyFile(), r.LUKSDev(), r.CryptName())
 		s.ID, s.Undo = "luks-open", []string{"cryptsetup", "close", r.CryptName()}
 	}
 
@@ -189,6 +233,24 @@ func (g *gen) all() error {
 		g.run("Create "+sv.Mountpoint, "mkdir", "-p", g.t(sv.Mountpoint))
 		g.run("Mount subvolume "+sv.Name+" on "+sv.Mountpoint, "mount", "-o", "subvol="+sv.Name+","+opts, dev, g.t(sv.Mountpoint))
 	}
+	switch {
+	case p.EncryptsHome():
+		g.run("Create the /home file system (btrfs on LUKS2)", "mkfs.btrfs", "--force", "--label", "basalt-home", "--uuid", r.HomeBtrfsUUID, "/dev/mapper/"+r.CryptName())
+		g.run("Create /home", "mkdir", "-p", g.t("/home"))
+		g.run("Mount /home", "mount", "-o", opts, "/dev/mapper/"+r.CryptName(), g.t("/home"))
+	case r.Existing != nil:
+		e := r.Existing
+		g.run("Create /home", "mkdir", "-p", g.t("/home"))
+		src := e.Device
+		if e.LUKS {
+			s := g.add(Step{Title: "Open the existing /home " + e.Device, Argv: []string{"cryptsetup", "open", "--key-file=-", e.Device, e.Mapper()},
+				Stdin: p.Home.Existing.Passphrase, StdinShown: "<passphrase>"})
+			s.ID, s.Undo = "home-open", []string{"cryptsetup", "close", e.Mapper()}
+			src = "/dev/mapper/" + e.Mapper()
+		}
+		g.run("Mount the existing /home (never formatted)", "mount", src, g.t("/home")).Note =
+			"its files are not changed: only the new user's directory is created and labeled"
+	}
 	g.run("Create /boot", "mkdir", "-p", g.t("/boot"))
 	g.run("Mount /boot", "mount", r.BootDev, g.t("/boot"))
 	g.run("Create /boot/efi", "mkdir", "-p", g.t("/boot/efi"))
@@ -202,8 +264,8 @@ func (g *gen) all() error {
 	g.run("Create configuration directories", "mkdir", "-p", g.t("/etc/kernel"), g.t("/etc/default"), g.t("/etc/dnf/vars"))
 	g.write("Write /etc/fstab", g.t("/etc/fstab"), 0o644, g.fstab(subvols)).Note =
 		"basalt-snapshots-setup later drops subvol=root from / so the default subvolume (what snapper rollback switches) is booted"
-	if p.Encrypted() {
-		g.write("Write /etc/crypttab", g.t("/etc/crypttab"), 0o600, g.crypttab())
+	if ct := g.crypttab(); ct != "" {
+		g.write("Write /etc/crypttab", g.t("/etc/crypttab"), 0o600, ct)
 	}
 	g.write("Write the kernel command line for new kernels", g.t("/etc/kernel/cmdline"), 0o644, g.kernelCmdline(true)+"\n").Note =
 		"kernel-install reads it when the kernel package is installed; without it, it would copy the live system's command line"
@@ -278,7 +340,7 @@ func (g *gen) all() error {
 		"the boot chain is Fedora's signed shim, GRUB and kernel, so Secure Boot stays on"
 	g.chroot("Show the boot menu", "grub2-editenv", "-", "unset", "menu_auto_hide").Optional = true
 	g.chroot("Generate the GRUB configuration", "grub2-mkconfig", "-o", "/boot/grub2/grub.cfg")
-	g.run("Add a firmware boot entry", "efibootmgr", "--create", "--disk", disk, "--part", "1",
+	g.run("Add a firmware boot entry", "efibootmgr", "--create", "--disk", disk, "--part", fmt.Sprint(r.ESPNumber),
 		"--label", "Basalt OS", "--loader", `\EFI\fedora\shimx64.efi`).Optional = true
 	g.out[len(g.out)-1].Note = "the firmware's fallback path (\\EFI\\BOOT\\BOOTX64.EFI, also Fedora's shim) boots the disk without it"
 
@@ -286,6 +348,12 @@ func (g *gen) all() error {
 	if p.Encrypted() {
 		g.phase = "unlock"
 		g.unlock()
+	}
+	if e := r.Existing; e != nil && e.LUKS && p.Home.Existing.TPM2 && r.TPM2 {
+		g.phase = "unlock"
+		g.add(Step{Title: "Let this machine's TPM open the existing /home too (PCR 7; the passphrase keeps working)",
+			Argv: []string{"systemd-cryptenroll", "--tpm2-device=auto", "--tpm2-pcrs=7", e.Device},
+			Env:  []EnvVar{{Name: "PASSWORD", Value: p.Home.Existing.Passphrase, Shown: "<passphrase>"}}})
 	}
 
 	// --- initramfs and snapshots ----------------------------------------------------------------
@@ -313,11 +381,37 @@ func (g *gen) all() error {
 			relabel = append(relabel, sv.Mountpoint)
 		}
 	}
+	if p.EncryptsHome() {
+		relabel = append(relabel, "/home")
+	}
 	s = g.chroot("Label every file for SELinux (target policy)", relabel...)
 	s.Weight = 6
 	s.Note = "every subvolume, /.snapshots and /boot by name: setfiles does not cross into another file system on its own; " +
 		"append-only and immutable files (the assistant's audit log) lose that attribute for the relabel and get it back"
 	s.KeepAttrsUnder = g.T
+	if u := p.Accounts.User; u != nil || r.Existing != nil {
+		// The relabel above runs without the kernel's SELinux interface in
+		// the target (it labels types only the installed policy knows), and
+		// libselinux then leaves out the home directory contexts: home
+		// directories would be home_root_t. restorecon with the interface
+		// labels them as the installed system does (user_home_dir_t).
+		s := g.run("Show the kernel's SELinux interface to the target", "mount", "-t", "selinuxfs", "selinuxfs", g.t("/sys/fs/selinux"))
+		s.ID, s.Undo = "selinuxfs", []string{"umount", g.t("/sys/fs/selinux")}
+		if r.Existing != nil {
+			g.chroot("Label the /home mount point (the existing files keep their labels)", "restorecon", "-F", "/home")
+		}
+		if u != nil {
+			home := u.HomeDir
+			if home == "" {
+				home = "/home/" + u.Name
+			}
+			s := g.chroot("Label "+home+" for SELinux", "restorecon", "-R", "-F", home)
+			if r.Existing != nil {
+				s.Note = "only the new user's directory: nothing else on the existing /home is changed"
+			}
+		}
+		g.run("Hide the SELinux interface from the target again", "umount", g.t("/sys/fs/selinux")).Release = "selinuxfs"
+	}
 	g.add(Step{Title: "Copy the install log into the installed system",
 		Write: &FileWrite{Path: g.t("/var/log/basalt-installer/install.jsonl"), Mode: 0o600, FromLog: true}})
 	g.chroot("Label the install record", "restorecon", "-R", "/var/log/basalt-installer")
@@ -325,9 +419,13 @@ func (g *gen) all() error {
 	g.run("Flush writes to disk", "sync")
 	if p.Encrypted() {
 		g.run("Wait for device events to settle", "udevadm", "settle", "--timeout=30")
-		g.run("Show what still uses the file system (diagnostics)", "lsblk", "--output", "NAME,TYPE,MOUNTPOINTS", r.SystemDev).Optional = true
+		g.run("Show what still uses the file system (diagnostics)", "lsblk", "--output", "NAME,TYPE,MOUNTPOINTS", r.LUKSDev()).Optional = true
 		s := g.run("Close the encrypted volume", "cryptsetup", "close", r.CryptName())
 		s.Release, s.Retries = "luks-open", 10
+	}
+	if e := r.Existing; e != nil && e.LUKS {
+		s := g.run("Close the existing /home", "cryptsetup", "close", e.Mapper())
+		s.Release, s.Retries = "home-open", 10
 	}
 	return nil
 }
@@ -413,7 +511,23 @@ func (g *gen) accounts() {
 	if u == nil {
 		return
 	}
+	home := u.HomeDir
+	if home == "" {
+		home = "/home/" + u.Name
+	}
+	if u.GID != 0 {
+		g.chroot(fmt.Sprintf("Create the group %s (gid %d, as on the existing /home)", u.Name, u.GID), "groupadd", "--gid", fmt.Sprint(u.GID), u.Name)
+	}
 	argv := []string{"useradd", "--create-home"}
+	if u.HomeDir != "" {
+		argv = append(argv, "--home-dir", u.HomeDir)
+	}
+	if u.UID != 0 {
+		argv = append(argv, "--uid", fmt.Sprint(u.UID))
+	}
+	if u.GID != 0 {
+		argv = append(argv, "--gid", fmt.Sprint(u.GID))
+	}
 	if p.IsAdminUser() {
 		argv = append(argv, "--groups", "wheel")
 	}
@@ -435,7 +549,6 @@ func (g *gen) accounts() {
 			Stdin: u.Name + ":" + u.PasswordHash + "\n", StdinShown: u.Name + ":<password hash>"})
 	}
 	if len(u.SSHKeys) > 0 {
-		home := "/home/" + u.Name
 		g.chroot("Create "+home+"/.ssh", "install", "-d", "-m", "0700", "-o", u.Name, "-g", u.Name, home+"/.ssh")
 		g.write("Authorize SSH keys for "+u.Name, g.t(home+"/.ssh/authorized_keys"), 0o600, strings.Join(u.SSHKeys, "\n")+"\n")
 		g.chroot("Give "+u.Name+" its authorized_keys", "chown", u.Name+":"+u.Name, home+"/.ssh/authorized_keys")
@@ -488,7 +601,7 @@ metadata_expire=6h
 
 func (g *gen) unlock() {
 	r, p := g.r, g.r.Plan
-	key, dev := r.KeyFile(), r.SystemDev
+	key, dev := r.KeyFile(), r.LUKSDev()
 	tangCfg := func() string {
 		if p.Encryption.Tang.Thumbprint != "" {
 			return fmt.Sprintf(`{"url":%q,"thp":%q}`, p.Encryption.Tang.URL, p.Encryption.Tang.Thumbprint)
@@ -553,17 +666,38 @@ func (g *gen) fstab(subvols []plan.Subvolume) string {
 		}
 		fmt.Fprintf(&b, "UUID=%s %s btrfs subvol=%s,compress=zstd:1 0 0\n", r.BtrfsUUID, sv.Mountpoint, sv.Name)
 	}
+	switch {
+	case r.Plan.EncryptsHome():
+		fmt.Fprintf(&b, "UUID=%s /home btrfs compress=zstd:1 0 0\n", r.HomeBtrfsUUID)
+	case r.Existing != nil && r.Existing.LUKS:
+		fmt.Fprintf(&b, "/dev/mapper/%s /home auto defaults 0 2\n", r.Existing.Mapper())
+	case r.Existing != nil:
+		fmt.Fprintf(&b, "UUID=%s /home auto defaults 0 2\n", r.Existing.UUID)
+	}
 	return b.String()
 }
 
 func (g *gen) crypttab() string {
-	opts := "discard"
-	if g.r.EnrollTPM && g.r.Plan.Encryption.Unlock == "tpm2" {
-		// No headless=true: when the TPM refuses, the boot asks for the
-		// recovery key on the console and the serial port.
-		opts += ",tpm2-device=auto"
+	var b strings.Builder
+	if g.r.Plan.Encrypted() {
+		opts := "discard"
+		if g.r.EnrollTPM && g.r.Plan.Encryption.Unlock == "tpm2" {
+			// No headless=true: when the TPM refuses, the boot asks for the
+			// recovery key on the console and the serial port.
+			opts += ",tpm2-device=auto"
+		}
+		fmt.Fprintf(&b, "%s UUID=%s none %s\n", g.r.CryptName(), g.r.LUKSUUID, opts)
 	}
-	return fmt.Sprintf("%s UUID=%s none %s\n", g.r.CryptName(), g.r.LUKSUUID, opts)
+	if e := g.r.Existing; e != nil && e.LUKS {
+		// The existing /home asks for its passphrase at boot (the splash or
+		// the console), unless this machine's TPM was enrolled too.
+		opts := "discard"
+		if g.r.Plan.Home.Existing.TPM2 && g.r.TPM2 {
+			opts += ",tpm2-device=auto"
+		}
+		fmt.Fprintf(&b, "%s UUID=%s none %s\n", e.Mapper(), e.UUID, opts)
+	}
+	return b.String()
 }
 
 // kernelCmdline is the command line of the installed system. withRoot adds
@@ -574,7 +708,7 @@ func (g *gen) kernelCmdline(withRoot bool) string {
 	if withRoot {
 		args = append(args, "root=UUID="+r.BtrfsUUID, "ro", "rootflags=subvol=root")
 	}
-	if p.Encrypted() {
+	if p.EncryptsSystem() {
 		args = append(args, "rd.luks.uuid="+r.CryptName())
 	}
 	args = append(args, "console=tty0", "console=ttyS0,115200n8")
@@ -693,4 +827,16 @@ func (g *gen) summary() string {
 	unlock := p.Encryption.Unlock
 	return fmt.Sprintf("basalt: disk=%s encrypt=%d unlock=%s profile=%s (%s) lockdown=%d finish=%s installer=basalt-installer %s",
 		strings.TrimPrefix(r.Disk.Path, "/dev/"), enc, unlock, r.Profile, r.ProfileReason, lock, p.Finish, r.Installer)
+}
+
+func partRole(role string) string {
+	switch role {
+	case "esp":
+		return "EFI system"
+	case "boot":
+		return "/boot"
+	case "home":
+		return "/home"
+	}
+	return "system"
 }

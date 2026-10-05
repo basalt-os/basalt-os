@@ -106,6 +106,7 @@ def main():
     # The disk the plan names is in the list (and preselected).
     step(con, "disk", r"Where should Basalt OS be installed\?.*/dev/" + re.escape(a.disk), [ENTER], 30)
     step(con, "partitioning", r"Partitioning", [ENTER])
+    step(con, "encryption scope", r"What should be encrypted\?", [ENTER])
     step(con, "encryption", r"Disk encryption \(LUKS2\)", [ENTER])
     step(con, "system", r"Host name", [ENTER, ENTER])
     step(con, "packages", r"Package profile", [ENTER])

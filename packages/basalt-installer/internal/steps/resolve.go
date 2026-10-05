@@ -65,14 +65,65 @@ type Resolved struct {
 	Work      string `json:"work"`
 	MediaDir  string `json:"media_dir"`
 	Installer string `json:"installer_version"`
+
+	// NewParts are the partitions the installation creates, in order.
+	NewParts []NewPart `json:"new_partitions"`
+	// Kept are the partitions of the target disk that stay as they are
+	// (target.wipe false).
+	Kept []probe.Partition `json:"kept_partitions,omitempty"`
+	// ESPShared is true when an existing EFI system partition is used.
+	ESPShared  bool   `json:"esp_shared,omitempty"`
+	ESPNumber  int    `json:"esp_number"`
+	ESPFatUUID string `json:"esp_fat_uuid,omitempty"` // the shared ESP's volume ID
+	// HomeDev is the new /home partition (encryption scope home).
+	HomeDev       string `json:"home_dev,omitempty"`
+	HomeBtrfsUUID string `json:"home_btrfs_uuid,omitempty"`
+	// Existing is the adopted /home partition.
+	Existing *ExistingHome `json:"existing_home,omitempty"`
+}
+
+// NewPart is one partition the installation creates.
+type NewPart struct {
+	Number int    `json:"number"`
+	Role   string `json:"role"` // esp, boot, system, home
+	Dev    string `json:"dev"`
+	// Start and End are sectors (inclusive) when the partition goes into a
+	// free region of a disk that keeps its other partitions; with a wiped
+	// disk Start is 0 and Size is sgdisk's "+<n>M"/"+<n>G" or "0" (the rest).
+	Start    int64  `json:"start,omitempty"`
+	End      int64  `json:"end,omitempty"`
+	Size     string `json:"size,omitempty"`
+	Bytes    int64  `json:"size_bytes,omitempty"`
+	TypeCode string `json:"typecode"`
+	Name     string `json:"name"`
+}
+
+// ExistingHome is the adopted /home partition, as probed.
+type ExistingHome struct {
+	Device string `json:"device"`
+	FSType string `json:"fstype"`
+	UUID   string `json:"uuid"`
+	LUKS   bool   `json:"luks"`
+}
+
+// Mapper is the device-mapper name of the opened existing /home.
+func (e ExistingHome) Mapper() string { return "luks-" + e.UUID }
+
+// LUKSDev is the partition the installation encrypts (the system's, or
+// the new /home's).
+func (r Resolved) LUKSDev() string {
+	if r.Plan.EncryptsHome() {
+		return r.HomeDev
+	}
+	return r.SystemDev
 }
 
 // CryptName is the device-mapper name of the open LUKS volume.
 func (r Resolved) CryptName() string { return "luks-" + r.LUKSUUID }
 
-// BtrfsDev is the block device holding the btrfs file system.
+// BtrfsDev is the block device holding the system's btrfs file system.
 func (r Resolved) BtrfsDev() string {
-	if r.Plan.Encrypted() {
+	if r.Plan.EncryptsSystem() {
 		return "/dev/mapper/" + r.CryptName()
 	}
 	return r.SystemDev
@@ -80,6 +131,9 @@ func (r Resolved) BtrfsDev() string {
 
 // ESPUUID is the FAT volume ID the way fstab and blkid write it.
 func (r Resolved) ESPUUID() string {
+	if r.ESPShared {
+		return r.ESPFatUUID
+	}
 	return strings.ToUpper(r.ESPVolID[:4] + "-" + r.ESPVolID[4:])
 }
 
@@ -139,7 +193,13 @@ func Resolve(p plan.Plan, f probe.Facts, opt Options) (Resolved, error) {
 		}
 	}
 	r.EnrollTPM = p.Encrypted() && strings.Contains(p.Encryption.Unlock, "tpm2") && f.TPM2
-	r.ESPDev, r.BootDev, r.SystemDev = PartitionPath(disk.Path, 1), PartitionPath(disk.Path, 2), PartitionPath(disk.Path, 3)
+	if err := r.layoutPartitions(f); err != nil {
+		return Resolved{}, err
+	}
+	if e := p.Home.Existing; e != nil {
+		part, _ := f.Partition(e.Device)
+		r.Existing = &ExistingHome{Device: part.Path, FSType: part.FSType, UUID: part.UUID, LUKS: part.FSType == "crypto_LUKS"}
+	}
 
 	var err error
 	vol := make([]byte, 4)
@@ -158,12 +218,124 @@ func Resolve(p plan.Plan, f probe.Facts, opt Options) (Resolved, error) {
 	if r.BtrfsUUID, err = uuid4(opt.Random); err != nil {
 		return Resolved{}, err
 	}
+	if r.HomeDev != "" {
+		if r.HomeBtrfsUUID, err = uuid4(opt.Random); err != nil {
+			return Resolved{}, err
+		}
+	}
 	mid := make([]byte, 16)
 	if _, err = io.ReadFull(opt.Random, mid); err != nil {
 		return Resolved{}, err
 	}
 	r.MachineID = hex.EncodeToString(mid)
 	return r, nil
+}
+
+// layoutPartitions chooses the new partitions: numbers 1 to n on a wiped
+// disk; on a disk that keeps its partitions, the lowest free numbers and
+// explicit sectors inside its largest free region.
+func (r *Resolved) layoutPartitions(f probe.Facts) error {
+	p, disk := r.Plan, r.Disk
+	sysType := "8300"
+	if p.EncryptsSystem() {
+		sysType = "8309"
+	}
+	type spec struct {
+		role, typecode, name string
+		bytes                int64 // 0: the rest
+	}
+	var specs []spec
+	if p.Target.ESP == "" {
+		specs = append(specs, spec{"esp", "EF00", "EFI System Partition", int64(p.Layout.ESPMiB) << 20})
+	}
+	specs = append(specs, spec{"boot", "8300", "boot", int64(p.Layout.BootMiB) << 20})
+	sysBytes := int64(p.Layout.RootGiB) << 30
+	space := disk.SizeBytes
+	if !p.Target.Wipe {
+		free, _ := disk.LargestFree()
+		space = free.Bytes
+	}
+	if p.EncryptsHome() && sysBytes == 0 {
+		sysBytes = int64(plan.DefaultSystemGiBWithHome) << 30
+		if half := space / 2; half < sysBytes {
+			sysBytes = half &^ (1<<20 - 1)
+		}
+	}
+	specs = append(specs, spec{"system", sysType, "basalt", sysBytes})
+	if p.EncryptsHome() {
+		specs[len(specs)-1].bytes = sysBytes
+		specs = append(specs, spec{"home", "8309", "basalt-home", 0})
+	}
+	// The last partition takes the rest when its size is 0.
+	used := map[int]bool{}
+	if !p.Target.Wipe {
+		for _, part := range disk.Partitions {
+			used[part.Number] = true
+		}
+		r.Kept = append(r.Kept, disk.Partitions...)
+	}
+	next := func() int {
+		for n := 1; ; n++ {
+			if !used[n] {
+				used[n] = true
+				return n
+			}
+		}
+	}
+	var region probe.Region
+	sector := disk.SectorSize
+	if sector <= 0 {
+		sector = 512
+	}
+	if !p.Target.Wipe {
+		region, _ = disk.LargestFree()
+	}
+	pos := region.Start
+	for i, sp := range specs {
+		np := NewPart{Number: next(), Role: sp.role, TypeCode: sp.typecode, Name: sp.name}
+		np.Dev = PartitionPath(disk.Path, np.Number)
+		last := i == len(specs)-1
+		if p.Target.Wipe {
+			switch {
+			case sp.bytes == 0:
+				np.Size = "0"
+			case sp.bytes%(1<<30) == 0 && sp.role == "system":
+				np.Size = fmt.Sprintf("+%dG", sp.bytes>>30)
+			default:
+				np.Size = fmt.Sprintf("+%dM", sp.bytes>>20)
+			}
+			np.Bytes = sp.bytes
+		} else {
+			n := sp.bytes / sector
+			if sp.bytes == 0 || (last && sp.role != "home" && p.Layout.RootGiB == 0) {
+				n = region.Start + region.Sectors - pos
+			}
+			if pos+n > region.Start+region.Sectors {
+				return fmt.Errorf("the new partitions do not fit in the free space of %s", disk.Path)
+			}
+			np.Start, np.End, np.Bytes = pos, pos+n-1, n*sector
+			pos += n
+		}
+		r.NewParts = append(r.NewParts, np)
+		switch sp.role {
+		case "esp":
+			r.ESPDev, r.ESPNumber = np.Dev, np.Number
+		case "boot":
+			r.BootDev = np.Dev
+		case "system":
+			r.SystemDev = np.Dev
+		case "home":
+			r.HomeDev = np.Dev
+		}
+	}
+	if p.Target.ESP != "" {
+		for _, part := range disk.Partitions {
+			if part.Path == p.Target.ESP {
+				r.ESPShared, r.ESPDev, r.ESPNumber, r.ESPFatUUID = true, part.Path, part.Number, strings.ToUpper(part.UUID)
+			}
+		}
+	}
+	return nil
 }
 
 // PartitionPath names partition n of a disk: /dev/vda -> /dev/vda1,
