@@ -35,6 +35,7 @@ const (
 	HomeType    = "basalt_agent_home_t"
 	ToolType    = "basalt_agent_tool_t"
 	SessionType = "basalt_agent_session_t"
+	SecretType  = "basalt_agent_secret_t"
 	// ProxyPorts carry the type basalt_agent_proxy_port_t.
 	ProxyPorts = "47100-47163"
 )
@@ -44,8 +45,11 @@ func Runcon(domain, level, program string, args ...string) []string {
 	return append([]string{"runcon", "-t", domain, "-l", level, "--", program}, args...)
 }
 
-// Env builds the clean environment of a native session.
-func Env(home, tools string, proxyEnv, profileEnv, secrets map[string]string) []string {
+// Env builds the clean environment of a native session: the base
+// variables, then each map in order (later ones win). basalt-agent passes
+// the proxy variables, the session's own (BASALT_AGENT_SESSION, credential
+// placeholders, base URLs) and the profile's [env]; never a key.
+func Env(home, tools string, layers ...map[string]string) []string {
 	env := map[string]string{
 		"HOME": home, "USER": os.Getenv("USER"), "LOGNAME": os.Getenv("USER"), "SHELL": "/bin/bash",
 		"PATH":            strings.Join([]string{filepath.Join(tools, "bin"), filepath.Join(tools, "venv/bin"), "/usr/local/bin", "/usr/bin"}, ":"),
@@ -61,7 +65,7 @@ func Env(home, tools string, proxyEnv, profileEnv, secrets map[string]string) []
 			env[k] = v
 		}
 	}
-	for _, m := range []map[string]string{proxyEnv, profileEnv, secrets} {
+	for _, m := range layers {
 		for k, v := range m {
 			env[k] = v
 		}

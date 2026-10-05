@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,8 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/allowlist"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/credential"
 )
 
 // Config is the first line the launcher writes to the proxy process.
@@ -22,6 +25,10 @@ type Config struct {
 	Listen string   `json:"listen"`
 	Allow  []string `json:"allow"`
 	Token  string   `json:"token,omitempty"`
+	// Credentials are the session's API keys with their routes. They
+	// arrive only on this pipe from the launcher, never in the
+	// environment, a file or a command line.
+	Credentials []credential.Route `json:"credentials,omitempty"`
 }
 
 // Command is any later line from the launcher: {"op":"allow","entry":"name:port"}.
@@ -88,6 +95,12 @@ func listen(spec string) (net.Listener, error) {
 // readiness and decisions on out. It returns when in is closed (the
 // launcher ended), so a session's proxy never outlives its launcher.
 func RunProcess(in io.Reader, out io.Writer) error {
+	// Not dumpable: no core dumps, and the kernel makes /proc/PID (memory,
+	// environment, file descriptors) root-owned and refuses ptrace from the
+	// user's other processes, whatever SELinux says. The keys live here.
+	if err := setNotDumpable(); err != nil {
+		return fmt.Errorf("prctl(PR_SET_DUMPABLE): %w", err)
+	}
 	var mu sync.Mutex
 	emit := func(m Message) {
 		b, _ := json.Marshal(m)
@@ -101,8 +114,13 @@ func RunProcess(in io.Reader, out io.Writer) error {
 		return fmt.Errorf("no configuration on stdin: %w", err)
 	}
 	var cfg Config
-	if err := json.Unmarshal(first, &cfg); err != nil {
-		return fmt.Errorf("bad configuration: %w", err)
+	err = json.Unmarshal(first, &cfg)
+	for i := range first {
+		first[i] = 0
+	}
+	if err != nil {
+		// The error never quotes the line: it may hold keys.
+		return errors.New("bad configuration")
 	}
 	list := allowlist.New(nil)
 	for _, a := range cfg.Allow {
@@ -118,7 +136,7 @@ func RunProcess(in io.Reader, out io.Writer) error {
 		return err
 	}
 	defer l.Close()
-	s := &Server{List: list, Token: cfg.Token, OnDecision: func(d Decision) { emit(Message{Decision: &d}) }}
+	s := &Server{List: list, Token: cfg.Token, Routes: cfg.Credentials, OnDecision: func(d Decision) { emit(Message{Decision: &d}) }}
 	go func() { _ = s.Serve(l) }()
 	emit(Message{Ready: true, Addr: l.Addr().String()})
 
@@ -136,6 +154,15 @@ func RunProcess(in io.Reader, out io.Writer) error {
 		}
 		list.Add(e)
 		emit(Message{Added: e.String()})
+	}
+	return nil
+}
+
+const prSetDumpable = 4
+
+func setNotDumpable() error {
+	if _, _, e := syscall.RawSyscall6(syscall.SYS_PRCTL, prSetDumpable, 0, 0, 0, 0, 0); e != 0 {
+		return e
 	}
 	return nil
 }

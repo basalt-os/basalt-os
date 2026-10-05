@@ -22,7 +22,7 @@ basalt ledger summary --since today         the same through the basalt command
 
 | Producer | Events | How it arrives |
 |---|---|---|
-| basalt-agent | `session.start`, `session.end`, `egress.allow`, `egress.deny`, `grant.request`, `grant.apply`, `relabel`, `install`, `egress.change` | the launcher sends each record of its session log (schema v1) over the socket |
+| basalt-agent | `session.start`, `session.end`, `egress.allow`, `egress.deny`, `credential.use`, `credential.strip`, `grant.request`, `grant.apply`, `relabel`, `install`, `egress.change` | the launcher sends each record of its session log (schema v1) over the socket |
 | basalt-resolver | `egress.session.*`, `dns.allow`, `dns.deny`, `dns.rebinding`, `dns.direct`, `egress.drop`, `egress.grant` | socket, from root in `basalt_resolver_t` only |
 | basalt-assistant | `assistant.<type>` (decision, proposal, confirm, apply, refuse, seal and the rest) | journal: the assistant writes every audit record there with its chain fields |
 | selinux | `selinux.avc`, `selinux.error` | journal (audit transport); a denial at the SELinux level of a running agent session is attributed to that session |

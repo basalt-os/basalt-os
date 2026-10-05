@@ -10,8 +10,9 @@
 //     relabeled to that level (":Z"), so no other session can open them;
 //   - a read-only root file system (the tool image layers), tmpfs for /tmp,
 //     /run and /var/tmp, no capabilities, no new privileges;
-//   - only the project, the profile's own home and the session files
-//     mounted; nothing else from the user's home.
+//   - only the project, the profile's own home and the proxy socket
+//     mounted; nothing else from the user's home, and no API key (the
+//     session proxy holds the keys, the agent sees placeholders).
 package podman
 
 import (
@@ -29,7 +30,6 @@ const (
 	AgentHome    = "/home/agent"
 	SessionDir   = "/run/basalt-agent"
 	ProxySocket  = SessionDir + "/proxy.sock"
-	SecretsFile  = SessionDir + "/secrets.env"
 	EntryPath    = "/usr/local/libexec/basalt-agent-entry"
 	ProxyAddr    = "127.0.0.1:3128"
 	ImagePrefix  = "localhost/basalt-agent-"
@@ -47,7 +47,6 @@ type Spec struct {
 	Project     string // host path
 	AgentHome   string // host path
 	ProxySocket string // host path
-	SecretsFile string // host path, empty when no secrets
 	Env         map[string]string
 	Command     []string
 	TTY         bool
@@ -78,9 +77,6 @@ func RunArgs(s Spec) []string {
 	for _, ro := range s.ReadOnly {
 		a = append(a, "-v", filepath.Join(s.Project, ro)+":"+filepath.Join(WorkDir, ro)+":ro")
 	}
-	if s.SecretsFile != "" {
-		a = append(a, "-v", s.SecretsFile+":"+SecretsFile+":Z,ro")
-	}
 	keys := make([]string, 0, len(s.Env))
 	for k := range s.Env {
 		keys = append(keys, k)
@@ -93,14 +89,19 @@ func RunArgs(s Spec) []string {
 	return append(a, s.Command...)
 }
 
-// SessionEnv is the environment every container session gets (secrets
-// are not here: they travel in the secrets file, never on a command line).
-func SessionEnv(pr *profile.Profile) map[string]string {
+// SessionEnv is the environment of a container session: the base
+// variables, the proxy, session (BASALT_AGENT_SESSION, credential
+// placeholders and base URLs), then the profile's [env]. Keys are never
+// here: they stay in the session proxy.
+func SessionEnv(pr *profile.Profile, session map[string]string) map[string]string {
 	env := map[string]string{
 		"HOME": AgentHome, "USER": "agent", "LOGNAME": "agent", "SHELL": "/bin/bash",
 		"PATH": "/usr/local/bin:/usr/bin:/opt/agent/bin",
 	}
 	for k, v := range ProxyEnv("http://" + ProxyAddr) {
+		env[k] = v
+	}
+	for k, v := range session {
 		env[k] = v
 	}
 	for k, v := range pr.Env {

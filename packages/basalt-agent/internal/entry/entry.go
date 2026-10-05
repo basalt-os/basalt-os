@@ -1,10 +1,10 @@
 // Package entry is the container entry point of a session (the
 // basalt-agent binary copied into the tool image as basalt-agent-entry).
 //
-// It loads the session's secrets from the mounted secrets file into the
-// environment, opens a loopback forwarder (127.0.0.1:3128) to the session
-// proxy's Unix socket (the container has no other network), runs the
-// agent and returns its exit status.
+// It opens a loopback forwarder (127.0.0.1:3128) to the session proxy's
+// Unix socket (the container has no other network), runs the agent and
+// returns its exit status. API keys never enter the container: the agent
+// has placeholders and the session proxy adds the real credential.
 package entry
 
 import (
@@ -18,7 +18,6 @@ import (
 	"syscall"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/podman"
-	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/secrets"
 )
 
 // Forward accepts on l and connects each client to the Unix socket sock.
@@ -47,14 +46,6 @@ func Forward(l net.Listener, sock string) {
 func Run(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "basalt-agent-entry: no command")
-		return 2
-	}
-	if b, err := os.ReadFile(podman.SecretsFile); err == nil {
-		for k, v := range secrets.ParseEnvFile(b) {
-			_ = os.Setenv(k, v)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintf(os.Stderr, "basalt-agent-entry: secrets: %v\n", err)
 		return 2
 	}
 	l, err := net.Listen("tcp", podman.ProxyAddr)

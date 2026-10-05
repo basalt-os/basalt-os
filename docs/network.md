@@ -257,9 +257,11 @@ the stub resolver, run `nft` (as `iptables_t`), read nflog over netlink,
 look at cgroup directories and connect to the ledger. Users' domains may
 connect to the control socket; agent domains may not.
 
-The session proxy (`basalt_agent_proxy_t`) may resolve names and connect
-to any TCP port; native agents (`basalt_agent_t`) only to the proxy port
-type unless `basalt_agent_direct_egress` is on.
+The session proxy (`basalt_agent_proxy_t`) may resolve names, connect
+to any TCP port and read the system trust store (it verifies the model
+providers it sends API keys to, `docs/agents.md`, Secrets); native agents
+(`basalt_agent_t`) only connect to the proxy port type unless
+`basalt_agent_direct_egress` is on.
 
 ## Configuration
 

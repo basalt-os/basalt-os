@@ -1,2 +1,3 @@
 HOME_DIR/\.local/share/basalt-agent/home(/.*)?		gen_context(system_u:object_r:basalt_agent_home_t,s0)
 HOME_DIR/\.local/share/basalt-agent/tools(/.*)?		gen_context(system_u:object_r:basalt_agent_tool_t,s0)
+HOME_DIR/\.config/basalt-agent/secrets(/.*)?		gen_context(system_u:object_r:basalt_agent_secret_t,s0)

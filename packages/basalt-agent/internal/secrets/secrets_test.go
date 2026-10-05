@@ -24,9 +24,6 @@ func TestLoad(t *testing.T) {
 	if len(missing) != 1 || missing[0] != "NOT_THERE" {
 		t.Errorf("missing %v", missing)
 	}
-	if got := ParseEnvFile(EnvFile(vals)); got["ANTHROPIC_API_KEY"] != "sk-test-1" {
-		t.Errorf("round trip %v", got)
-	}
 
 	// A readable file is refused.
 	if err := os.Chmod(f, 0o644); err != nil {

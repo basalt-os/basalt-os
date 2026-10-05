@@ -38,14 +38,20 @@ const Version = 1
 
 // Events written by basalt-agent.
 const (
-	SessionStart = "session.start" // data: command, image, egress (list), secrets (names only), relabeled (count)
-	SessionEnd   = "session.end"   // data: exit_code, duration_s, egress_allowed, egress_denied
+	SessionStart = "session.start" // data: command, image, egress (list), secrets (names only), credentials (name, host, port, header), secrets_withheld, relabeled (count)
+	SessionEnd   = "session.end"   // data: exit_code, duration_s, egress_allowed, egress_denied, credential_uses (count by name), credential_stripped
 	EgressAllow  = "egress.allow"  // data: host, port (first connection per host:port in a session)
 	EgressDeny   = "egress.deny"   // data: host, port, reason
 	GrantRequest = "grant.request" // data: kind (host, path), value, by_uid
 	GrantApply   = "grant.apply"   // outcome ok or error; data: kind, value
 	Relabel      = "relabel"       // data: path, type, level, count
 	Install      = "install"       // data: method, package, target
+	// The session proxy used a key for the agent (first request per key
+	// and host in a session); data: credential (the name, never the value), host, port.
+	CredentialUse = "credential.use"
+	// Credential headers were removed from a request to a host they do
+	// not belong to; data: host, port, headers (names), reason.
+	CredentialStrip = "credential.strip"
 )
 
 // Subject identifies the confined session an event belongs to.

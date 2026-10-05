@@ -4,7 +4,11 @@
 # (packages/basalt-agent/tests) and the policy/binary build to the VM and
 # runs packages/basalt-agent/tests/driver.sh there.
 #
-#   scripts/lab/agent-test.sh [setup|native|container|avc|all]   default: all
+#   scripts/lab/agent-test.sh [setup|native|container|credentials|avc|all]   default: all
+#
+# credentials: the API key stays in the session proxy (mock provider over
+# TLS, Claude Code end to end, read and exfiltration attempts) in both
+# modes, plus the static SELinux proof.
 #
 # The VM is selected by the usual VM_NAME/VM_HOST (.env). The agent package
 # must already be installed on the VM (make rpm-agent repo, then dnf install
@@ -25,6 +29,9 @@ tar -C "$pkg" --exclude=./bin --exclude='*.pp*' --exclude=./selinux/tmp -czf - t
       install -Dm644 /opt/agent-tests/labvictim.conf /etc/basalt-agent/profiles/labvictim.conf &&
       install -Dm644 /opt/agent-tests/labshell.conf /etc/basalt-agent/profiles/labshell.conf'
 
+# The lab DNS server is shared with the resolver and ledger tests.
+vm 'cat >/opt/agent-tests/labdns.py && chmod a+rx /opt/agent-tests/labdns.py' <"$REPO_ROOT/packages/basalt-ledger/tests/labdns.py"
+
 if [[ "${AGENT_DEV:-0}" == 1 ]]; then
   log "AGENT_DEV: pushing a local build and compiled policy"
   ( cd "$pkg" && CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=dev" -o /tmp/basalt-agent ./cmd/basalt-agent )
@@ -44,13 +51,23 @@ fi
 run() { log "driver.sh $1"; vm "bash /opt/agent-tests/driver.sh $1"; }
 case "$mode" in
   setup|native|container|avc) run "$mode" ;;
+  credentials)
+    run credsetup
+    run "credentials native"
+    run "credentials container"
+    run selinux
+    ;;
   all)
     run setup
     run native
     run container
+    run credsetup
+    run "credentials native"
+    run "credentials container"
+    run selinux
     log "SELinux denials of agent domains today (expect only the denied escape attempts, none during allowed work)"
     vm 'bash /opt/agent-tests/driver.sh avc today | tail -20 || true'
     ;;
-  *) die "usage: agent-test.sh [setup|native|container|avc|all]" ;;
+  *) die "usage: agent-test.sh [setup|native|container|credentials|avc|all]" ;;
 esac
 log "agent-test done"

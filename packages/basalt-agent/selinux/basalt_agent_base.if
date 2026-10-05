@@ -217,8 +217,10 @@ interface(`basalt_agent_connect_proxy',`
 
 ########################################
 ## <summary>
-##	For launchers: relabel files to and from the agent file types and
-##	manage session runtime directories.
+##	For launchers: relabel files to and from the agent file types, manage
+##	session runtime directories and the secret store. Never for an agent
+##	domain (the base module's neverallow rules forbid the secret store to
+##	every agent domain).
 ## </summary>
 ## <param name="domain">
 ##	<summary>Domain type.</summary>
@@ -227,11 +229,14 @@ interface(`basalt_agent_connect_proxy',`
 interface(`basalt_agent_launcher',`
 	gen_require(`
 		type basalt_agent_project_t, basalt_agent_project_ro_t, basalt_agent_home_t;
-		type basalt_agent_tool_t, basalt_agent_session_t;
+		type basalt_agent_tool_t, basalt_agent_session_t, basalt_agent_secret_t;
 	')
 
-	relabel_dirs_pattern($1, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t }, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t })
-	relabel_files_pattern($1, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t }, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t })
+	relabel_dirs_pattern($1, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t basalt_agent_secret_t }, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t basalt_agent_secret_t })
+	relabel_files_pattern($1, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t basalt_agent_secret_t }, { basalt_agent_project_t basalt_agent_project_ro_t basalt_agent_home_t basalt_agent_tool_t basalt_agent_session_t basalt_agent_secret_t })
+	# The launcher reads the secret store (it hands keys to the proxy).
+	manage_dirs_pattern($1, basalt_agent_secret_t, basalt_agent_secret_t)
+	manage_files_pattern($1, basalt_agent_secret_t, basalt_agent_secret_t)
 	manage_dirs_pattern($1, basalt_agent_session_t, basalt_agent_session_t)
 	manage_files_pattern($1, basalt_agent_session_t, basalt_agent_session_t)
 	manage_sock_files_pattern($1, basalt_agent_session_t, basalt_agent_session_t)

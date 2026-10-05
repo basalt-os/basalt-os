@@ -1,4 +1,4 @@
-policy_module(basalt_agent_base, 0.1.0)
+policy_module(basalt_agent_base, 0.2.0)
 
 # Basalt agent family: what every AI agent domain on Basalt OS shares
 # (basalt-agent's command line agents, the desktop shell's AI client and
@@ -47,6 +47,12 @@ files_tmpfs_file(basalt_agent_tmpfs_t)
 type basalt_agent_session_t;
 userdom_user_tmp_content(basalt_agent_session_t)
 
+# The user's API keys for agent sessions (~/.config/basalt-agent/secrets).
+# The launcher reads them and hands them to the session proxy on a pipe;
+# no agent domain may open, read, list or even look at them.
+type basalt_agent_secret_t;
+userdom_user_home_content(basalt_agent_secret_t)
+
 # Loopback ports of the session egress proxies (tcp 47100-47163, set by
 # the basalt_agent_ports module). Agent domains connect to these and to
 # nothing else on the network.
@@ -63,18 +69,32 @@ gen_require(`
 	type sudo_exec_t, shadow_t, security_t;
 ')
 
+# Opening is what matters: Fedora's base policy lets every domain map, and
+# application domains read or append to, files they already hold open (a
+# descriptor inherited from the launcher), so those permissions are not
+# listed where the base policy grants them; without open they reach
+# nothing. (Checked with expand-check: these rules hold against the stock
+# policy.)
+#
 # Credentials: SSH keys, GnuPG keys, user certificates, the password database.
-neverallow basalt_agent_domain { ssh_home_t gpg_secret_t home_cert_t }:file { open read map execute };
+neverallow basalt_agent_domain { ssh_home_t gpg_secret_t home_cert_t }:file { open read execute };
 neverallow basalt_agent_domain shadow_t:file { open read };
 # The rest of the home and the user's runtime sockets (session bus,
 # keyring, the shell's control socket): the launcher hands over paths by
 # relabeling them, nothing else.
-neverallow basalt_agent_domain { user_home_t user_tmp_t }:file { open read write append };
+neverallow basalt_agent_domain user_home_t:file { open read write };
+neverallow basalt_agent_domain user_tmp_t:file open;
 neverallow basalt_agent_domain user_tmp_t:sock_file write;
 neverallow basalt_agent_domain self:capability { setuid setgid sys_admin sys_ptrace dac_override dac_read_search fowner chown };
 neverallow basalt_agent_domain sudo_exec_t:file execute;
 neverallow basalt_agent_domain security_t:security { load_policy setenforce setbool };
 # Agents never change their own tools or the session runtime.
 neverallow basalt_agent_domain basalt_agent_tool_t:file { write append };
-neverallow basalt_agent_domain basalt_agent_session_t:file { open read write };
+neverallow basalt_agent_domain basalt_agent_session_t:file { open write };
 neverallow basalt_agent_domain basalt_agent_project_ro_t:file { write append };
+# API keys never reach an agent: no agent domain may open, read or list the
+# secret store (the session proxy, outside the family, holds the keys).
+# Searching through it and mapping an already open file are granted to all
+# home content by the base policy and give nothing without open and read.
+neverallow basalt_agent_domain basalt_agent_secret_t:file { open read getattr ioctl lock execute };
+neverallow basalt_agent_domain basalt_agent_secret_t:dir { read add_name remove_name write };

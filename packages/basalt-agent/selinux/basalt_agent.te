@@ -1,4 +1,4 @@
-policy_module(basalt_agent, 0.2.0)
+policy_module(basalt_agent, 0.3.0)
 
 # basalt-agent: AI coding agent command lines (Claude Code, Codex CLI,
 # Gemini CLI, Aider, ...) confined by SELinux. Two domains:
@@ -22,7 +22,10 @@ policy_module(basalt_agent, 0.2.0)
 #
 # basalt_agent_proxy_t, the per-session egress proxy. The only part of a
 # session that resolves names and reaches the network, on the ports its
-# allowlist names.
+# allowlist names. It also holds the session's API keys (handed over on a
+# pipe by the launcher) and adds them to requests for the provider host
+# each key belongs to, over TLS it verifies against the system trust
+# store. Agent domains cannot read, trace or signal it.
 
 gen_require(`
 	type unconfined_t;
@@ -102,6 +105,10 @@ optional_policy(`
 	dontaudit basalt_agent_t io_uring_t:anon_inode create;
 ')
 
+# Runtimes read vm.mmap_min_addr at start (Bun, which Claude Code is
+# built with); a read-only system setting.
+kernel_read_vm_sysctls(basalt_agent_t)
+
 # The helper checks its own context before running the agent.
 allow basalt_agent_t self:process { getattr setexec };
 # Programs re-execute themselves (node spawns node).
@@ -150,6 +157,18 @@ manage_sock_files_pattern(basalt_agent_proxy_t, basalt_agent_session_t, basalt_a
 # direct egress off.
 sysnet_dns_name_resolve(basalt_agent_proxy_t)
 corenet_tcp_connect_all_ports(basalt_agent_proxy_t)
+
+# TLS to the model providers (credential routes): the system trust store.
+miscfiles_read_generic_certs(basalt_agent_proxy_t)
+
+# The keys are in the proxy's memory: no agent domain may read its /proc
+# entries (memory, environment, file descriptors), trace it or signal it.
+# The proxy also makes itself non-dumpable, so the kernel refuses ptrace
+# and /proc access from the user's other processes as well.
+neverallow basalt_agent_domain basalt_agent_proxy_t:process { ptrace signal sigkill sigstop signull getattr };
+neverallow basalt_agent_domain basalt_agent_proxy_t:{ file lnk_file } { open read getattr };
+neverallow basalt_agent_domain basalt_agent_proxy_t:dir { open read search getattr };
+# Container sessions run in another PID namespace and never see the proxy.
 
 ########################################
 #

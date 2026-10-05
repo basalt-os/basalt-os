@@ -12,15 +12,19 @@ func TestRunArgs(t *testing.T) {
 	s := Spec{Session: "s-0123456789ab", Image: Image("claude"), Level: "s0:c7,c42",
 		Project: "/home/u/src/app", AgentHome: "/home/u/.local/share/basalt-agent/home/claude",
 		ProxySocket: "/run/user/1000/basalt-agent/s-0123456789ab/proxy.sock",
-		SecretsFile: "/run/user/1000/basalt-agent/s-0123456789ab/secrets.env",
-		Env:         SessionEnv(pr), Command: []string{"claude", "--version"}, TTY: true,
+		Env: SessionEnv(pr, map[string]string{"BASALT_AGENT_SESSION": "s-0123456789ab",
+			"ANTHROPIC_API_KEY": "basalt-agent-key-injected-by-session-proxy", "ANTHROPIC_BASE_URL": "http://api.anthropic.com"}),
+		Command: []string{"claude", "--version"}, TTY: true,
 		ReadOnly: []string{".git/hooks"}}
 	a := strings.Join(RunArgs(s), " ")
 	for _, want := range []string{
 		"--network none", "--read-only --read-only-tmpfs", "--cap-drop all", "no-new-privileges",
 		"label=level:s0:c7,c42", "--userns keep-id",
 		"-v /home/u/src/app:/work:Z", "-v /home/u/.local/share/basalt-agent/home/claude:/home/agent:Z",
-		"proxy.sock:/run/basalt-agent/proxy.sock:Z", "secrets.env:/run/basalt-agent/secrets.env:Z,ro",
+		"proxy.sock:/run/basalt-agent/proxy.sock:Z",
+		"--env BASALT_AGENT_SESSION=s-0123456789ab",
+		"--env ANTHROPIC_API_KEY=basalt-agent-key-injected-by-session-proxy",
+		"--env ANTHROPIC_BASE_URL=http://api.anthropic.com",
 		"-v /home/u/src/app/.git/hooks:/work/.git/hooks:ro",
 		"--env HTTPS_PROXY=http://127.0.0.1:3128", "--env DISABLE_AUTOUPDATER=1",
 		"localhost/basalt-agent-claude:latest claude --version",
@@ -29,7 +33,7 @@ func TestRunArgs(t *testing.T) {
 			t.Errorf("missing %q in\n%s", want, a)
 		}
 	}
-	for _, bad := range []string{"API_KEY", "--privileged", "label=disable", "--network host", ":z"} {
+	for _, bad := range []string{"secrets.env", "sk-", "--privileged", "label=disable", "--network host", ":z"} {
 		if strings.Contains(a, bad) {
 			t.Errorf("unexpected %q in\n%s", bad, a)
 		}

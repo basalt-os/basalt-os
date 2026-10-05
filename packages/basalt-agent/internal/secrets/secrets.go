@@ -6,7 +6,9 @@
 // (secret-tool store --label=... service basalt-agent profile PROFILE name KEY).
 //
 // Only the names a profile lists are read, and values are never logged:
-// the audit log records the names that were injected.
+// the audit log records the names that were used. The launcher hands the
+// values to the session proxy on a private pipe; the agent never gets
+// them (internal/credential).
 package secrets
 
 import (
@@ -99,24 +101,4 @@ func keyring(profile, name string) (string, bool) {
 	}
 	v := strings.TrimRight(string(out), "\n")
 	return v, v != ""
-}
-
-// EnvFile renders vals as a KEY=VALUE file for the container entry point.
-func EnvFile(vals map[string]string) []byte {
-	var b strings.Builder
-	for k, v := range vals {
-		fmt.Fprintf(&b, "%s=%s\n", k, v)
-	}
-	return []byte(b.String())
-}
-
-// ParseEnvFile is the inverse of EnvFile (used inside the container).
-func ParseEnvFile(data []byte) map[string]string {
-	out := map[string]string{}
-	for _, line := range strings.Split(string(data), "\n") {
-		if k, v, ok := strings.Cut(line, "="); ok && k != "" {
-			out[k] = v
-		}
-	}
-	return out
 }

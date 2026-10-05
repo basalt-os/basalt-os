@@ -1,7 +1,7 @@
 # basalt-agent: run AI coding agents (Claude Code, Codex CLI, Gemini CLI,
 # Aider) confined by SELinux, in a rootless podman container or in a native
-# SELinux domain, with a per-session egress allowlist, per-session secrets
-# and a hash-chained session audit log. One static Go binary installed
+# SELinux domain, with a per-session egress allowlist, API keys held by the
+# session proxy (never by the agent) and a hash-chained session audit log. One static Go binary installed
 # under several names; the SELinux policy ships in the -selinux subpackage.
 
 %global selinuxtype targeted
@@ -9,7 +9,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-agent
-Version:        0.2.1
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Run AI coding agents confined by SELinux (container or native)
 License:        Apache-2.0
@@ -41,8 +41,11 @@ profiles, other projects or the network beyond a per-profile allowlist.
 Container mode (default) uses rootless podman: the project is mounted with
 a unique SELinux MCS category per session, the tool image is read only, the
 container has no network of its own and reaches the model API and package
-registries only through the session's filtering proxy, and API keys are
-injected per session from a secret file or the keyring.
+registries only through the session's filtering proxy. API keys never
+enter the session: the proxy reads them from the launcher, adds them only
+to requests for the provider host each key belongs to (over verified TLS)
+and removes credential headers from requests to any other host; the agent
+sees placeholders.
 
 Native mode enters the SELinux domain basalt_agent_t by a type transition
 from the launcher: the agent reads and writes only the project (relabeled
@@ -173,6 +176,36 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_agent.if
 
 %changelog
+* Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
+- Security: API keys never enter an agent session. The agent gets a
+  placeholder and a plain-HTTP base URL for its provider (for example
+  ANTHROPIC_BASE_URL=http://api.anthropic.com); the session proxy removes
+  the agent's credential headers, adds the real key only on requests to
+  the host the key belongs to and forwards them over TLS verified against
+  the system trust store. Requests to other hosts lose their credential
+  headers and are refused if they carry a key. Before, the key was in the
+  agent's environment (native) or in a file the agent read (container), so
+  a prompt-injected agent could send it to an allowlisted host.
+- Built-in routes for Anthropic, OpenAI, Gemini and OpenRouter keys;
+  profiles add or replace them with "route = ..." in [secrets]. A key
+  without a usable route is not used and the session says why.
+- The proxy is non-dumpable and runs with a minimal environment; keys
+  reach it only on the launcher's pipe. Container sessions no longer
+  mount a secrets file.
+- SELinux: the secret store (~/.config/basalt-agent/secrets) has its own
+  type, basalt_agent_secret_t, which no agent domain may open, read or
+  list (neverallow);
+  agent domains may not read, trace or signal the proxy (neverallow); the
+  proxy reads the system trust store. The family neverallow rules now
+  hold under expand-check against the stock policy: they forbid opening
+  credential files, not the map/read/append on already open descriptors
+  that Fedora's base policy grants every domain.
+- Audit: credential.use (the key's name, never its value) and
+  credential.strip records; session.start lists the credentials and any
+  withheld keys, session.end counts uses.
+- BASALT_AGENT_SESSION is set inside every session (both modes), so tools
+  such as basalt-prompt can show the session.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
 - The session proxy may connect to any TCP port: the allowlist and the
   kernel filter decide where it goes, so "private" entries on non-HTTP

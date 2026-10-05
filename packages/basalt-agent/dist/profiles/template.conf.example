@@ -25,9 +25,19 @@ packages = nodejs npm git
 #EXAMPLE_TELEMETRY = off
 
 [secrets]
-# Variables read from ~/.config/basalt-agent/secrets/NAME.env (mode 0600)
-# or the keyring, and given to one session only.
+# API keys read from ~/.config/basalt-agent/secrets/NAME.env (mode 0600)
+# or the keyring, for one session. The agent never sees a key: it gets a
+# placeholder in the variable, and the session proxy adds the real key only
+# to requests for the host the key belongs to. Keys with a built-in route
+# (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, OPENAI_API_KEY, GEMINI_API_KEY,
+# GOOGLE_API_KEY, OPENROUTER_API_KEY) need nothing more; any other key
+# needs a route, or it is not used:
+#   route = NAME HOST[:PORT] header=HEADER [scheme=Bearer] [base_env=VAR] [base_path=/v1]
+# base_env names the variable that points the agent at http://HOST[base_path];
+# the proxy sends those requests to https://HOST:PORT with the key. HOST
+# must be on the egress list at PORT (default 443).
 env = EXAMPLE_API_KEY
+route = EXAMPLE_API_KEY api.example.com header=Authorization scheme=Bearer base_env=EXAMPLE_BASE_URL
 
 [egress]
 # Names the agent may reach through the session proxy (allowlist format:

@@ -54,9 +54,13 @@ func (d Dirs) AgentHome(profile string) string { return filepath.Join(d.Data, "h
 // Tools is the per-profile tool directory for native mode.
 func (d Dirs) Tools(profile string) string { return filepath.Join(d.Data, "tools", profile) }
 
+// SecretDir holds the per-profile secret files (SELinux type
+// basalt_agent_secret_t: no agent domain may read it).
+func (d Dirs) SecretDir() string { return filepath.Join(d.Config, "secrets") }
+
 // SecretFile is the per-profile secret store.
 func (d Dirs) SecretFile(profile string) string {
-	return filepath.Join(d.Config, "secrets", profile+".env")
+	return filepath.Join(d.SecretDir(), profile+".env")
 }
 
 // AuditLog is the session audit log.

@@ -19,6 +19,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/allowlist"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/audit"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/credential"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/egress"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/ledger"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/native"
@@ -48,6 +49,8 @@ type run struct {
 	allowed   int
 	denied    int
 	auditErrs int
+	credUses  map[string]int // requests sent with each credential (by name)
+	stripped  int            // requests that lost credential headers
 
 	// kernel is set when basalt-resolver filters the session in the
 	// kernel (default-deny by cgroup); ledger forwards the records.
@@ -119,7 +122,8 @@ func cmdRun(args []string) (int, error) {
 	}
 	// Native mode is default-deny in the kernel: without basalt-resolver
 	// there is no kernel filter, so the session does not start (fail closed).
-	r := &run{dirs: d, pr: pr, log: audit.Open(d.AuditLog()), seen: map[string]bool{}, kernel: egress.Available()}
+	r := &run{dirs: d, pr: pr, log: audit.Open(d.AuditLog()), seen: map[string]bool{}, credUses: map[string]int{},
+		kernel: egress.Available()}
 	if *mode == "native" && !r.kernel {
 		return 1, errors.New("native mode needs basalt-resolver for its default-deny network (systemctl enable --now basalt-resolver)")
 	}
@@ -147,6 +151,13 @@ func cmdRun(args []string) (int, error) {
 		return 1, err
 	}
 
+	// The secret store is labeled so no agent domain can read it, even if
+	// a later policy gave an agent the rest of ~/.config.
+	if fi, err := os.Stat(d.SecretDir()); err == nil && fi.IsDir() {
+		if _, err := selinux.Relabel(d.SecretDir(), native.SecretType, "s0", nil); err != nil {
+			fmt.Fprintf(os.Stderr, "basalt-agent: warning: labeling %s: %v\n", d.SecretDir(), err)
+		}
+	}
 	vals, missing, err := secrets.Load(d.SecretFile(pr.Name), pr.Name, pr.SecretEnv)
 	if err != nil {
 		return 1, err
@@ -154,6 +165,19 @@ func cmdRun(args []string) (int, error) {
 	if len(vals) == 0 && len(pr.SecretEnv) > 0 {
 		fmt.Fprintf(os.Stderr, "basalt-agent: no API key for %s (%s in %s); the agent may ask you to log in\n",
 			pr.Name, strings.Join(missing, " or "), d.SecretFile(pr.Name))
+	}
+	// Keys stay in the session proxy. The agent gets a placeholder and a
+	// base URL; a key without a usable route is not used at all.
+	creds, withheld := credentialRoutes(pr, vals)
+	for _, w := range withheld {
+		fmt.Fprintf(os.Stderr, "basalt-agent: %s is not used in this session: %s\n", w["name"], w["reason"])
+	}
+	agentEnv := map[string]string{"BASALT_AGENT_SESSION": r.info.ID}
+	for _, c := range creds {
+		agentEnv[c.Name] = credential.Placeholder
+		if c.BaseEnv != "" {
+			agentEnv[c.BaseEnv] = c.BaseURL()
+		}
 	}
 
 	// The session proxy: Unix socket for a container, loopback port with a
@@ -164,7 +188,7 @@ func cmdRun(args []string) (int, error) {
 		token = session.RandomToken()
 		listen = "tcp:127.0.0.1:" + native.ProxyPorts
 	}
-	addr, err := r.startProxy(listen, token)
+	addr, err := r.startProxy(listen, token, creds)
 	if err != nil {
 		return 1, err
 	}
@@ -190,9 +214,11 @@ func cmdRun(args []string) (int, error) {
 	}
 	defer stopCtl()
 
-	var names []string
-	for k := range vals {
-		names = append(names, k)
+	names := make([]string, 0, len(creds))
+	credInfo := make([]map[string]any, 0, len(creds))
+	for _, c := range creds {
+		names = append(names, c.Name)
+		credInfo = append(credInfo, c.Describe())
 	}
 	hosts := make([]string, 0, len(pr.Egress))
 	for _, e := range pr.Egress {
@@ -202,12 +228,15 @@ func cmdRun(args []string) (int, error) {
 	command := append(append([]string{pr.Command}, pr.Args...), extra...)
 
 	var cmd *exec.Cmd
-	startData := map[string]any{"command": command, "egress": hosts, "secrets": names, "proxy": addr, "egress_filter": filter,
-		"loopback": pr.Loopback}
+	startData := map[string]any{"command": command, "egress": hosts, "secrets": names, "credentials": credInfo,
+		"proxy": addr, "egress_filter": filter, "loopback": pr.Loopback}
+	if len(withheld) > 0 {
+		startData["secrets_withheld"] = withheld
+	}
 	if *mode == "container" {
-		cmd, err = r.containerCmd(proj, home, vals, command, startData)
+		cmd, err = r.containerCmd(proj, home, agentEnv, command, startData)
 	} else {
-		cmd, err = r.nativeCmd(proj, home, vals, command, token, addr, startData)
+		cmd, err = r.nativeCmd(proj, home, agentEnv, command, token, addr, startData)
 	}
 	if err != nil {
 		r.record(audit.SessionStart, "error", map[string]any{"error": err.Error()})
@@ -245,10 +274,21 @@ func cmdRun(args []string) (int, error) {
 		code = 1
 	}
 	r.mu.Lock()
-	allowed, denied := r.allowed, r.denied
+	allowed, denied, stripped := r.allowed, r.denied, r.stripped
+	uses := map[string]int{}
+	for k, v := range r.credUses {
+		uses[k] = v
+	}
 	r.mu.Unlock()
-	r.record(audit.SessionEnd, "ok", map[string]any{"exit_code": code, "duration_s": int(time.Since(start).Seconds()),
-		"egress_allowed": allowed, "egress_denied": denied})
+	endData := map[string]any{"exit_code": code, "duration_s": int(time.Since(start).Seconds()),
+		"egress_allowed": allowed, "egress_denied": denied}
+	if len(uses) > 0 {
+		endData["credential_uses"] = uses
+	}
+	if stripped > 0 {
+		endData["credential_stripped"] = stripped
+	}
+	r.record(audit.SessionEnd, "ok", endData)
 	if denied > 0 {
 		fmt.Fprintf(os.Stderr, "basalt-agent: %d connection(s) refused by the session allowlist: basalt-agent audit --session %s\n", denied, r.info.ID)
 	}
@@ -293,16 +333,18 @@ func (r *run) endEgress() {
 // session level and returns its address. With kernel filtering it runs in
 // the session's slice, so its own connections are default-deny as well:
 // a proxy bug cannot reach an address no allowed name resolved to.
-func (r *run) startProxy(listen, token string) (string, error) {
+func (r *run) startProxy(listen, token string, creds []credential.Route) (string, error) {
 	argv := native.Runcon(native.ProxyDomain, r.info.Level, native.ProxyHelper)
 	if r.kernel {
 		argv = append(egress.ScopeArgs(r.info.ID, "proxy"), argv...)
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
-	// The pure Go resolver sends DNS to the stub address, which the kernel
-	// redirects to the session resolver (the C library could use other
-	// paths, such as systemd-resolved's varlink socket).
-	cmd.Env = append(os.Environ(), "GODEBUG=netdns=go")
+	// A small environment, not the user's: whatever the user's shell
+	// exports (an API key, say) stays out of the session. The pure Go
+	// resolver sends DNS to the stub address, which the kernel redirects
+	// to the session resolver (the C library could use other paths, such
+	// as systemd-resolved's varlink socket).
+	cmd.Env = proxyEnv(r.kernel)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return "", err
@@ -322,8 +364,12 @@ func (r *run) startProxy(listen, token string) (string, error) {
 	for _, e := range r.pr.Egress {
 		allow = append(allow, e.String())
 	}
-	cfg, _ := json.Marshal(proxy.Config{Listen: listen, Allow: allow, Token: token})
-	if _, err := in.Write(append(cfg, '\n')); err != nil {
+	cfg, _ := json.Marshal(proxy.Config{Listen: listen, Allow: allow, Token: token, Credentials: creds})
+	_, err = in.Write(append(cfg, '\n'))
+	for i := range cfg {
+		cfg[i] = 0
+	}
+	if err != nil {
 		return "", err
 	}
 	br := bufio.NewReader(out)
@@ -349,6 +395,30 @@ func (r *run) readProxy(br *bufio.Reader) {
 		}
 		d := *m.Decision
 		data := map[string]any{"host": d.Host, "port": d.Port}
+		if d.Credential != "" {
+			data["credential"] = d.Credential
+		}
+		if len(d.Stripped) > 0 {
+			r.mu.Lock()
+			r.stripped++
+			n := r.stripped
+			r.mu.Unlock()
+			if n <= 1000 {
+				r.record(audit.CredentialStrip, "denied", map[string]any{"host": d.Host, "port": d.Port,
+					"headers": d.Stripped, "reason": "credential headers are sent only to the host their key belongs to"})
+			}
+		}
+		if d.Allowed && d.Credential != "" {
+			key := d.Credential + "@" + d.Host
+			r.mu.Lock()
+			r.credUses[d.Credential]++
+			first := !r.seen[key]
+			r.seen[key] = true
+			r.mu.Unlock()
+			if first {
+				r.record(audit.CredentialUse, "ok", map[string]any{"credential": d.Credential, "host": d.Host, "port": d.Port})
+			}
+		}
 		if d.Allowed {
 			key := fmt.Sprintf("%s:%d", d.Host, d.Port)
 			r.mu.Lock()
@@ -396,20 +466,14 @@ func (r *run) proxyAllow(entry string) error {
 	return err
 }
 
-func (r *run) containerCmd(proj, home string, vals map[string]string, command []string, data map[string]any) (*exec.Cmd, error) {
+func (r *run) containerCmd(proj, home string, agentEnv map[string]string, command []string, data map[string]any) (*exec.Cmd, error) {
 	img := podman.Image(r.pr.Name)
 	if exec.Command("podman", "image", "exists", img).Run() != nil {
 		return nil, fmt.Errorf("no image %s: basalt-agent image build %s", img, r.pr.Name)
 	}
 	spec := podman.Spec{Session: r.info.ID, Image: img, Level: r.info.Level, Project: proj, AgentHome: home,
-		ProxySocket: filepath.Join(r.rtDir, "proxy.sock"), Env: podman.SessionEnv(r.pr), Command: command,
+		ProxySocket: filepath.Join(r.rtDir, "proxy.sock"), Env: podman.SessionEnv(r.pr, agentEnv), Command: command,
 		TTY: isTTY(0) && isTTY(1)}
-	if len(vals) > 0 {
-		spec.SecretsFile = filepath.Join(r.rtDir, "secrets.env")
-		if err := os.WriteFile(spec.SecretsFile, secrets.EnvFile(vals), 0o600); err != nil {
-			return nil, err
-		}
-	}
 	for _, p := range readOnlyPaths {
 		if _, err := os.Lstat(filepath.Join(proj, p)); err == nil {
 			spec.ReadOnly = append(spec.ReadOnly, p)
@@ -421,7 +485,7 @@ func (r *run) containerCmd(proj, home string, vals map[string]string, command []
 	return exec.Command("podman", args...), nil
 }
 
-func (r *run) nativeCmd(proj, home string, vals map[string]string, command []string, token, addr string, data map[string]any) (*exec.Cmd, error) {
+func (r *run) nativeCmd(proj, home string, agentEnv map[string]string, command []string, token, addr string, data map[string]any) (*exec.Cmd, error) {
 	tools := r.dirs.Tools(r.pr.Name)
 	if r.pr.Method != "none" {
 		if _, err := os.Stat(tools); err != nil {
@@ -464,7 +528,7 @@ func (r *run) nativeCmd(proj, home string, vals map[string]string, command []str
 		"home_count": h, "tools_count": t})
 	data["relabeled"] = n
 	proxyURL := fmt.Sprintf("http://basalt:%s@%s", token, addr)
-	env := native.Env(home, tools, podman.ProxyEnv(proxyURL), r.pr.Env, vals)
+	env := native.Env(home, tools, podman.ProxyEnv(proxyURL), agentEnv, r.pr.Env)
 	argv := native.Runcon(native.Domain, lvl, native.ExecHelper, append([]string{proj}, command...)...)
 	if r.kernel {
 		// The agent joins the session slice, where the kernel filter applies.
@@ -594,4 +658,59 @@ func (r *run) grantPath(dir string) error {
 	}
 	_, err = selinux.Relabel(p, native.ProjectType, r.info.Level, nil)
 	return err
+}
+
+// credentialRoutes pairs each loaded key with its route. A key is withheld
+// (not used, not given to the agent) when it has no route, when its route's
+// host is not on the session allowlist at the route's port, or when an
+// earlier key already has that host.
+func credentialRoutes(pr *profile.Profile, vals map[string]string) ([]credential.Route, []map[string]string) {
+	l := allowlist.New(pr.Egress)
+	var out []credential.Route
+	var withheld []map[string]string
+	hosts := map[string]string{}
+	for _, name := range pr.SecretEnv {
+		v, ok := vals[name]
+		if !ok {
+			continue
+		}
+		rt, ok := pr.Route(name)
+		reason := ""
+		switch {
+		case !ok:
+			reason = "no credential route (add \"route = " + name + " HOST header=HEADER\" to [secrets])"
+		case !l.Allows(rt.Host, rt.Port):
+			reason = fmt.Sprintf("%s:%d is not on the session allowlist", rt.Host, rt.Port)
+		case hosts[rt.Host] != "":
+			reason = fmt.Sprintf("%s already uses %s", rt.Host, hosts[rt.Host])
+		}
+		if reason != "" {
+			withheld = append(withheld, map[string]string{"name": name, "reason": reason})
+			continue
+		}
+		hosts[rt.Host] = name
+		rt.Value = v
+		out = append(out, rt)
+	}
+	return out, withheld
+}
+
+// proxyEnv is the proxy process's whole environment. systemd-run needs the
+// user's runtime directory and bus to start the session scope; the proxy
+// domain cannot use them.
+func proxyEnv(kernel bool) []string {
+	env := []string{"PATH=/usr/bin:/bin", "GODEBUG=netdns=go", "LANG=C.UTF-8"}
+	for _, k := range []string{"HOME", "USER", "LOGNAME"} {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
+	if kernel {
+		for _, k := range []string{"XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"} {
+			if v, ok := os.LookupEnv(k); ok {
+				env = append(env, k+"="+v)
+			}
+		}
+	}
+	return env
 }

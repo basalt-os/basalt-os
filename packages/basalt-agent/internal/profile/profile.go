@@ -5,8 +5,12 @@
 //	[install]    method (npm, pip, none), package, packages (dnf packages for
 //	             the container image and for native mode)
 //	[env]        KEY = value, set for the agent in both modes
-//	[secrets]    env = NAME (repeatable): variables taken from the secret
-//	             store and injected for one session only
+//	[secrets]    env = NAME (repeatable): API keys taken from the secret
+//	             store for one session; the session proxy uses them on the
+//	             agent's behalf (the agent sees a placeholder),
+//	             route = NAME HOST[:PORT] header=H [scheme=S] [base_env=VAR]
+//	             [base_path=/P] (repeatable): where the key NAME may be
+//	             used, for names without a built-in route (internal/credential)
 //	[egress]     allow = name[:ports] (repeatable, allowlist format),
 //	             include = SET (repeatable): a shared list from the egress
 //	             directory (SET.list),
@@ -28,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/allowlist"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/credential"
 )
 
 // Paths says where profiles and shared egress lists live, in lookup order.
@@ -47,7 +52,8 @@ type Profile struct {
 	Packages    []string // dnf packages
 	Env         map[string]string
 	SecretEnv   []string
-	Allow       []allowlist.Entry // own entries
+	Routes      map[string]credential.Route // routes declared by the profile, by secret name
+	Allow       []allowlist.Entry           // own entries
 	Includes    []string
 	Egress      []allowlist.Entry // own entries plus resolved includes
 	Loopback    bool              // unprivileged loopback ports allowed
@@ -65,6 +71,7 @@ var reservedEnv = map[string]bool{
 	"HOME": true, "PATH": true, "HTTPS_PROXY": true, "HTTP_PROXY": true, "https_proxy": true,
 	"http_proxy": true, "ALL_PROXY": true, "all_proxy": true, "NO_PROXY": true, "no_proxy": true,
 	"LD_PRELOAD": true, "LD_LIBRARY_PATH": true, "SSH_AUTH_SOCK": true, "DBUS_SESSION_BUS_ADDRESS": true,
+	"BASALT_AGENT_SESSION": true,
 }
 
 // ValidName reports whether s can be a profile name.
@@ -164,7 +171,7 @@ func ParseFile(path string) (*Profile, error) {
 		return nil, err
 	}
 	defer fh.Close()
-	pr := &Profile{Env: map[string]string{}, Method: "none", Source: path, Loopback: true}
+	pr := &Profile{Env: map[string]string{}, Routes: map[string]credential.Route{}, Method: "none", Source: path, Loopback: true}
 	sc := bufio.NewScanner(fh)
 	section, n := "", 0
 	fail := func(format string, a ...any) error {
@@ -210,6 +217,15 @@ func ParseFile(path string) (*Profile, error) {
 				return nil, fail("bad secret variable %q", v)
 			}
 			pr.SecretEnv = append(pr.SecretEnv, v)
+		case "secrets.route":
+			r, err := credential.Parse(v)
+			if err != nil {
+				return nil, fail("%v", err)
+			}
+			if reservedEnv[r.Name] || reservedEnv[r.BaseEnv] {
+				return nil, fail("route %q uses a variable basalt-agent owns", v)
+			}
+			pr.Routes[r.Name] = r
 		case "egress.allow":
 			e, err := allowlist.ParseEntry(v)
 			if err != nil {
@@ -262,5 +278,22 @@ func (pr *Profile) validate() error {
 			return fmt.Errorf("%s: bad dnf package %q", pr.Source, p)
 		}
 	}
+	// A key never goes into [env]: the agent would see it.
+	for _, n := range pr.SecretEnv {
+		if _, ok := pr.Env[n]; ok {
+			return fmt.Errorf("%s: %s is a secret and cannot be set in [env]", pr.Source, n)
+		}
+	}
 	return nil
+}
+
+// Route returns where the secret name may be used: the profile's own
+// route, else the built-in one. ok is false when there is none, and then
+// the key is not used at all.
+func (pr *Profile) Route(name string) (credential.Route, bool) {
+	if r, ok := pr.Routes[name]; ok {
+		return r, true
+	}
+	r, ok := credential.Builtin[name]
+	return r, ok
 }

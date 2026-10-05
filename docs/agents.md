@@ -31,13 +31,19 @@ Every agent session gets:
   a per-session filtering proxy, and default deny in the kernel for
   everything the session does (`docs/network.md`); everything else is
   refused and recorded;
-- API keys injected for that one session, never readable by another;
+- API keys used on its behalf by the session proxy, which adds a key only
+  to requests for the provider the key belongs to; the agent itself never
+  sees a key (it gets a placeholder), so it cannot leak one;
 - a unique SELinux MCS level, so two sessions cannot see each other.
 
 An agent can *request* more (a host, a directory); a person *grants* it
 with administrator authentication (polkit), and the grant is audited.
 Agents never confirm their own requests, never escalate, never read
 credentials. Safety is in the system, not in the agent.
+
+Inside every session `BASALT_AGENT_SESSION` holds the session id
+(`s-` and 12 hex digits), in both modes, so tools can tell they run in a
+session: `basalt-prompt` shows the session badge from it.
 
 ## Two modes
 
@@ -49,9 +55,8 @@ are read-only; the container runs with `--read-only`, `--cap-drop all`,
 `--security-opt no-new-privileges` and a tmpfs for `/tmp`, `/run` and
 `/var/tmp`. The container has **no network of its own** (`--network none`):
 the only way out is a Unix socket to the session proxy, mounted in, behind a
-loopback forwarder the entry point starts. API keys arrive in a
-root-only-inside-the-session secrets file bind-mounted read-only; the entry
-point loads them into the environment and never puts them on a command line.
+loopback forwarder the entry point starts. No API key enters the container
+(see Secrets).
 
 Why rootless podman with no container network and an external proxy, rather
 than pasta/slirp egress filtering: the robust, simple rootless option is to
@@ -99,7 +104,10 @@ names or opens connections) is an HTTP proxy for CONNECT tunnels and plain
   link-local or otherwise non-global, so an allowed name cannot be pointed at
   a local service (DNS rebinding) unless the entry is marked `private`;
 - requires a per-session password in native mode (loopback is shared by the
-  user's processes; container mode uses a private Unix socket).
+  user's processes; container mode uses a private Unix socket);
+- holds the session's API keys and adds each only to requests for its own
+  provider, and removes credential headers from every other request it can
+  read (see Secrets).
 
 ### Allowlist format (shared with ADR 0010's resolver)
 
@@ -153,17 +161,139 @@ no when the agent does not need local services; see `docs/network.md`).
 
 ## Secrets
 
-A profile lists the environment variables it needs (e.g.
-`ANTHROPIC_API_KEY`). They are read from
-`~/.config/basalt-agent/secrets/PROFILE.env` (a regular file, mode 0600,
-owned by you) or, if absent there, from the desktop keyring via
-`secret-tool` (`service basalt-agent profile PROFILE name KEY`). Values are
-never logged; the audit log records only the names injected. In container
-mode they travel in a bind-mounted file at the session MCS level, readable by
-no other session; in native mode they are in the agent's environment, which
-other agent sessions cannot read (different MCS level, and SELinux denies
-cross-session `/proc`). You can also skip keys and log in inside a session;
-the login is stored in the profile's own home.
+A profile lists the API keys it needs (e.g. `ANTHROPIC_API_KEY`). They are
+read from `~/.config/basalt-agent/secrets/PROFILE.env` (a regular file,
+mode 0600, owned by you) or, if absent there, from the desktop keyring via
+`secret-tool` (`service basalt-agent profile PROFILE name KEY`). You can
+also skip keys and log in inside a session; the login is stored in the
+profile's own home.
+
+Keys never enter the agent session. The launcher reads them and hands them
+to the session proxy on a private pipe; the agent gets a placeholder in the
+same variable (`basalt-agent-key-injected-by-session-proxy`) and a base URL
+variable pointing at its provider over plain HTTP, for example:
+
+```
+ANTHROPIC_API_KEY=basalt-agent-key-injected-by-session-proxy
+ANTHROPIC_BASE_URL=http://api.anthropic.com
+```
+
+The agent's request to `http://api.anthropic.com/...` goes to the session
+proxy like any other (the proxy variables are set). The proxy recognizes
+the provider host of one of its keys, removes every credential header the
+agent sent (`Authorization`, `X-Api-Key`, `X-Goog-Api-Key`, `Api-Key` and
+the route's own header), sets the route's header to the real key and sends
+the request to `https://api.anthropic.com` over TLS, verified against the
+system trust store. Answers stream back as they arrive. Requests to any
+other host never get a key: the proxy removes credential headers from every
+plain-HTTP request, refuses one that carries a session key anywhere in its
+headers or URL, and passes TLS tunnels (`CONNECT host:443`) through
+unchanged, with whatever the agent put in them, which is at most the
+placeholder.
+
+So a prompt-injected agent that sends "its key" to an allowed host (a
+registry, GitHub, a host it pointed `ANTHROPIC_BASE_URL` at) sends a
+placeholder. What it still can do is use the key through the proxy, on the
+key's own provider: it can spend, it cannot copy the key out.
+
+### Why plain HTTP to the proxy, not TLS interception
+
+The proxy must add a header, so it must see the request in clear. Two ways:
+
+- Interception: the agent opens TLS to the provider name, the proxy ends
+  it with a certificate from a per-session CA the agent trusts, and opens
+  its own TLS upstream. Every TLS stack in the agent (Node, Bun, Rust's
+  rustls, Python) must be told to trust that CA, a CA private key exists
+  per session, and a CA trusted inside the session could be used to
+  impersonate any host to the agent's own tools.
+- A plain-HTTP leg: the agent's client talks plain HTTP to the provider
+  name, which reaches only the session proxy (a Unix socket in container
+  mode, a password-protected loopback port in native mode, never the
+  network), and the proxy alone speaks TLS to the provider.
+
+basalt-agent uses the second: no certificate authority, no trust store
+changes, the same for every client that honors a base URL and the proxy
+variables, and the TLS that leaves the machine is the proxy's, verified
+against the system trust store (the alternative would also break when a
+client pins certificates). Clients send such a request either as an
+absolute-URI request (curl, Python, Rust) or as `CONNECT host:80` (Node's
+fetch tunnels plain HTTP too); for a key's host on port 80 the proxy ends
+that tunnel itself and serves the requests in it. Tested end to end with
+Claude Code (a Bun binary) and with curl, Node's fetch and Python through
+the proxy, in both modes.
+
+### Routes
+
+A route says where a key may be used. Built in:
+
+| Key | Provider host | Header | Base URL variable |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | `api.anthropic.com` | `X-Api-Key` | `ANTHROPIC_BASE_URL=http://api.anthropic.com` |
+| `ANTHROPIC_AUTH_TOKEN` | `api.anthropic.com` | `Authorization: Bearer` | `ANTHROPIC_BASE_URL` |
+| `OPENAI_API_KEY` | `api.openai.com` | `Authorization: Bearer` | `OPENAI_BASE_URL=http://api.openai.com/v1` |
+| `GEMINI_API_KEY`, `GOOGLE_API_KEY` | `generativelanguage.googleapis.com` | `X-Goog-Api-Key` | `GOOGLE_GEMINI_BASE_URL` |
+| `OPENROUTER_API_KEY` | `openrouter.ai` | `Authorization: Bearer` | `OPENROUTER_API_BASE=http://openrouter.ai/api/v1` |
+
+A profile adds a route for another key, or replaces a built-in one, in
+`[secrets]`:
+
+```ini
+[secrets]
+env = EXAMPLE_API_KEY
+route = EXAMPLE_API_KEY api.example.com header=Authorization scheme=Bearer base_env=EXAMPLE_BASE_URL base_path=/v1
+```
+
+`route = NAME HOST[:PORT] header=HEADER [scheme=S] [base_env=VAR]
+[base_path=/P]`: HOST is a name (no address, no wildcard), PORT the TLS
+port of the provider (default 443). A key is used only when its route's
+host is on the session allowlist at that port, and one key per host (the
+first listed wins). A key with no route, or a route off the allowlist, is
+not used at all, and the session says so (`secrets_withheld` in
+`session.start`). A profile cannot set a key in `[env]`.
+
+Model clients that ignore a base URL and always use `https://` reach the
+provider through a plain tunnel with the placeholder and are refused by
+the provider (they fail closed); give such a client a base URL it honors,
+or log in inside the session. Current Codex CLI releases ignore
+`OPENAI_BASE_URL` for their built-in OpenAI provider; give Codex a provider
+through the proxy in its configuration
+(`~/.local/share/basalt-agent/home/codex/.codex/config.toml`, the
+profile's own home):
+
+```toml
+model_provider = "basalt"
+[model_providers.basalt]
+name = "OpenAI through the basalt-agent session proxy"
+base_url = "http://api.openai.com/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+```
+
+Checked in the lab: Codex's requests then reach the provider with the key
+the proxy added.
+
+### Where keys are and who can read them
+
+- On disk only in the secret store. The launcher labels
+  `~/.config/basalt-agent/secrets` `basalt_agent_secret_t`, whose files no
+  agent domain may open or read and whose directory none may list (a
+  `neverallow` rule in the base module, so a later policy cannot grant it
+  either). Container sessions (`container_t`) have no rule to open or read
+  it either, and the store is not mounted.
+- In memory only in the launcher and the session proxy. The proxy gets the
+  keys on its standard input, not in its environment, a file or a command
+  line; it runs with a small environment of its own (nothing the user's
+  shell exports reaches it), and makes itself non-dumpable, so the kernel
+  keeps its `/proc` entries root-owned and refuses ptrace from the user's
+  other processes. SELinux denies agent domains reading the proxy's
+  `/proc` entries, tracing or signalling it (`neverallow`). Container
+  sessions run in another PID namespace and do not see it.
+- Never in records. The audit log and the ledger name the key
+  (`credential.use`: name, host, port), never its value; `session.start`
+  lists each credential's name, host and header.
+
+`scripts/lab/agent-test.sh credentials` shows all of this on a lab VM
+(below).
 
 ## Profiles
 
@@ -230,10 +360,13 @@ SELinux denials of the session.
 }
 ```
 
-Events: `session.start` (command, image, egress list, secret names, relabel
-count), `session.end` (exit code, duration, allowed/denied counts),
-`egress.allow` / `egress.deny` (host, port, reason), `grant.request` /
-`grant.apply`, `relabel`, `install`. `outcome` is `ok`, `allowed`, `denied`
+Events: `session.start` (command, image, egress list, secret names, the
+credentials with their host and header, withheld keys, relabel count),
+`session.end` (exit code, duration, allowed/denied counts, uses per
+credential), `egress.allow` / `egress.deny` (host, port, reason),
+`credential.use` (the first request with a key per host: the key's name,
+host, port), `credential.strip` (credential headers removed from a request
+to another host), `grant.request` / `grant.apply`, `relabel`, `install`. `outcome` is `ok`, `allowed`, `denied`
 or `error`. Network decisions are recorded here reliably; privilege-escalation
 and SELinux denials also appear in the system audit log and journal
 (`basalt-agent audit --avc`). Note that Fedora's stock policy suppresses the
@@ -259,7 +392,8 @@ interfaces it needs, and the `neverallow` rules apply to it too).
 | `basalt_agent_project_ro_t` | parts of a project kept read-only (`.git/hooks`, `.git/config`) |
 | `basalt_agent_home_t` | an agent's own config/login/cache home |
 | `basalt_agent_tool_t` | native-mode agent programs (read + execute only) |
-| `basalt_agent_session_t` | a session's runtime dir (proxy/control sockets, secrets file) |
+| `basalt_agent_session_t` | a session's runtime dir (proxy and control sockets) |
+| `basalt_agent_secret_t` | the API key store, `~/.config/basalt-agent/secrets` (never readable by an agent domain) |
 | `basalt_agent_proxy_port_t` | the proxy loopback ports (`tcp 47100-47163`) |
 
 Base interfaces (in `basalt_agent_base.if`): `basalt_agent_domain_type`,
@@ -268,9 +402,12 @@ Base interfaces (in `basalt_agent_base.if`): `basalt_agent_domain_type`,
 `basalt_agent_use_terminals`, `basalt_agent_connect_proxy`,
 `basalt_agent_launcher`. The family `neverallow` rules (checked when the
 policy is built) forbid any agent domain from reading `ssh_home_t`,
-`gpg_secret_t`, `home_cert_t`, `shadow_t` or the generic user home, executing
-`sudo`, loading policy or setting enforce/booleans, and gaining
-`setuid`/`sys_admin`/`sys_ptrace`/`dac_*` capabilities.
+`gpg_secret_t`, `home_cert_t`, `shadow_t`, the agent secret store
+(`basalt_agent_secret_t`) or the generic user home, executing `sudo`,
+loading policy or setting enforce/booleans, and gaining
+`setuid`/`sys_admin`/`sys_ptrace`/`dac_*` capabilities. The launcher
+module adds that no agent domain may read, trace or signal the session
+proxy (`basalt_agent_proxy_t`), which holds the keys.
 
 ## Limits (today)
 
@@ -287,6 +424,13 @@ policy is built) forbid any agent domain from reading `ssh_home_t`,
   reliable record.
 - One session per profile at a time (the profile's home is relabeled to the
   session level). Run different agents, or copies of a profile, in parallel.
+- The proxy keeps keys out of the agent, not out of use: an agent can make
+  any request to the provider a key belongs to (spend, list models), just
+  not read the key. A route must point at a provider API that does not
+  echo request headers back.
+- Keys are used for clients that honor a base URL; a client that insists
+  on `https://` to the provider gets the placeholder and fails (see
+  Routes).
 
 ## Testing
 
@@ -297,6 +441,21 @@ an allowed `curl`/`npm install`) and the escape-attempt matrix (reading
 `~/.ssh`, writing outside the project, reaching an unlisted host, reading
 another session's secret, confirming a shell proposal, `sudo`), in both
 modes. All escapes must be denied, and allowed work must leave zero AVC
-denials. The network matrix with the kernel filter (direct egress,
+denials. Its `credentials` phase (also part of `all`) starts a mock model
+provider over TLS (a lab CA in the VM's trust store) and allowed hosts
+with no route, gives a lab profile a random fake key routed to the mock,
+and in both modes: runs Claude Code end to end, curl (absolute URI and
+`CONNECT :80`) and Node's fetch through the proxy, all with the key added
+by the proxy and zero AVC denials; then tries to read the key (environment,
+`/proc` of every process, files, the secret store, the keyring, the
+memory, file descriptors and environment of its own and another session's
+proxy, ptrace, `process_vm_readv`, signals) and to send it to the other
+hosts (credential headers, query strings, plain and TLS tunnels, a forged
+`Host`, `CONNECT :80`, a redirect, Claude Code pointed at another host),
+and checks in the mock servers' log that no request to another host
+carried it, and that the audit log, the ledger and the journal never hold
+it. `driver.sh selinux` counts the allow rules from agent domains and
+`container_t` that would open or read the secret store, list it, or read,
+trace or signal the proxy (zero). The network matrix with the kernel filter (direct egress,
 rebinding, other DNS servers, another session's resolver, leaving the
 cgroup) is `scripts/lab/ledger-test.sh` (`docs/network.md`).

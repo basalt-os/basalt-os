@@ -14,33 +14,51 @@
 // or other non-global addresses is refused, so an allowed name cannot be
 // pointed at a local service (DNS rebinding), unless its entry is marked
 // "private" (a local model server).
+//
+// Credentials: the proxy holds the session's API keys; the agent never
+// does (internal/credential). A plain-HTTP request to a route's host
+// (absolute URI, or inside a CONNECT to HOST:80, which the proxy answers
+// itself) has every credential header removed, the route's header set to
+// the real key, and is forwarded over verified TLS to HOST on the route's
+// port. Plain-HTTP requests to any other host lose their credential
+// headers, and are refused if they carry a session key anywhere in their
+// headers or URL. TLS tunnels (CONNECT to port 443) are passed through
+// untouched and never get a key.
 package proxy
 
 import (
 	"bufio"
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/allowlist"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/credential"
 )
 
-// Decision is reported for every request the proxy decides on.
+// Decision is reported for every request the proxy decides on. It never
+// carries a credential value: Credential is the secret's name, Stripped
+// the names of headers removed.
 type Decision struct {
-	Host    string `json:"host"`
-	Port    int    `json:"port"`
-	Allowed bool   `json:"allowed"`
-	Reason  string `json:"reason,omitempty"`
-	private bool
+	Host       string   `json:"host"`
+	Port       int      `json:"port"`
+	Allowed    bool     `json:"allowed"`
+	Reason     string   `json:"reason,omitempty"`
+	Credential string   `json:"credential,omitempty"`
+	Stripped   []string `json:"stripped,omitempty"`
+	private    bool
 }
 
 // Server is the filtering proxy.
@@ -51,9 +69,18 @@ type Server struct {
 	AllowPrivate bool // let allowed names resolve to non-global addresses (tests only)
 	DialTimeout  time.Duration
 	Resolve      func(ctx context.Context, host string) ([]net.IP, error)
+	// Routes are the session's credentials, at most one per host.
+	Routes []credential.Route
+	// UpstreamTLS overrides the TLS settings toward route hosts (tests: a
+	// private root). Nil means the system trust store.
+	UpstreamTLS *tls.Config
 
 	once      sync.Once
-	transport *http.Transport
+	transport *http.Transport // plain http:// to allowed hosts
+	routeTr   *http.Transport // https:// to route hosts
+	routes    map[string]credential.Route
+	strip     []string
+	values    []string
 }
 
 func (s *Server) init() {
@@ -66,24 +93,58 @@ func (s *Server) init() {
 				return net.DefaultResolver.LookupIP(ctx, "ip", host)
 			}
 		}
+		dial := func(ctx context.Context, _, addr string) (net.Conn, error) {
+			h, p, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			port, _ := strconv.Atoi(p)
+			d := s.Check(h, port)
+			if !d.Allowed {
+				return nil, errors.New(d.Reason)
+			}
+			return s.dial(ctx, d.Host, port, d.private)
+		}
 		s.transport = &http.Transport{
-			Proxy: nil,
-			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-				h, p, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, err
-				}
-				port, _ := strconv.Atoi(p)
-				d := s.Check(h, port)
-				if !d.Allowed {
-					return nil, errors.New(d.Reason)
-				}
-				return s.dial(ctx, d.Host, port, d.private)
-			},
+			Proxy:                 nil,
+			DialContext:           dial,
+			DisableCompression:    true,
 			ResponseHeaderTimeout: 60 * time.Second,
 			IdleConnTimeout:       30 * time.Second,
 		}
+		tc := &tls.Config{MinVersion: tls.VersionTLS12}
+		if s.UpstreamTLS != nil {
+			tc = s.UpstreamTLS.Clone()
+		}
+		// Model APIs can take minutes before the first byte of a
+		// non-streaming answer.
+		s.routeTr = &http.Transport{
+			Proxy:                 nil,
+			DialContext:           dial,
+			TLSClientConfig:       tc,
+			ForceAttemptHTTP2:     false,
+			DisableCompression:    true,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Minute,
+			IdleConnTimeout:       90 * time.Second,
+		}
+		s.routes = map[string]credential.Route{}
+		for _, r := range s.Routes {
+			h := allowlist.Normalize(r.Host)
+			if _, dup := s.routes[h]; dup || r.Value == "" {
+				continue
+			}
+			s.routes[h] = r
+			s.values = append(s.values, r.Value)
+		}
+		s.strip = credential.Headers(s.Routes)
 	})
+}
+
+// route returns the credential route for host, if any.
+func (s *Server) route(host string) (credential.Route, bool) {
+	r, ok := s.routes[allowlist.Normalize(host)]
+	return r, ok
 }
 
 // Serve accepts proxy connections on l until it is closed.
@@ -149,6 +210,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "basalt-agent: only CONNECT and http:// requests are proxied", http.StatusBadRequest)
 		return
 	}
+	if rt, ok := s.route(r.URL.Hostname()); ok {
+		s.forwardRoute(w, r, rt)
+		return
+	}
 	port := 80
 	if p := r.URL.Port(); p != "" {
 		port, _ = strconv.Atoi(p)
@@ -160,8 +225,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	out := r.Clone(r.Context())
 	out.RequestURI = ""
-	for _, h := range []string{"Proxy-Authorization", "Proxy-Connection", "Connection", "Keep-Alive", "Te", "Trailer", "Upgrade"} {
-		out.Header.Del(h)
+	dropHopByHop(out.Header)
+	// No credential goes to a host it does not belong to: credential
+	// headers are removed, and a request carrying a session key anywhere
+	// (another header, the URL) is refused.
+	d.Stripped = s.stripCredentials(out.Header)
+	if s.carriesKey(out) {
+		d.Allowed, d.Reason = false, "the request carries a session credential"
+		s.deny(w, d)
+		return
 	}
 	resp, err := s.transport.RoundTrip(out)
 	if err != nil {
@@ -171,13 +243,119 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 	s.decide(d)
+	copyResponse(w, resp)
+}
+
+var hopByHop = []string{"Proxy-Authorization", "Proxy-Connection", "Connection", "Keep-Alive", "Te", "Trailer", "Upgrade", "Transfer-Encoding"}
+
+func dropHopByHop(h http.Header) {
+	// Headers named in Connection are hop-by-hop too.
+	for _, v := range h.Values("Connection") {
+		for _, n := range strings.Split(v, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				h.Del(n)
+			}
+		}
+	}
+	for _, n := range hopByHop {
+		h.Del(n)
+	}
+}
+
+// stripCredentials removes every credential header and returns the names
+// it removed (sorted).
+func (s *Server) stripCredentials(h http.Header) []string {
+	var out []string
+	for _, n := range s.strip {
+		if _, ok := h[n]; ok {
+			out = append(out, n)
+			h.Del(n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// carriesKey reports whether a session key appears verbatim in the
+// request's URL or headers. The agent never has a key, so this is a second
+// line: it catches a key that reached the session some other way.
+func (s *Server) carriesKey(r *http.Request) bool {
+	if len(s.values) == 0 {
+		return false
+	}
+	hay := []string{r.URL.String(), r.Host}
+	if u, err := url.QueryUnescape(r.URL.RawQuery); err == nil {
+		hay = append(hay, u)
+	}
+	for k, vs := range r.Header {
+		hay = append(hay, k)
+		hay = append(hay, vs...)
+	}
+	for _, v := range s.values {
+		for _, h := range hay {
+			if strings.Contains(h, v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// forwardRoute sends a plain-HTTP request for a route's host to the
+// provider over TLS with the real credential. The target is the route's
+// host and port, whatever the request's Host header or port said.
+func (s *Server) forwardRoute(w http.ResponseWriter, r *http.Request, rt credential.Route) {
+	d := s.Check(rt.Host, rt.Port)
+	d.Credential = rt.Name
+	if !d.Allowed {
+		s.deny(w, d)
+		return
+	}
+	out := r.Clone(r.Context())
+	out.RequestURI = ""
+	out.URL = &url.URL{Scheme: "https", Host: rt.Host, Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: r.URL.RawQuery}
+	if rt.Port != 443 {
+		out.URL.Host = rt.Upstream()
+	}
+	out.Host = ""
+	dropHopByHop(out.Header)
+	s.stripCredentials(out.Header)
+	out.Header.Set(rt.Header, rt.HeaderValue())
+	resp, err := s.routeTr.RoundTrip(out)
+	if err != nil {
+		d.Allowed, d.Reason = false, "upstream: "+err.Error()
+		s.deny(w, d)
+		return
+	}
+	defer resp.Body.Close()
+	s.decide(d)
+	copyResponse(w, resp)
+}
+
+// copyResponse writes resp to w, flushing as data arrives (streamed model
+// answers, server-sent events).
+func copyResponse(w http.ResponseWriter, resp *http.Response) {
+	dropHopByHop(resp.Header)
 	for k, vs := range resp.Header {
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	rc := http.NewResponseController(w)
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			_ = rc.Flush()
+		}
+		if err != nil {
+			return
+		}
+	}
 }
 
 func (s *Server) deny(w http.ResponseWriter, d Decision) {
@@ -197,6 +375,13 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	port, perr := strconv.Atoi(p)
 	if err != nil || perr != nil {
 		http.Error(w, "basalt-agent: CONNECT needs host:port", http.StatusBadRequest)
+		return
+	}
+	// A client that tunnels plain HTTP (CONNECT HOST:80, as Node's fetch
+	// does for http:// URLs) to a route's host: the proxy is the other end
+	// of the tunnel and serves the requests itself, with the credential.
+	if rt, ok := s.route(h); ok && port == 80 {
+		s.serveRouteTunnel(w, rt)
 		return
 	}
 	d := s.Check(h, port)
@@ -227,6 +412,88 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	_, _ = client.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 	go pipe(up, client, buf.Reader)
 }
+
+// serveRouteTunnel answers a CONNECT to a route's host on port 80 and
+// serves the plain HTTP requests sent through it as route requests.
+func (s *Server) serveRouteTunnel(w http.ResponseWriter, rt credential.Route) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijack unsupported", http.StatusInternalServerError)
+		return
+	}
+	client, buf, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	if _, err := client.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n")); err != nil {
+		client.Close()
+		return
+	}
+	c := &bufferedConn{Conn: client, r: buf.Reader}
+	l := newOneConnListener(c)
+	srv := &http.Server{
+		ReadHeaderTimeout: 30 * time.Second,
+		IdleTimeout:       90 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodConnect {
+				http.Error(w, "basalt-agent: CONNECT inside a tunnel", http.StatusBadRequest)
+				return
+			}
+			s.forwardRoute(w, r, rt)
+		}),
+	}
+	go func() { _ = srv.Serve(l) }()
+}
+
+// bufferedConn reads first what the CONNECT request's reader had buffered.
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+
+// oneConnListener hands out one connection, then ends when it is closed.
+type oneConnListener struct {
+	ch   chan net.Conn
+	done chan struct{}
+	once sync.Once
+	addr net.Addr
+}
+
+type closeNotifyConn struct {
+	net.Conn
+	l    *oneConnListener
+	once sync.Once
+}
+
+func (c *closeNotifyConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(func() { c.l.Close() })
+	return err
+}
+
+func newOneConnListener(c net.Conn) *oneConnListener {
+	l := &oneConnListener{ch: make(chan net.Conn, 1), done: make(chan struct{}), addr: c.LocalAddr()}
+	l.ch <- &closeNotifyConn{Conn: c, l: l}
+	return l
+}
+
+func (l *oneConnListener) Accept() (net.Conn, error) {
+	select {
+	case c := <-l.ch:
+		return c, nil
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *oneConnListener) Close() error {
+	l.once.Do(func() { close(l.done) })
+	return nil
+}
+
+func (l *oneConnListener) Addr() net.Addr { return l.addr }
 
 func pipe(up, client net.Conn, br *bufio.Reader) {
 	done := make(chan struct{}, 2)
