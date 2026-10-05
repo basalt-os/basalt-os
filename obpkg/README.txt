@@ -10,7 +10,8 @@ Repositories:
   /basalt-tools/    Official OpenBasalt tools (44: x86_64). Available.
   /basalt-testing/  Packages on their way to /basalt/ (44: x86_64).
                     Opt-in, off by default. Available.
-  /apt/             OpenBasalt packages for Debian and Ubuntu. Coming soon.
+  /apt/             OpenBasalt packages for Debian and Ubuntu (Debian 13,
+                    Ubuntu 26.04 and 24.04; amd64, arm64). Available.
 
 Basalt OS installs come with /basalt/, /basalt-tools/ (on) and
 /basalt-testing/ (off) preconfigured by basalt-release.
@@ -48,6 +49,27 @@ On Basalt OS:
   sudo dnf install basalt-shell
 Or for a single command: sudo dnf --enablerepo=basalt-testing install basalt-shell
 (config-manager comes from dnf5-plugins on Fedora 44.)
+
+apt: OpenBasalt packages for Debian 13, Ubuntu 26.04 and Ubuntu 24.04
+(amd64, arm64), one suite (stable) for all of them, component main,
+metadata signed by the packages subkey above.
+Currently: Samba Conductor (conductor, conductor-idp, conductor-sync,
+conductor-backup, conductor-files).
+
+  curl -fsSLO https://obpkg.org/keys/openbasalt-release-key.asc
+  gpg --show-keys --with-fingerprint openbasalt-release-key.asc
+  sudo install -d -m 0755 /etc/apt/keyrings
+  sudo gpg --dearmor -o /etc/apt/keyrings/openbasalt.gpg openbasalt-release-key.asc
+
+Save this as /etc/apt/sources.list.d/openbasalt.sources:
+
+Types: deb
+URIs: https://obpkg.org/apt
+Suites: stable
+Components: main
+Signed-By: /etc/apt/keyrings/openbasalt.gpg
+
+Then: sudo apt update && sudo apt install conductor
 
 Setup instructions: https://obpkg.org/
 See https://openbasalt.org and https://basalt-os.org
