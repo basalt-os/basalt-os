@@ -34,7 +34,19 @@ Filters = [
     'non-standard-executable-perm /usr/bin/nvidia-modprobe',
     # Kernel modules live under /usr/lib/modules/<kernel>/extra, and the
     # kmod package name carries the kernel release.
+    # NVIDIA's libraries are glvnd vendor and VDPAU back ends, loaded by
+    # the dispatch libraries at run time: nothing links them, so the
+    # dependency on the dispatchers is written by hand.
+    'explicit-lib-dependency libglvnd',
+    'explicit-lib-dependency libvdpau',
+    # Upstream license texts (GPLv2 in the open modules and nvidia-modprobe)
+    # are shipped as they are.
+    'incorrect-fsf-address',
     'kernel-module-not-in-kernel-dir',
+    'kernel-modules-not-in-kernel-packages',
+    # NVIDIA's installer creates no soname link for this library; neither
+    # do we (files.list mirrors the installer).
+    'no-ldconfig-symlink /usr/lib64/libnvidia-ngx.so.595.104.02',
     # The scriptlets run depmod -a KERNEL for the kernel the module is
     # for; rpmlint looks for another form of the same command.
     'postin-with-wrong-depmod',

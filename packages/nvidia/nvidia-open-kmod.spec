@@ -66,10 +66,11 @@ NVIDIA's open GPU kernel modules %{version} (nvidia, nvidia-drm,
 nvidia-modeset, nvidia-uvm, nvidia-peermem), built from the source of
 github.com/NVIDIA/open-gpu-kernel-modules for the kernel
 %{kver},
-for GPUs of the Turing generation and newer. The modules are signed with the Basalt OS
-basalt-nonfree module key, whose certificate basalt-nvidia ships and the
-Basalt kernel module CA issued. The full corresponding source is this
-package's source RPM. Packaged by OpenBasalt, not supported by NVIDIA.
+for GPUs of the Turing generation and newer. The modules are signed with
+the Basalt OS basalt-nonfree module key, whose certificate basalt-nvidia
+ships and the Basalt kernel module CA issued. The full corresponding
+source is this package's source RPM. Packaged by OpenBasalt, not
+supported by NVIDIA.
 
 %prep
 [ "%{kver}" != unset ] || { echo "define kver (rpmbuild --define 'kver RELEASE')" >&2; exit 1; }
