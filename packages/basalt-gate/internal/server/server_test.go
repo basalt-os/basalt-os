@@ -161,6 +161,10 @@ func newEnv(t *testing.T) *env {
 	e.rec.now = e.clk.now
 	e.o = Options{Config: cfg, Reg: loadReg(t), Limits: limits, Presets: presets, Store: st, Ledger: e.rec, Polkit: e.pk,
 		Now: e.clk.now, Home: homeOfTest, Logf: t.Logf,
+		// Never the real systemctl: an approval starts the executor unit in a
+		// goroutine, whose failure would write the queue into the test's
+		// TempDir while it is removed (withUnits records the starts instead).
+		StartUnit: func(string) error { return nil },
 		Env: func(now time.Time) policy.Env {
 			return policy.Env{Now: now, Power: "ac", Presence: policy.Unknown, Network: policy.Unknown}
 		},
