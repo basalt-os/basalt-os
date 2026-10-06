@@ -1,0 +1,6 @@
+# Lab rule: dev's command line may echo without asking (and is told).
+[[rule]]
+id = "r-lab-echo"
+effect = "allow-tell"
+actions = ["lab.echo"]
+requesters = ["tool:basalt-gate"]

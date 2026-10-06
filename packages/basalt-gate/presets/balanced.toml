@@ -1,0 +1,29 @@
+# Balanced: small undoable things the person or the assistant asks for
+# happen and the person is told; agents still ask. The system assistant's
+# fixes (each with a snapshot first) ask once, then are remembered for 8
+# hours. Anything that leaves the computer, and everything critical, asks
+# (no rule here covers them, and asking is the default).
+
+[[rule]]
+id = "r-balanced-look"
+sentence_key = "rule.preset.balanced.look"
+effect = "allow-quiet"
+actions = ["class:C0"]
+requesters = ["person", "assistant"]
+
+[[rule]]
+id = "r-balanced-undoable"
+sentence_key = "rule.preset.balanced.undoable"
+effect = "allow-tell"
+actions = ["class:C1"]
+requesters = ["person", "assistant"]
+limits = { requester_per_hour = 60 }
+
+[[rule]]
+id = "r-balanced-fixes"
+sentence_key = "rule.preset.balanced.fixes"
+effect = "ask-remember"
+actions = ["group:selinux.fix", "unit.restart", "file.restore"]
+requesters = ["system-assistant"]
+remember = "8h"
+expires = "90d"

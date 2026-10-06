@@ -1,0 +1,29 @@
+# Hands-off (ADR 0013's full AI mode), a template: chosen agents work
+# while the person is away, inside a scope the person chooses. Turning it
+# on is itself a Critical request (administrator authentication, a typed
+# confirmation); the Approvals app fills in the agents, folders and
+# destinations below and the duration. As shipped it names the agent
+# "claude" and the folder ~/Projects as examples. Locked actions stay
+# locked whatever this file says. Everything else asks, as by default;
+# asking by phone while away comes with phone approvals.
+
+[[rule]]
+id = "r-handsoff-undoable"
+sentence_key = "rule.preset.handsoff.undoable"
+effect = "allow-quiet"
+actions = ["class:C1"]
+requesters = ["agent:claude", "assistant"]
+resources = { path_beneath = ["~/Projects"] }
+taint_max = "web"
+limits = { per_run_items = 500, requester_per_hour = 120 }
+expires = "7d"
+
+[[rule]]
+id = "r-handsoff-system"
+sentence_key = "rule.preset.handsoff.system"
+effect = "allow-tell"
+actions = ["group:selinux.fix", "unit.restart", "group:system.cleanup"]
+requesters = ["system-assistant"]
+when = { power = "ac" }
+limits = { per_day = 20 }
+expires = "7d"

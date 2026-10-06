@@ -1,0 +1,6 @@
+{
+  "name": "result",
+  "about": "After running, the tool reports the outcome (optional but expected).",
+  "request": { "op": "result", "id": "g-000000000001", "ok": true, "exit": 0 },
+  "reply": { "ok": true, "id": "g-000000000001" }
+}

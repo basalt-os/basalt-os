@@ -1,0 +1,433 @@
+{
+  "registry": 1,
+  "source": "basalt-shell",
+  "executors": {
+    "basalt-shell": {
+      "types": [
+        "basalt_shell_t"
+      ],
+      "note": "the shell daemon runs desktop actions for the person's session (from phase 2)"
+    }
+  },
+  "groups": {
+    "desktop.windows": [
+      "window.focus",
+      "window.close",
+      "window.move",
+      "window.set_floating",
+      "window.set_state",
+      "window.to_workspace",
+      "windows.arrange",
+      "workspace.switch"
+    ],
+    "desktop.theme": [
+      "theme.set_tokens",
+      "theme.switch",
+      "theme.reset",
+      "motion.set"
+    ]
+  },
+  "actions": [
+    {
+      "id": "window.focus",
+      "class": "C1",
+      "description": "Bring a window to the front and focus it.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "window.close",
+      "class": "C1",
+      "description": "Close a window.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "window.move",
+      "class": "C1",
+      "description": "Move and resize a window.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "window.set_floating",
+      "class": "C1",
+      "description": "Float or tile a window.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "window.set_state",
+      "class": "C1",
+      "description": "Minimize, maximize, snap or restore a window.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "window.to_workspace",
+      "class": "C1",
+      "description": "Send a window to a workspace.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "windows.arrange",
+      "class": "C1",
+      "description": "Arrange windows.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "workspace.switch",
+      "class": "C1",
+      "description": "Switch workspace.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "app.launch",
+      "class": "C1",
+      "description": "Launch an application.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "theme.set_tokens",
+      "class": "C1",
+      "description": "Change theme tokens.",
+      "args": {},
+      "open": true,
+      "reversible": "undo-log",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "theme.switch",
+      "class": "C1",
+      "description": "Switch theme or mode.",
+      "args": {},
+      "open": true,
+      "reversible": "undo-log",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "theme.reset",
+      "class": "C1",
+      "description": "Reset tokens.",
+      "args": {},
+      "open": true,
+      "reversible": "undo-log",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "motion.set",
+      "class": "C1",
+      "description": "Set motion.",
+      "args": {},
+      "open": true,
+      "reversible": "undo-log",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "notification.show",
+      "class": "C1",
+      "description": "Show a notification.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "settings.open",
+      "class": "C1",
+      "description": "Open a settings page.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "shell.open",
+      "class": "C1",
+      "description": "Open a shell surface.",
+      "args": {},
+      "open": true,
+      "reversible": "none",
+      "executor": "basalt-shell"
+    },
+    {
+      "id": "agent.control",
+      "class": "C4",
+      "agent_only": true,
+      "description": "A time-limited session in which an agent sees the screen and uses a virtual keyboard and pointer; the frame and the stop button stay.",
+      "args": {
+        "reason": {
+          "type": "string",
+          "required": true,
+          "max_len": 300
+        },
+        "minutes": {
+          "type": "integer",
+          "min": 1,
+          "max": 15
+        },
+        "input": {
+          "type": "boolean"
+        },
+        "screen": {
+          "type": "boolean"
+        }
+      },
+      "resources": [
+        {
+          "kind": "session",
+          "arg": "=desktop"
+        }
+      ],
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "reason",
+          "minutes",
+          "input",
+          "screen"
+        ]
+      }
+    },
+    {
+      "id": "screen.capture",
+      "class": "C3",
+      "agent_only": true,
+      "leaves": true,
+      "description": "A screenshot of a screen or a window for the agent that asked (what the agent sees may reach its model provider).",
+      "args": {
+        "target": {
+          "type": "string",
+          "enum": [
+            "output",
+            "window"
+          ]
+        },
+        "output": {
+          "type": "string",
+          "max_len": 200
+        },
+        "window": {
+          "type": "string",
+          "max_len": 200
+        },
+        "max_width": {
+          "type": "integer",
+          "min": 64,
+          "max": 8192
+        }
+      },
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "target",
+          "output",
+          "window"
+        ]
+      }
+    },
+    {
+      "id": "text.insert",
+      "class": "C1",
+      "person_only": true,
+      "description": "Type what the person dictated into the field that had focus.",
+      "args": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "max_len": 20000
+        },
+        "field": {
+          "type": "string",
+          "required": true,
+          "max_len": 200
+        },
+        "app": {
+          "type": "string",
+          "max_len": 200
+        }
+      },
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "text",
+          "app"
+        ]
+      }
+    },
+    {
+      "id": "mail.send",
+      "class": "C3",
+      "person_only": true,
+      "leaves": true,
+      "reversible": "none",
+      "description": "Send one plain-text reply from the person's mail account.",
+      "args": {
+        "account": {
+          "type": "string",
+          "required": true,
+          "max_len": 200
+        },
+        "to": {
+          "type": "string",
+          "required": true,
+          "max_len": 320
+        },
+        "to_name": {
+          "type": "string",
+          "max_len": 200
+        },
+        "subject": {
+          "type": "string",
+          "required": true,
+          "max_len": 1000
+        },
+        "body": {
+          "type": "string",
+          "required": true,
+          "max_len": 60000
+        },
+        "in_reply_to": {
+          "type": "string",
+          "max_len": 1000
+        },
+        "references": {
+          "type": "string",
+          "max_len": 8000
+        }
+      },
+      "resources": [
+        {
+          "kind": "recipient",
+          "arg": "to"
+        }
+      ],
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "account",
+          "to",
+          "subject"
+        ]
+      }
+    },
+    {
+      "id": "files.move",
+      "class": "C1",
+      "person_only": true,
+      "reversible": "undo-log",
+      "description": "Rename or move files inside one granted folder; never deletes, never replaces.",
+      "args": {
+        "moves": {
+          "type": "list",
+          "required": true,
+          "max_items": 1000
+        },
+        "create": {
+          "type": "strings",
+          "max_items": 1000
+        },
+        "remove": {
+          "type": "strings",
+          "max_items": 1000
+        },
+        "undo": {
+          "type": "string",
+          "max_len": 100
+        }
+      },
+      "resources": [
+        {
+          "kind": "path",
+          "arg": "moves[].from"
+        },
+        {
+          "kind": "path",
+          "arg": "moves[].to"
+        }
+      ],
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "moves"
+        ]
+      }
+    },
+    {
+      "id": "voice.answers.set",
+      "class": "C1",
+      "person_only": true,
+      "reversible": "undo-log",
+      "description": "Turn spoken answers on or off.",
+      "args": {
+        "spoken": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "on",
+            "off"
+          ]
+        }
+      },
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "spoken"
+        ]
+      }
+    },
+    {
+      "id": "session.power",
+      "class": "C4",
+      "person_only": true,
+      "description": "Lock, log out, suspend, restart or power off.",
+      "args": {
+        "op": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "lock",
+            "logout",
+            "suspend",
+            "restart",
+            "poweroff"
+          ]
+        }
+      },
+      "resources": [
+        {
+          "kind": "session",
+          "arg": "op"
+        }
+      ],
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "op"
+        ]
+      }
+    }
+  ]
+}

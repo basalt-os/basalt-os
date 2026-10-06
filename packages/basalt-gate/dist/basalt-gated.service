@@ -1,0 +1,45 @@
+[Unit]
+Description=Basalt approval gate: one decision point for every side effect
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/gate.md
+After=basalt-ledger.service polkit.service dbus.service
+Wants=basalt-ledger.service
+Before=multi-user.target
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/basalt-gate/basalt-gated
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=basalt-gate
+RuntimeDirectoryMode=0755
+StateDirectory=basalt-gate
+StateDirectoryMode=0700
+ConfigurationDirectory=basalt-gate
+# Root without capabilities: the gate reads world-readable /proc files of
+# its peers, its own state and configuration, and asks polkit (pkcheck
+# over the system bus) when a person decides.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

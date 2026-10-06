@@ -1,0 +1,25 @@
+{
+  "registry": 1,
+  "source": "tests",
+  "executors": {
+    "test-executor": { "types": ["test_executor_t"], "uid": 0 }
+  },
+  "groups": { "files.tidy": ["files.trash", "files.move"] },
+  "actions": [
+    { "id": "files.trash", "class": "C1", "reversible": "trash",
+      "args": { "paths": { "type": "strings", "required": true }, "bytes": { "type": "integer", "min": 0 } },
+      "resources": [ { "kind": "path", "arg": "paths[]", "expand_home": true } ],
+      "executor": "test-executor", "preview": { "show": ["paths"] } },
+    { "id": "files.trash.empty", "class": "C5", "args": {}, "executor": "test-executor" },
+    { "id": "net.upload", "class": "C3", "leaves": true,
+      "args": { "host": { "type": "string", "required": true }, "file": { "type": "string" } },
+      "resources": [ { "kind": "host", "arg": "host" } ],
+      "executor": "test-executor", "preview": { "show": ["host"] } },
+    { "id": "selinux.mode", "class": "C4", "system": true,
+      "args": { "mode": { "type": "string", "required": true, "enum": ["enforcing", "permissive"] } },
+      "executor": "test-executor" },
+    { "id": "lab.echo", "class": "C1",
+      "args": { "text": { "type": "string", "required": true, "max_len": 200 } },
+      "executor": "test-executor", "preview": { "show": ["text"] } }
+  ]
+}

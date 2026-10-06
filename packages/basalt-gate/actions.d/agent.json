@@ -1,0 +1,139 @@
+{
+  "registry": 1,
+  "source": "basalt-agent",
+  "executors": {
+    "basalt-agent-grant": {
+      "types": [],
+      "note": "the grant helper claims from phase 2 (polkit stays its authentication); until then nothing claims"
+    }
+  },
+  "groups": {},
+  "actions": [
+    {
+      "id": "agent.grant.host",
+      "class": "C3",
+      "leaves": true,
+      "system": true,
+      "description": "Let one running agent session reach one more host.",
+      "args": {
+        "session": {
+          "type": "string",
+          "required": true,
+          "pattern": "s-[0-9a-f]{12}"
+        },
+        "host": {
+          "type": "string",
+          "required": true,
+          "pattern": "[A-Za-z0-9.-]{1,253}(:[0-9,-]{1,64})?"
+        }
+      },
+      "resources": [
+        {
+          "kind": "host",
+          "arg": "host"
+        }
+      ],
+      "executor": "basalt-agent-grant",
+      "requesters": [
+        "person",
+        "tool"
+      ],
+      "preview": {
+        "show": [
+          "session",
+          "host"
+        ]
+      }
+    },
+    {
+      "id": "agent.grant.path",
+      "class": "C2",
+      "system": true,
+      "description": "Hand one more directory to a running native agent session.",
+      "args": {
+        "session": {
+          "type": "string",
+          "required": true,
+          "pattern": "s-[0-9a-f]{12}"
+        },
+        "path": {
+          "type": "string",
+          "required": true,
+          "max_len": 4096
+        }
+      },
+      "resources": [
+        {
+          "kind": "path",
+          "arg": "path",
+          "beneath": true,
+          "expand_home": true
+        }
+      ],
+      "executor": "basalt-agent-grant",
+      "requesters": [
+        "person",
+        "tool"
+      ],
+      "preview": {
+        "show": [
+          "session",
+          "path"
+        ]
+      }
+    },
+    {
+      "id": "agent.egress.change",
+      "class": "C3",
+      "leaves": true,
+      "system": true,
+      "description": "Add or remove a host in an agent profile's allowlist (user or system scope).",
+      "args": {
+        "profile": {
+          "type": "string",
+          "required": true,
+          "pattern": "[a-z0-9][a-z0-9_-]{0,40}"
+        },
+        "op": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "add",
+            "remove"
+          ]
+        },
+        "entry": {
+          "type": "string",
+          "required": true,
+          "pattern": "[A-Za-z0-9.*-]{1,253}(:[0-9,-]{1,64})?"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "user",
+            "system"
+          ]
+        }
+      },
+      "resources": [
+        {
+          "kind": "host",
+          "arg": "entry"
+        }
+      ],
+      "executor": "basalt-agent-grant",
+      "requesters": [
+        "person",
+        "tool"
+      ],
+      "preview": {
+        "show": [
+          "profile",
+          "op",
+          "entry",
+          "scope"
+        ]
+      }
+    }
+  ]
+}

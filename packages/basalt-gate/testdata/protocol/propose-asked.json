@@ -1,0 +1,8 @@
+{
+  "name": "propose-asked",
+  "about": "A tool asks to run a command line it showed; no rule covers it, so a person decides. The reply carries the id to wait on.",
+  "request": { "op": "propose", "calls": [ { "action": "tool.exec", "args": {
+      "tool": "tui-systemd", "operation": "unit.restart", "argv": ["systemctl", "restart", "nginx.service"],
+      "description": "Restart nginx", "destructive": false, "class_hint": "C2" } } ] },
+  "reply": { "ok": true, "id": "g-000000000001", "decision": "asked", "class": "C2", "reason": "no rule covers it, so a person decides", "by": "default" }
+}

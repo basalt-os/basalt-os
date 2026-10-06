@@ -1,0 +1,17 @@
+{
+  "name": "wait-allowed",
+  "about": "The tool waits (\"Waiting for approval\", with a cancel key) until a person decides: allowed, declined, refused or expired.",
+  "request": {
+    "op": "wait",
+    "id": "g-000000000001",
+    "timeout": 180
+  },
+  "reply": {
+    "ok": true,
+    "id": "g-000000000001",
+    "decision": "allowed",
+    "class": "C2",
+    "reason": "no rule covers it, so a person decides",
+    "by": "person:tty"
+  }
+}

@@ -184,6 +184,19 @@ ledger-test: ## go vet + go test of basalt-ledger in a Fedora container
 lab-ledger-test: ## Egress + ledger on a lab VM: default-deny sessions, rebinding, append-only ledger, chain across rotation, 0 AVC (scripts/lab/ledger-test.sh)
 	$(L)/ledger-test.sh
 
+# --- the approval gate (docs/gate.md) --------------------------------------------------
+
+.PHONY: rpm-gate gate-test lab-gate-test
+
+rpm-gate: ## Build only basalt-gate (+ -selinux, source) into the RPM directory
+	packages/basalt-gate/build.sh
+
+gate-test: ## go vet + go test of basalt-gate in a Fedora container
+	packages/basalt-gate/build.sh test
+
+lab-gate-test: ## Approval gate on a lab VM: requests, rules, locked actions, claims, stop, escapes from an agent domain, 0 AVC (scripts/lab/gate-test.sh)
+	$(L)/gate-test.sh
+
 # --- optional local model service (packages/basalt-llm) and evaluation suite --------
 
 rpm-llm: ## Build basalt-llm (+ -selinux): llama.cpp server for the CPU, unit without network, SELinux domain (not in CI)

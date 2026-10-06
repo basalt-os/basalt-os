@@ -1,0 +1,8 @@
+{
+  "name": "propose-refused",
+  "about": "A locked action: no rule can allow it. The tool shows the reason and does not run anything.",
+  "request": { "op": "propose", "calls": [ { "action": "tool.exec", "args": {
+      "tool": "tui-disk", "operation": "format", "argv": ["mkfs.ext4", "/dev/sdb1"],
+      "description": "Format /dev/sdb1", "destructive": true, "class_hint": "C5" } } ] },
+  "reply": { "ok": true, "id": "g-000000000003", "decision": "refused", "class": "C5", "reason": "always protected (tool.disk-wipe): wiping disks or partitions is never automatic or remote", "by": "hard-limit:locked:tool.disk-wipe" }
+}

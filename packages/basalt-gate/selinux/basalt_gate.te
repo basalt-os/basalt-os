@@ -1,0 +1,166 @@
+policy_module(basalt_gate, 0.1.0)
+
+# basalt-gate: the approval gate (docs/gate.md). A root service in its own
+# domain that
+#   - listens on /run/basalt-gate/gate.sock (basalt_gate_runtime_t) for
+#     requests, decisions and claims; who is on the other end comes from
+#     the kernel (SO_PEERCRED, SO_PEERSEC, /proc/PID/cgroup);
+#   - keeps the sealed rule set, the queue and its state in
+#     /var/lib/basalt-gate (basalt_gate_var_lib_t), written by this domain
+#     only;
+#   - reads its registry, presets and hard limits (/usr/share/basalt/gate,
+#     basalt_gate_data_t) and its configuration (/etc/basalt-gate);
+#   - asks polkit (pkcheck over the system bus) when a person decides;
+#   - reads the power supply state in sysfs;
+#   - sends its records to basalt-ledger and reads its own records back
+#     for dry runs.
+# No network, no capabilities, no exec besides pkcheck.
+#
+# The terminal decider basalt-gate-tty runs in basalt_gate_tty_t, entered
+# only from user domains; the gate lets that type decide, with polkit on
+# every decision. Agent domains may connect to ask (that is their right),
+# never enter the decider domain, and never reach the rule store.
+
+type basalt_gate_t;
+type basalt_gate_exec_t;
+init_daemon_domain(basalt_gate_t, basalt_gate_exec_t)
+init_nnp_daemon_domain(basalt_gate_t)
+
+type basalt_gate_var_lib_t;
+files_type(basalt_gate_var_lib_t)
+
+type basalt_gate_runtime_t;
+files_pid_file(basalt_gate_runtime_t)
+
+type basalt_gate_conf_t;
+files_config_file(basalt_gate_conf_t)
+
+type basalt_gate_data_t;
+files_type(basalt_gate_data_t)
+
+type basalt_gate_tty_t;
+type basalt_gate_tty_exec_t;
+application_domain(basalt_gate_tty_t, basalt_gate_tty_exec_t)
+
+########################################
+#
+# basalt_gate_t
+#
+
+allow basalt_gate_t self:process { getsched signal_perms };
+allow basalt_gate_t self:fifo_file rw_fifo_file_perms;
+allow basalt_gate_t self:unix_stream_socket { create_stream_socket_perms listen accept };
+allow basalt_gate_t self:unix_dgram_socket create_socket_perms;
+
+manage_dirs_pattern(basalt_gate_t, basalt_gate_var_lib_t, basalt_gate_var_lib_t)
+manage_files_pattern(basalt_gate_t, basalt_gate_var_lib_t, basalt_gate_var_lib_t)
+files_var_lib_filetrans(basalt_gate_t, basalt_gate_var_lib_t, dir)
+files_search_var_lib(basalt_gate_t)
+
+manage_dirs_pattern(basalt_gate_t, basalt_gate_runtime_t, basalt_gate_runtime_t)
+manage_sock_files_pattern(basalt_gate_t, basalt_gate_runtime_t, basalt_gate_runtime_t)
+files_pid_filetrans(basalt_gate_t, basalt_gate_runtime_t, { dir sock_file })
+
+list_dirs_pattern(basalt_gate_t, basalt_gate_conf_t, basalt_gate_conf_t)
+read_files_pattern(basalt_gate_t, basalt_gate_conf_t, basalt_gate_conf_t)
+list_dirs_pattern(basalt_gate_t, basalt_gate_data_t, basalt_gate_data_t)
+read_files_pattern(basalt_gate_t, basalt_gate_data_t, basalt_gate_data_t)
+files_read_usr_files(basalt_gate_t)
+
+# Peers: /proc/PID/stat (the start time polkit names a process with) and
+# /proc/PID/cgroup (the agent session), for every domain that connects.
+domain_read_all_domains_state(basalt_gate_t)
+
+# Power for rule conditions.
+dev_read_sysfs(basalt_gate_t)
+
+# pkcheck, over the system bus to polkitd.
+corecmd_exec_bin(basalt_gate_t)
+optional_policy(`
+	dbus_system_bus_client(basalt_gate_t)
+')
+optional_policy(`
+	policykit_dbus_chat(basalt_gate_t)
+')
+
+kernel_read_system_state(basalt_gate_t)
+# Go's listen reads net.core.somaxconn for the socket's backlog.
+kernel_read_net_sysctls(basalt_gate_t)
+dev_read_urand(basalt_gate_t)
+files_read_etc_files(basalt_gate_t)
+miscfiles_read_localization(basalt_gate_t)
+logging_send_syslog_msg(basalt_gate_t)
+# Home directories of users, for "~/" in rules (never opened).
+auth_use_nsswitch(basalt_gate_t)
+
+# Records to basalt-ledger, and reading its own records back (the same
+# rules as basalt_ledger_stream_connect, written out so this module builds
+# without the ledger's interface file).
+optional_policy(`
+	gen_require(`
+		type basalt_ledger_t, basalt_ledger_var_run_t;
+	')
+	files_search_pids(basalt_gate_t)
+	stream_connect_pattern(basalt_gate_t, basalt_ledger_var_run_t, basalt_ledger_var_run_t, basalt_ledger_t)
+')
+
+########################################
+#
+# basalt_gate_tty_t: the terminal decider
+#
+
+allow basalt_gate_tty_t self:process { getsched signal_perms };
+allow basalt_gate_tty_t self:fifo_file rw_fifo_file_perms;
+allow basalt_gate_tty_t self:unix_stream_socket create_stream_socket_perms;
+basalt_gate_stream_connect(basalt_gate_tty_t)
+userdom_use_user_terminals(basalt_gate_tty_t)
+userdom_use_inherited_user_terminals(basalt_gate_tty_t)
+term_use_all_inherited_terms(basalt_gate_tty_t)
+kernel_read_system_state(basalt_gate_tty_t)
+dev_read_urand(basalt_gate_tty_t)
+files_read_etc_files(basalt_gate_tty_t)
+miscfiles_read_localization(basalt_gate_tty_t)
+
+########################################
+#
+# Who may connect, who may decide
+#
+
+gen_require(`
+	type unconfined_t;
+	role unconfined_r;
+	attribute userdomain;
+	attribute basalt_agent_domain;
+')
+
+# Requesters: users and their tools, and agents (they ask; the gate
+# decides what they may do, and they may never decide).
+basalt_gate_stream_connect(unconfined_t)
+basalt_gate_stream_connect(userdomain)
+basalt_gate_stream_connect(basalt_agent_domain)
+
+# The terminal decider, from user domains.
+basalt_gate_run_tty(unconfined_t, unconfined_r)
+optional_policy(`
+	gen_require(`
+		type staff_t, user_t;
+		role staff_r, user_r;
+	')
+	basalt_gate_run_tty(staff_t, staff_r)
+	basalt_gate_run_tty(user_t, user_r)
+')
+
+########################################
+#
+# Never, for any agent domain
+#
+
+# The rule store, the queue and the gate's state: agents do not read or
+# write them; only basalt_gate_t does.
+neverallow basalt_agent_domain basalt_gate_var_lib_t:file { open read write append create unlink rename setattr link };
+neverallow basalt_agent_domain basalt_gate_var_lib_t:dir { add_name remove_name write reparent rmdir };
+# The gate's configuration (who decides, which types relay).
+neverallow basalt_agent_domain basalt_gate_conf_t:file { write append create unlink rename setattr };
+# The decider role: agents never enter, run or touch the deciding domains.
+neverallow basalt_agent_domain { basalt_gate_t basalt_gate_tty_t }:process { transition dyntransition ptrace };
+neverallow basalt_agent_domain basalt_gate_tty_exec_t:file { entrypoint execute execute_no_trans };

@@ -1,0 +1,284 @@
+{
+  "locked": [
+    {
+      "name": "selinux.permissive",
+      "why": "SELinux stays enforcing",
+      "action": "selinux.mode"
+    },
+    {
+      "name": "selinux.policy",
+      "why": "Basalt policy modules are never removed or replaced by a request",
+      "action_prefix": "selinux.module."
+    },
+    {
+      "name": "selinux.locked-boolean",
+      "why": "this boolean keeps agents confined",
+      "action": "selinux.boolean",
+      "resource": {
+        "kind": "boolean",
+        "values": [
+          "basalt_agent_direct_egress"
+        ],
+        "prefixes": [
+          "basalt_agent_",
+          "basalt_confine_"
+        ]
+      }
+    },
+    {
+      "name": "secureboot.keys",
+      "why": "Secure Boot keys and enrolled MOKs are never deleted or replaced by a request",
+      "action_prefix": "secureboot."
+    },
+    {
+      "name": "mok.delete",
+      "why": "enrolled MOKs are never deleted by a request",
+      "action": "mok.delete"
+    },
+    {
+      "name": "ledger.history",
+      "why": "the audit ledger is never turned off, shortened or rewritten",
+      "action_prefix": "ledger."
+    },
+    {
+      "name": "gate.self",
+      "why": "the gate, its hard limits and who may decide are never changed by a request",
+      "action_prefix": "gate.config."
+    },
+    {
+      "name": "disk.encryption",
+      "why": "disk encryption and the last recovery key stay",
+      "action_prefix": "luks."
+    },
+    {
+      "name": "disk.wipe",
+      "why": "wiping disks or partitions is never automatic or remote",
+      "action_prefix": "disk.wipe"
+    },
+    {
+      "name": "secrets.bulk",
+      "why": "saved passwords, keys and tokens are never read in bulk",
+      "action": "secrets.export"
+    },
+    {
+      "name": "users.admin",
+      "why": "adding an administrator or changing another user's password needs the administrator at the computer",
+      "action_prefix": "users.admin."
+    },
+    {
+      "name": "tool.selinux-permissive",
+      "why": "SELinux stays enforcing",
+      "action": "tool.exec",
+      "argv": [
+        [
+          "setenforce",
+          "0"
+        ],
+        [
+          "setenforce",
+          "Permissive"
+        ],
+        [
+          "semodule",
+          "**",
+          "basalt*"
+        ],
+        [
+          "setsebool",
+          "**",
+          "basalt_agent_direct_egress*"
+        ]
+      ]
+    },
+    {
+      "name": "tool.disk-wipe",
+      "why": "wiping disks or partitions is never automatic or remote",
+      "action": "tool.exec",
+      "argv": [
+        [
+          "wipefs"
+        ],
+        [
+          "mkfs*"
+        ],
+        [
+          "blkdiscard"
+        ],
+        [
+          "shred"
+        ],
+        [
+          "sgdisk",
+          "**",
+          "--zap-all"
+        ],
+        [
+          "dd",
+          "**",
+          "of=/dev/*"
+        ]
+      ]
+    },
+    {
+      "name": "tool.disk-encryption",
+      "why": "disk encryption and the last recovery key stay",
+      "action": "tool.exec",
+      "argv": [
+        [
+          "cryptsetup",
+          "luksRemoveKey"
+        ],
+        [
+          "cryptsetup",
+          "luksKillSlot"
+        ],
+        [
+          "cryptsetup",
+          "erase"
+        ],
+        [
+          "cryptsetup",
+          "luksErase"
+        ],
+        [
+          "systemd-cryptenroll",
+          "**",
+          "--wipe-slot*"
+        ]
+      ]
+    },
+    {
+      "name": "tool.secureboot",
+      "why": "Secure Boot keys and enrolled MOKs are never deleted or replaced by a request",
+      "action": "tool.exec",
+      "argv": [
+        [
+          "mokutil",
+          "--delete"
+        ],
+        [
+          "mokutil",
+          "--reset"
+        ],
+        [
+          "mokutil",
+          "--disable-validation"
+        ],
+        [
+          "sbctl",
+          "reset"
+        ]
+      ]
+    },
+    {
+      "name": "tool.users-admin",
+      "why": "adding an administrator needs the administrator at the computer",
+      "action": "tool.exec",
+      "argv": [
+        [
+          "usermod",
+          "**",
+          "wheel"
+        ],
+        [
+          "gpasswd",
+          "-a",
+          "*",
+          "wheel"
+        ],
+        [
+          "gpasswd",
+          "**",
+          "wheel"
+        ]
+      ]
+    },
+    {
+      "name": "tool.ledger",
+      "why": "the audit ledger is never turned off, shortened or rewritten",
+      "action": "tool.exec",
+      "argv": [
+        [
+          "systemctl",
+          "stop",
+          "basalt-ledger*"
+        ],
+        [
+          "systemctl",
+          "disable",
+          "basalt-ledger*"
+        ],
+        [
+          "systemctl",
+          "mask",
+          "basalt-ledger*"
+        ],
+        [
+          "chattr",
+          "**",
+          "/var/log/basalt-ledger*"
+        ]
+      ]
+    },
+    {
+      "name": "tool.gate",
+      "why": "the approval gate is never turned off by a request",
+      "action": "tool.exec",
+      "argv": [
+        [
+          "systemctl",
+          "stop",
+          "basalt-gated*"
+        ],
+        [
+          "systemctl",
+          "disable",
+          "basalt-gated*"
+        ],
+        [
+          "systemctl",
+          "mask",
+          "basalt-gated*"
+        ]
+      ]
+    }
+  ],
+  "always_ask": [
+    {
+      "name": "snapshot.delete",
+      "why": "a deleted snapshot cannot come back",
+      "action": "snapshot.delete"
+    },
+    {
+      "name": "trash.empty",
+      "why": "an emptied trash cannot come back",
+      "action": "files.trash.empty"
+    },
+    {
+      "name": "session.power",
+      "why": "power and logout are the person's own choice",
+      "action": "session.power",
+      "requester_not": "person"
+    },
+    {
+      "name": "agent.control",
+      "why": "an agent controlling the desktop is always confirmed",
+      "action": "agent.control"
+    },
+    {
+      "name": "screen.capture",
+      "why": "a screenshot for an agent is always confirmed",
+      "action": "screen.capture"
+    },
+    {
+      "name": "payment",
+      "why": "payments and purchases are asked (an administrator may set a limit later)",
+      "action_prefix": "payment."
+    },
+    {
+      "name": "secureboot.enroll",
+      "why": "enrolling a key is asked every time",
+      "action": "mok.enroll"
+    }
+  ]
+}

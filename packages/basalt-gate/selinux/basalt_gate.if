@@ -1,0 +1,53 @@
+## <summary>basalt-gate: the approval gate, one decision point for every side effect.</summary>
+
+########################################
+## <summary>
+##	Connect to the gate's socket. What a peer may do there (request,
+##	decide, claim) is decided by the gate from the kernel's view of the
+##	peer: deciding is open only to the trusted surfaces' types.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`basalt_gate_stream_connect',`
+	gen_require(`
+		type basalt_gate_t, basalt_gate_runtime_t;
+	')
+
+	files_search_pids($1)
+	stream_connect_pattern($1, basalt_gate_runtime_t, basalt_gate_runtime_t, basalt_gate_t)
+')
+
+########################################
+## <summary>
+##	Run the terminal decider (basalt-gate-tty) in its own domain from a
+##	user domain on a terminal. Agent domains can never do this
+##	(neverallow in basalt_gate.te).
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed to transition.
+##	</summary>
+## </param>
+## <param name="role">
+##	<summary>
+##	Role allowed the terminal decider domain.
+##	</summary>
+## </param>
+#
+interface(`basalt_gate_run_tty',`
+	gen_require(`
+		type basalt_gate_tty_t, basalt_gate_tty_exec_t;
+	')
+
+	domtrans_pattern($1, basalt_gate_tty_exec_t, basalt_gate_tty_t)
+	role $2 types basalt_gate_tty_t;
+	allow basalt_gate_tty_t $1:fd use;
+	allow basalt_gate_tty_t $1:fifo_file rw_inherited_fifo_file_perms;
+	allow basalt_gate_tty_t $1:process sigchld;
+	allow $1 basalt_gate_tty_t:process { signal sigkill };
+	ps_process_pattern($1, basalt_gate_tty_t)
+')

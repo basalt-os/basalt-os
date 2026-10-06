@@ -1,0 +1,8 @@
+// Lab only: the user dev and root approve gate requests without typing a
+// password, so the lab can run unattended. The user other has no such rule.
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.basalt-os.gate.decide") == 0 &&
+        (subject.user == "dev" || subject.user == "root")) {
+        return polkit.Result.YES;
+    }
+});

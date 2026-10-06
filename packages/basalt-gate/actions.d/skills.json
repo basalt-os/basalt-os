@@ -1,0 +1,75 @@
+{
+  "registry": 1,
+  "source": "basalt-shell-skills",
+  "executors": {},
+  "groups": {
+    "skills.read": [
+      "grant.add",
+      "file.open"
+    ]
+  },
+  "actions": [
+    {
+      "id": "grant.add",
+      "class": "C0",
+      "description": "Let the assistant's skills read a folder, a mailbox or a host for a while (becomes a rule in phase 2).",
+      "args": {
+        "kind": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "folder",
+            "mailbox",
+            "host"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "required": true,
+          "max_len": 4096
+        },
+        "minutes": {
+          "type": "integer",
+          "min": 1,
+          "max": 10080
+        }
+      },
+      "executor": "basalt-shell",
+      "requesters": [
+        "person"
+      ],
+      "preview": {
+        "show": [
+          "kind",
+          "target",
+          "minutes"
+        ]
+      }
+    },
+    {
+      "id": "file.open",
+      "class": "C1",
+      "description": "Open a file the assistant found, in its usual app.",
+      "args": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "max_len": 4096
+        }
+      },
+      "resources": [
+        {
+          "kind": "path",
+          "arg": "path",
+          "expand_home": true
+        }
+      ],
+      "executor": "basalt-shell",
+      "preview": {
+        "show": [
+          "path"
+        ]
+      }
+    }
+  ]
+}

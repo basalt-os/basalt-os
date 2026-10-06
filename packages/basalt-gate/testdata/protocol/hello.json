@@ -1,0 +1,6 @@
+{
+  "name": "hello",
+  "about": "Feature detection: the first message. A gate answers within 500 ms with protocol gate/1; anything else means no gate.",
+  "request": { "op": "hello", "role": "requester", "client": "tui-systemd/0.4.0", "protocol": "gate/1" },
+  "reply": { "ok": true, "protocol": "gate/1", "roles": ["requester", "executor"], "kind": "tool" }
+}

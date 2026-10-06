@@ -1,0 +1,13 @@
+{
+  "registry": 1,
+  "source": "lab",
+  "executors": {
+    "lab-executor": { "types": ["unconfined_t"], "uid": 0, "note": "lab only: root at a terminal plays the executor" }
+  },
+  "groups": {},
+  "actions": [
+    { "id": "lab.echo", "class": "C1", "description": "Lab only: echo a text.",
+      "args": { "text": { "type": "string", "required": true, "max_len": 200 } },
+      "executor": "lab-executor", "preview": { "show": ["text"] } }
+  ]
+}

@@ -1,0 +1,16 @@
+# Careful (the default preset): ask before every change, as Basalt always
+# has. A request no rule covers asks a person, so this preset is short: it
+# only lets the person's own reads run without asking. The person's own
+# "always ask" and "never allow" choices, and the rules they add later,
+# sit next to it (basalt-gate rules list).
+#
+# Presets never hold "ask" rules: the most restrictive matching rule
+# wins, so an "ask" here would keep every later "allow" rule from ever
+# applying. Asking is what happens when nothing allows.
+
+[[rule]]
+id = "r-careful-look"
+sentence_key = "rule.preset.careful.look"
+effect = "allow-quiet"
+actions = ["class:C0"]
+requesters = ["person"]

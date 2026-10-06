@@ -1,0 +1,116 @@
+{
+  "about": "Digest vectors computed independently (Python): the input, its canonical JSON after normalization, the digest and the short code.",
+  "cases": [
+    {
+      "name": "files-trash",
+      "input": {
+        "calls": [
+          {
+            "action": "files.trash",
+            "args": {
+              "paths": [
+                "/home/ana/Downloads/setup-v2.iso"
+              ],
+              "bytes": 2147483648
+            }
+          }
+        ],
+        "preview": {
+          "title_key": "files.trash.title",
+          "title_args": {
+            "count": 1,
+            "folder": "Downloads"
+          },
+          "lines": [
+            {
+              "key": "files.trash.item",
+              "args": {
+                "name": "setup-v2.iso",
+                "size": 2147483648,
+                "hidden": false
+              }
+            }
+          ],
+          "diff": null,
+          "commands": null
+        },
+        "resources": [
+          {
+            "kind": "path",
+            "value": "/home/ana/Downloads/setup-v2.iso",
+            "beneath": false,
+            "bytes": 0
+          }
+        ]
+      },
+      "canonical": "{\"calls\":[{\"action\":\"files.trash\",\"args\":{\"bytes\":2147483648,\"paths\":[\"/home/ana/Downloads/setup-v2.iso\"]}}],\"preview\":{\"lines\":[{\"args\":{\"hidden\":false,\"name\":\"setup-v2.iso\",\"size\":2147483648},\"key\":\"files.trash.item\"}],\"title_args\":{\"count\":1,\"folder\":\"Downloads\"},\"title_key\":\"files.trash.title\"},\"resources\":[{\"kind\":\"path\",\"value\":\"/home/ana/Downloads/setup-v2.iso\"}]}",
+      "digest": "sha256:5394c6efefd74c5ad0256c01db0ce1dbca413e4e4a16c0511913a845cec9e441",
+      "code": "5394c6ef"
+    },
+    {
+      "name": "tool-exec-unicode",
+      "input": {
+        "calls": [
+          {
+            "action": "tool.exec",
+            "args": {
+              "tool": "tui-systemd",
+              "operation": "unit.restart",
+              "argv": [
+                "systemctl",
+                "restart",
+                "café <&>.service"
+              ],
+              "description": "Restart \"café\"\n\ttab",
+              "destructive": false,
+              "class_hint": "C2"
+            }
+          }
+        ],
+        "preview": {
+          "title_key": "tool.exec.title",
+          "title_args": {
+            "tool": "tui-systemd",
+            "empty": ""
+          },
+          "commands": [
+            "systemctl restart 'café <&>.service'"
+          ]
+        },
+        "resources": []
+      },
+      "canonical": "{\"calls\":[{\"action\":\"tool.exec\",\"args\":{\"argv\":[\"systemctl\",\"restart\",\"café <&>.service\"],\"class_hint\":\"C2\",\"description\":\"Restart \\\"café\\\"\\n\\ttab\",\"destructive\":false,\"operation\":\"unit.restart\",\"tool\":\"tui-systemd\"}}],\"preview\":{\"commands\":[\"systemctl restart 'café <&>.service'\"],\"title_args\":{\"empty\":\"\",\"tool\":\"tui-systemd\"},\"title_key\":\"tool.exec.title\"},\"resources\":[]}",
+      "digest": "sha256:d77ba9be9b96421a7b0796c9a556f0d00281eae551ada3fba6c499fa3a1901d3",
+      "code": "d77ba9be"
+    },
+    {
+      "name": "system-assistant-ref",
+      "input": {
+        "ref": "p-4f2a9c",
+        "calls": [
+          {
+            "action": "unit.restart",
+            "args": {
+              "unit": "nginx.service"
+            }
+          }
+        ],
+        "preview": {
+          "title_key": "unit.restart.title",
+          "commands": [
+            "systemctl restart nginx.service"
+          ]
+        },
+        "resources": [
+          {
+            "kind": "unit",
+            "value": "nginx.service"
+          }
+        ]
+      },
+      "canonical": "{\"calls\":[{\"action\":\"unit.restart\",\"args\":{\"unit\":\"nginx.service\"}}],\"preview\":{\"commands\":[\"systemctl restart nginx.service\"],\"title_key\":\"unit.restart.title\"},\"ref\":\"p-4f2a9c\",\"resources\":[{\"kind\":\"unit\",\"value\":\"nginx.service\"}]}",
+      "digest": "sha256:908c221af9fb3133137012cb510645f63acce826029e717255994085dc7d9649",
+      "code": "2fcf772d"
+    }
+  ]
+}

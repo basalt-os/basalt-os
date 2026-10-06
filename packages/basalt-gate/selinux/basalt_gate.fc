@@ -1,0 +1,6 @@
+/usr/libexec/basalt-gate/basalt-gated	--	gen_context(system_u:object_r:basalt_gate_exec_t,s0)
+/usr/libexec/basalt-gate/basalt-gate-tty	--	gen_context(system_u:object_r:basalt_gate_tty_exec_t,s0)
+/usr/share/basalt/gate(/.*)?			gen_context(system_u:object_r:basalt_gate_data_t,s0)
+/etc/basalt-gate(/.*)?				gen_context(system_u:object_r:basalt_gate_conf_t,s0)
+/var/lib/basalt-gate(/.*)?			gen_context(system_u:object_r:basalt_gate_var_lib_t,s0)
+/run/basalt-gate(/.*)?				gen_context(system_u:object_r:basalt_gate_runtime_t,s0)

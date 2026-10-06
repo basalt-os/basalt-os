@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Basalt OS</vendor>
+  <vendor_url>https://basalt-os.org</vendor_url>
+
+  <!-- Approve a request of your own that changes your things or leaves
+       the computer (Undoable, Leaves the computer). The terminal decider
+       asks for it on every approval; your password is kept 5 minutes. -->
+  <action id="org.basalt-os.gate.decide">
+    <description>Approve a request</description>
+    <message>Authentication is required to approve this request</message>
+    <defaults>
+      <allow_any>auth_self_keep</allow_any>
+      <allow_inactive>auth_self_keep</allow_inactive>
+      <allow_active>auth_self_keep</allow_active>
+    </defaults>
+  </action>
+
+  <!-- Approve a system change, a Critical or a Cannot be undone request,
+       or another user's request: an administrator, every time. -->
+  <action id="org.basalt-os.gate.decide-admin">
+    <description>Approve a system or critical request</description>
+    <message>Authentication is required to approve a system change</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+
+  <!-- Unlock one locked request (one digest, 10 minutes): an
+       administrator at the computer itself, plus a second factor. -->
+  <action id="org.basalt-os.gate.unlock">
+    <description>Unlock a protected action once</description>
+    <message>Authentication is required to unlock a protected action</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

@@ -1,0 +1,10 @@
+# Lab rule (system): agents may run terminal tools without asking, even
+# after web content. Used to show that a locked action stays refused
+# whatever a rule says.
+[[rule]]
+id = "r-lab-agent-tools"
+effect = "allow-tell"
+actions = ["tool.exec"]
+requesters = ["agent"]
+taint_max = "web"
+expires = "1d"

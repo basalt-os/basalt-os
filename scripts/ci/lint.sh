@@ -49,6 +49,7 @@ shellcheck -x -S warning scripts/ci/*.sh packages/basalt-assistant/build.sh scri
   packages/basalt-agent/build.sh scripts/lab/agent-test.sh packages/basalt-agent/tests/normal.sh packages/basalt-agent/tests/attacks.sh packages/basalt-agent/tests/driver.sh \
   packages/basalt-agent/tests/credwork.sh packages/basalt-agent/tests/credattacks.sh \
   packages/basalt-resolver/build.sh packages/basalt-ledger/build.sh scripts/lab/ledger-test.sh packages/basalt-ledger/tests/*.sh \
+  packages/basalt-gate/build.sh scripts/lab/gate-test.sh packages/basalt-gate/tests/*.sh \
   packages/basalt-llm/build.sh packages/basalt-llm/basalt-llm-start packages/basalt-llm/basalt-llm-fetch \
   packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh scripts/data-package.sh scripts/release/*.sh || fail=1
 
@@ -89,9 +90,17 @@ shellcheck -x -S warning packages/nvidia/check-identical.sh packages/nvidia/basa
   packages/nvidia/tests/basalt-nvidia-test.sh scripts/lab/nvidia-test.sh || fail=1
 packages/nvidia/tests/basalt-nvidia-test.sh || fail=1
 
-step "Python syntax: evaluation suite tools, ledger lab fixtures"
+step "Python syntax: evaluation suite tools, ledger and gate lab fixtures"
 python3 -m py_compile eval/tools/*.py && rm -rf eval/tools/__pycache__ || fail=1
 python3 -m py_compile packages/basalt-ledger/tests/*.py && rm -rf packages/basalt-ledger/tests/__pycache__ || fail=1
+python3 -m py_compile packages/basalt-gate/tests/*.py && rm -rf packages/basalt-gate/tests/__pycache__ || fail=1
+
+step "basalt-gate: registry, hard limits and protocol fixtures are valid JSON; the policy is valid XML"
+for f in packages/basalt-gate/actions.d/*.json packages/basalt-gate/hardlimits.json packages/basalt-gate/testdata/protocol/*.json \
+  packages/basalt-gate/testdata/registry/*.json; do
+  python3 -m json.tool "$f" >/dev/null || { echo "$f: not valid JSON" >&2; fail=1; }
+done
+xmllint --noout packages/basalt-gate/dist/org.basalt-os.gate.policy || fail=1
 
 step "Python syntax: assistant policy query helper"
 python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" packages/basalt-assistant/dist/basalt-policy-query || fail=1

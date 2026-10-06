@@ -1,0 +1,44 @@
+{
+  "registry": 1,
+  "source": "basalt-gate",
+  "executors": {
+    "basalt-gate": { "internal": true, "note": "the gate itself (rule changes)" },
+    "requester": { "requester": true, "note": "the requester runs it after the decision (terminal tools, scripts)" }
+  },
+  "groups": {},
+  "actions": [
+    {
+      "id": "gate.rule.change",
+      "class": "C4",
+      "description": "Add or remove an approval rule. Tightening from a trusted surface takes effect at once (rules.apply); everything else is asked.",
+      "args": {
+        "op": { "type": "string", "required": true, "enum": ["add", "remove"] },
+        "scope": { "type": "string", "required": true, "enum": ["user", "system"] },
+        "rule": { "type": "object" },
+        "id": { "type": "string", "pattern": "r-[a-z0-9][a-z0-9-]{0,40}" }
+      },
+      "resources": [ { "kind": "rule", "arg": "id" } ],
+      "executor": "basalt-gate",
+      "requesters": ["person", "tool", "app", "assistant", "system-assistant"],
+      "preview": { "title_key": "gate.rule.change.title", "show": ["op", "scope", "rule", "id"] }
+    },
+    {
+      "id": "tool.exec",
+      "class": "C1",
+      "description": "A terminal tool runs one command line it showed the person (the third-party subset of the protocol). The tool's hint raises the class, a missing hint counts as System change; the tool's registry file may raise it further, never lower it.",
+      "args": {
+        "tool": { "type": "string", "required": true, "pattern": "[a-z0-9][a-z0-9._-]{0,63}" },
+        "operation": { "type": "string", "required": true, "pattern": "[a-z0-9][a-z0-9._-]{0,63}" },
+        "argv": { "type": "strings", "required": true, "max_items": 256 },
+        "description": { "type": "string", "max_len": 500 },
+        "destructive": { "type": "boolean" },
+        "class_hint": { "type": "string", "enum": ["C0", "C1", "C2", "C3", "C4", "C5"] }
+      },
+      "class_from_hint": true,
+      "hint_default": "C2",
+      "destructive_arg": "destructive",
+      "executor": "requester",
+      "preview": { "title_key": "tool.exec.title", "show": ["tool", "operation", "description"], "commands": "argv" }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "propose-allowed",
+  "about": "A rule the person made covers the request: the tool runs the command now (and reports the result).",
+  "request": {
+    "op": "propose",
+    "calls": [
+      {
+        "action": "tool.exec",
+        "args": {
+          "tool": "tui-systemd",
+          "operation": "unit.status",
+          "argv": [
+            "systemctl",
+            "status",
+            "nginx.service"
+          ],
+          "description": "Show the state of nginx",
+          "destructive": false,
+          "class_hint": "C1"
+        }
+      }
+    ]
+  },
+  "reply": {
+    "ok": true,
+    "id": "g-000000000002",
+    "decision": "allowed",
+    "class": "C1",
+    "reason": "allowed by the rule r-tui-status, and you are told",
+    "by": "rule:r-tui-status@1a2b3c4d"
+  }
+}
