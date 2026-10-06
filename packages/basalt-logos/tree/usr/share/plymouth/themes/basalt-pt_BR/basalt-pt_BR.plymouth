@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Basalt (pt_BR)
+Description=Basalt OS boot splash: the Basalt mark drawing in over the basalt columns, a sweeping line, and a passphrase card like the login screen's (pt_BR).
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/basalt
+ScriptFile=/usr/share/plymouth/themes/basalt-pt_BR/basalt-pt_BR.script

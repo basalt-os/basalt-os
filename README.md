@@ -34,8 +34,11 @@ Defaults from the first boot:
 The desktop edition (experimental) is the same system plus `basalt-desktop`:
 the [Basalt shell](https://github.com/basalt-os/basalt-shell) in a Sway
 session, on SwayFX 0.6 from the Basalt repository (rounded corners,
-shadows, blur and dimming, turned off on machines without a GPU), with the
-greetd login screen, portals, PipeWire and a few applications. niri is an
+shadows, blur and dimming, turned off on machines without a GPU), with a
+graphical boot splash that also asks the disk passphrase, the Basalt login
+screen (basalt-greeter on greetd, confined by SELinux, with the text login
+as its fallback), portals, PipeWire and a few applications. Servers keep a
+text boot and a text console login. niri is an
 optional session (`basalt-shell-niri`), not installed by default. Settings,
 Additional drivers (and `basalt drivers`) installs the NVIDIA driver for
 Turing and newer GPUs from the opt-in `basalt-nonfree` repository, with

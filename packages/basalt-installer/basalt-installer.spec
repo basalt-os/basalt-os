@@ -3,7 +3,7 @@
 # and a graphical frontend (Quickshell) in the -gui subpackage.
 
 Name:           basalt-installer
-Version:        0.2.1
+Version:        0.2.2
 Release:        1%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
@@ -113,6 +113,16 @@ done
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.2-1
+- Desktop edition: the graphical boot splash (rhgb quiet
+  plymouth.ignore-serial-consoles on the kernel command line, the serial
+  console still works), so the disk passphrase is asked on the splash's
+  card; servers keep the text boot.
+- The splash theme follows the system's language (basalt-pt_BR for
+  Portuguese, basalt otherwise).
+- The desktop edition installs basalt-greeter-selinux (the login screen's
+  SELinux module).
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
 - The Fedora release of the live system comes from the major number of
   os-release's VERSION_ID (44.0 since basalt-release 44-8), else

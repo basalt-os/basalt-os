@@ -42,8 +42,18 @@ var assistantServices = []string{"basalt-assistantd", "basalt-notify", "basalt-a
 // the shell's SELinux module, voice (whisper.cpp), the consented model
 // downloads and the local model service. No model is installed: the
 // desktop asks the person before it downloads one (basalt-models).
-var DesktopPackages = []string{"basalt-desktop", "basalt-shell-selinux", "basalt-voice", "basalt-models",
+var DesktopPackages = []string{"basalt-desktop", "basalt-shell-selinux", "basalt-greeter-selinux", "basalt-voice", "basalt-models",
 	"basalt-llm", "basalt-llm-selinux"}
+
+// SplashTheme is the boot splash theme for the system's locale. Plymouth
+// cannot know the language in the initramfs, so each language is its own
+// theme (plymouth-theme-basalt: basalt in English, basalt-pt_BR).
+func SplashTheme(locale string) string {
+	if strings.HasPrefix(locale, "pt") {
+		return "basalt-pt_BR"
+	}
+	return "basalt"
+}
 
 // Packages returns what dnf installs and excludes for the resolved plan
 // (the kickstart's %packages, plus what Anaconda adds by itself: the kernel
@@ -338,7 +348,7 @@ func (g *gen) all() error {
 	if err := g.repos(); err != nil {
 		return err
 	}
-	g.chroot("Use the Basalt boot splash", "plymouth-set-default-theme", "basalt").Optional = true
+	g.chroot("Use the Basalt boot splash", "plymouth-set-default-theme", SplashTheme(p.Locale)).Optional = true
 	svcs := append([]string{}, baseServices...)
 	if a := p.Assistant; a == nil || *a {
 		svcs = append(svcs, assistantServices...)
@@ -777,6 +787,12 @@ func (g *gen) kernelCmdline(withRoot bool) string {
 		args = append(args, "rd.luks.uuid="+r.CryptName())
 	}
 	args = append(args, "console=tty0", "console=ttyS0,115200n8")
+	if p.Edition == "desktop" {
+		// The graphical boot splash and its passphrase card, also with the
+		// serial console on (plymouth otherwise falls back to text there).
+		// Servers keep the plain text boot.
+		args = append(args, "rhgb", "quiet", "plymouth.ignore-serial-consoles")
+	}
 	if p.Lockdown == nil || *p.Lockdown {
 		args = append(args, "lockdown=integrity", "module.sig_enforce=1")
 	}
