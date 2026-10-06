@@ -92,6 +92,7 @@ install -Dpm 0644 dist/basalt-gated.service %{buildroot}%{_unitdir}/basalt-gated
 install -Dpm 0644 dist/80-basalt-gate.preset %{buildroot}%{_presetdir}/80-basalt-gate.preset
 install -Dpm 0644 dist/gate.conf %{buildroot}%{_sysconfdir}/basalt-gate/gate.conf
 install -Dpm 0644 dist/org.basalt-os.gate.policy %{buildroot}%{_datadir}/polkit-1/actions/org.basalt-os.gate.policy
+install -Dpm 0644 dist/49-basalt-gate-exec.rules %{buildroot}%{_datadir}/polkit-1/rules.d/49-basalt-gate-exec.rules
 install -d -m 0700 %{buildroot}%{_sharedstatedir}/basalt-gate
 install -Dpm 0644 selinux/basalt_gate.pp.bz2 %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}/basalt_gate.pp.bz2
 install -Dpm 0644 selinux/basalt_gate.if %{buildroot}%{_datadir}/selinux/devel/include/distributed/basalt_gate.if
@@ -137,6 +138,7 @@ fi
 %dir %{_sysconfdir}/basalt-gate
 %config(noreplace) %{_sysconfdir}/basalt-gate/gate.conf
 %{_datadir}/polkit-1/actions/org.basalt-os.gate.policy
+%{_datadir}/polkit-1/rules.d/49-basalt-gate-exec.rules
 # The rule set and the queue stay when the package is removed.
 %dir %attr(0700,root,root) %{_sharedstatedir}/basalt-gate
 
@@ -159,6 +161,11 @@ fi
   approved (exec_units). SELinux: the executor domain basalt_gate_exec_t
   (entered only by systemd from basalt-gate-exec@.service), the daemon's
   program type is now basalt_gated_exec_t, the gate may start that unit.
+- The gate starts the executor unit with systemctl --no-ask-password and
+  ships a polkit rule that lets root start exactly basalt-gate-exec@REQUEST
+  units: without it, when systemctl goes over D-Bus, systemd asked polkit
+  and the person saw a password prompt for a request they had already
+  approved.
 - The person's own request of a person-only action (power from the
   command bar) is decided by the same user without an administrator, as
   in the shell before; agents still cannot ask for it at all.

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -115,8 +116,14 @@ func (s *Server) recordRequestObserved(e *entry, env policyEnv) {
 // --yes --confirm CODE`, and the typed yes of an interactive apply).
 func (s *Server) confirm(c *conn, req gate.Request) gate.Reply {
 	deny := func(reason string) gate.Reply {
+		actions := []string{}
+		s.mu.Lock()
+		if e := s.entries[req.ID]; e != nil {
+			actions = e.P.Actions()
+		}
+		s.mu.Unlock()
 		s.refuseOnce(c.owner()+"|confirm|"+req.ID+"|"+reason, ledger.Record{UID: c.p.UID, Session: c.roles.Session,
-			Event: "gate.decision", Outcome: "denied", Data: map[string]any{"id": clip(req.ID, 20),
+			Event: "gate.decision", Outcome: "denied", Data: map[string]any{"id": clip(req.ID, 20), "actions": actions,
 				"verdict": "a confirmation by " + s.peerWho(c) + " was refused: " + reason, "context": c.p.Context}})
 		return gate.Reply{Error: "refused: " + reason}
 	}
@@ -214,11 +221,31 @@ func (s *Server) startUnits(us []unitStart) {
 	}()
 }
 
+// execUnitRe is the only kind of unit the gate starts.
+var execUnitRe = regexp.MustCompile(`^[a-z][a-z0-9-]{1,60}@g-[0-9a-f]{12}\.service$`)
+
+// systemctlArgv is the command that starts an executor unit: never
+// interactive. basalt-gated runs as root without capabilities, so when
+// systemctl cannot use systemd's private socket and goes over D-Bus,
+// systemd asks polkit; --no-ask-password keeps that from ever reaching a
+// person (the person already decided in the gate), and the polkit rule
+// 49-basalt-gate-exec.rules lets root start exactly these units.
+func systemctlArgv(systemctl, unit string) ([]string, error) {
+	if !execUnitRe.MatchString(unit) {
+		return nil, fmt.Errorf("refusing to start %q: not an executor unit of a request", unit)
+	}
+	return []string{systemctl, "--no-ask-password", "--no-block", "start", "--", unit}, nil
+}
+
 // systemctlStart starts a unit without waiting for it.
 func (s *Server) systemctlStart(unit string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, s.cfg.Systemctl, "--no-block", "start", "--", unit).CombinedOutput()
+	argv, err := systemctlArgv(s.cfg.Systemctl, unit)
+	if err != nil {
+		return err
+	}
+	out, err := exec.CommandContext(ctx, argv[0], argv[1:]...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
 	}

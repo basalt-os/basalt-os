@@ -1,0 +1,15 @@
+// basalt-gate: the approval gate (basalt-gated, root without capabilities)
+// starts basalt-gate-exec@REQUEST.service once a person or a rule approved
+// the request. When systemctl goes over D-Bus instead of systemd's private
+// socket, systemd asks polkit; this lets root start exactly those units
+// and nothing else, so nobody is asked again for what they already
+// approved. A person's session never matches: the subject must be root,
+// the verb start, and the unit an executor instance of a request id.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "root" &&
+        action.lookup("verb") == "start" &&
+        /^basalt-gate-exec@g-[0-9a-f]{12}\.service$/.test(action.lookup("unit") || "")) {
+        return polkit.Result.YES;
+    }
+});

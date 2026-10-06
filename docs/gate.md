@@ -254,7 +254,10 @@ at the terminal, or `--yes --confirm CODE`, is recorded as the person's
 decision (`person:tty-root`; `allow_code_confirm = no` turns the code
 off); a decision in the queue (`basalt-gate approve`, the desktop shell)
 or a system rule counts the same. Once approved, the gate starts
-`basalt-gate-exec@REQUEST.service`, which runs `basalt apply REQUEST
+`basalt-gate-exec@REQUEST.service` (never interactively: `systemctl
+--no-ask-password`, and a polkit rule lets root, and only root, start
+exactly these units, so nobody is asked again for what they approved),
+which runs `basalt apply REQUEST
 --gate` in its own SELinux domain (`basalt_gate_exec_t`, the only type
 the gate lets claim these requests): it reads the request, rebuilds the
 calls and the preview from the stored proposal, claims the decision with
@@ -400,7 +403,14 @@ mismatch, the claim window), rule changes, seal tampering, dry runs, rate
 limits, the protocol fixtures against the fake and the real gate, and
 digest vectors computed independently in Python.
 `scripts/lab/gate-test.sh` runs the lab matrix on a VM with SELinux
-enforcing (see the script).
+enforcing (see the script). `packages/basalt-gate/tests/phase2.sh` is the driver of
+the migration lab on a desktop VM (enforce = all): an agent's request
+approved by the person on the shell's sheet, an agent that tries to
+decide, confirm, claim or report it, `basalt apply` with the code through
+`basalt-gate-exec`, a person's rule that pre-approves a skill grant, a
+model download's consent, `basalt-agent egress propose` approved at the
+terminal, the ledger chain and the SELinux denials (the clicks on the
+sheet come from the lab host over VNC).
 
 ## Limits (today)
 

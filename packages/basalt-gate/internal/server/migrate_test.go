@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -434,5 +436,43 @@ func TestAgentGrantRequests(t *testing.T) {
 	// Shadow mode: the tool reports what the terminal decided.
 	if o := e.do(pTool, gate.Request{Op: "observe", Calls: user, Outcome: "approved", DecidedBy: "the person at the terminal"}); !o.OK {
 		t.Fatalf("%+v", o)
+	}
+}
+
+// The gate starts only executor units of request ids, never asking
+// anyone (no polkit prompt reaches the person who already approved), and
+// the shipped polkit rule allows exactly those units for root only.
+func TestExecUnitStartNeverAsks(t *testing.T) {
+	argv, err := systemctlArgv("/usr/bin/systemctl", "basalt-gate-exec@g-0123456789ab.service")
+	if err != nil || strings.Join(argv, " ") != "/usr/bin/systemctl --no-ask-password --no-block start -- basalt-gate-exec@g-0123456789ab.service" {
+		t.Fatalf("%v %v", argv, err)
+	}
+	for _, bad := range []string{"sshd.service", "basalt-gate-exec@.service", "basalt-gate-exec@g-0123456789ab.service; rm -rf /",
+		"basalt-gate-exec@../x.service", "basalt-gate-exec@g-0123456789AB.service"} {
+		if _, err := systemctlArgv("/usr/bin/systemctl", bad); err == nil {
+			t.Errorf("would start %q", bad)
+		}
+	}
+	b, err := os.ReadFile("../../dist/49-basalt-gate-exec.rules")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := string(b)
+	for _, need := range []string{`subject.user == "root"`, `action.lookup("verb") == "start"`,
+		`"org.freedesktop.systemd1.manage-units"`} {
+		if !strings.Contains(rule, need) {
+			t.Errorf("the polkit rule lacks %s", need)
+		}
+	}
+	m := regexp.MustCompile(`/(\^basalt-gate-exec[^/]*)/\.test`).FindStringSubmatch(rule)
+	if m == nil {
+		t.Fatal("no unit pattern in the polkit rule")
+	}
+	re := regexp.MustCompile(strings.ReplaceAll(m[1], `\.`, `\.`))
+	for unit, want := range map[string]bool{"basalt-gate-exec@g-0123456789ab.service": true, "sshd.service": false,
+		"basalt-gate-exec@g-0123456789ab.service.d": false, "xbasalt-gate-exec@g-0123456789ab.service": false} {
+		if re.MatchString(unit) != want {
+			t.Errorf("polkit rule pattern on %q: %v", unit, !want)
+		}
 	}
 }
