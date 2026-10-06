@@ -160,9 +160,9 @@ export BASALT_MODELS_VOICE_FETCH="$tmp/bin/voice-fetch" BASALT_MODELS_LLM_FETCH=
 export BASALT_MODELS_SYSTEMCTL="$tmp/bin/systemctl" BASALT_MODELS_LEDGER="$tmp/bin/ledger"
 export PATH="$tmp/bin:$PATH" # systemctl show inside basalt-llm-fetch
 
-req() { # req ARGS...: "rc=N output" of the request program
+req() { # req ARGS...: "rc=N output" of the request program (REQ_UID: who asks)
   local rc=0 out
-  out="$(PKEXEC_UID="$(id -u)" bash "$here/basalt-models-request" "$@" 2>"$tmp/req.err")" || rc=$?
+  out="$(PKEXEC_UID="${REQ_UID:-$(id -u)}" bash "$here/basalt-models-request" "$@" 2>"$tmp/req.err")" || rc=$?
   echo "rc=$rc $out $(cat "$tmp/req.err")"
 }
 
@@ -181,7 +181,9 @@ has "policy nobody refuses" "rc=10" "$out"
 has "policy nobody says why" "turned model downloads off" "$out"
 has "refusal is in the ledger" '"event":"model.download.request","outcome":"denied"' "$(cat "$tmp/ledger.jsonl")"
 printf '[x]\ndownloads=administrators\nadmin_group = basalt-no-such-group\n' >"$tmp/models.conf"
-has "administrators: a person who is not one needs an administrator" "rc=11" "$(req download voice english)"
+# uid 65534 (nobody): not root and not in the administrators' group, also
+# when the tests run as root (CI containers).
+has "administrators: a person who is not one needs an administrator" "rc=11" "$(REQ_UID=65534 req download voice english)"
 out="$(BASALT_MODELS_ADMIN_ACTION=1 req download voice english)"
 has "administrators: allowed after an administrator's password" "rc=0 started voice-english" "$out"
 printf 'downloads = everyone\n' >"$tmp/models.conf"
@@ -219,7 +221,7 @@ wp=$!
 rc=$(run fetch voice-english)
 kill "$wp" 2>/dev/null; wait "$wp" 2>/dev/null || true
 eq "voice download succeeds" 0 "$rc"
-eq "state done" done "$(sv state "$tmp/run/voice-english.state")"
+eq "state done" "done" "$(sv state "$tmp/run/voice-english.state")"
 eq "done bytes" 3004000 "$(sv bytes "$tmp/run/voice-english.state")"
 r=0; grep -q '^downloading [1-9]' "$tmp/seen" || r=1
 eq "progress seen while downloading" 0 "$r"
@@ -230,7 +232,7 @@ has "ledger: download ok with who" '"event":"model.download","outcome":"ok"' "$(
 has "plan says present after" "ggml-base.en 3000000 MIT 127.0.0.1:$port present" "$("$tmp/bin/voice-fetch" --plan english)"
 rc=$(run fetch voice-english)
 eq "a second download of a present set is a no-op" 0 "$rc"
-eq "no-op is done" done "$(sv state "$tmp/run/voice-english.state")"
+eq "no-op is done" "done" "$(sv state "$tmp/run/voice-english.state")"
 
 # --- checksum mismatch: deleted, failed error=checksum ----------------------------
 rc=$(run fetch voice-ggml-small-q5_1)
@@ -254,7 +256,7 @@ eq "partial file kept for the retry" 1000000 "$(stat -c %s "$tmp/voice/ggml-base
 start_server
 rc=$(run fetch voice-english)
 eq "retry when the network is back" 0 "$rc"
-eq "retry done" done "$(sv state "$tmp/run/voice-english.state")"
+eq "retry done" "done" "$(sv state "$tmp/run/voice-english.state")"
 eq "resumed file verified" "$(sha "$tmp/www/ggml-base.en.bin")" "$(sha "$tmp/voice/ggml-base.en.bin")"
 
 # --- the assistant's model: recommended, enabling, translator on, done ------------
@@ -268,7 +270,7 @@ eq "llm download succeeds" 0 "$rc"
 eq "llm waits for the service before done" enabling "$(sv state "$tmp/run/llm-recommended.state")"
 rc=$(run after llm-recommended)
 eq "llm after step" 0 "$rc"
-eq "llm done" done "$(sv state "$tmp/run/llm-recommended.state")"
+eq "llm done" "done" "$(sv state "$tmp/run/llm-recommended.state")"
 eq "translator turned on, humanize untouched" "enabled = yes|enabled = no" \
   "$(awk '/^enabled/ {printf "%s%s", s, $0; s = "|"}' "$tmp/assistant.conf")"
 has "ledger: model enabled" '"event":"model.enable"' "$(cat "$tmp/ledger.jsonl")"

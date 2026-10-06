@@ -94,7 +94,7 @@ group=$(conf admin_group wheel)
 admin=no
 if [ "$uid" = 0 ] || id -nG "$uid" 2>/dev/null | tr ' ' '\n' | grep -qx -- "$group"; then admin=yes; fi
 via=person
-[ "${BASALT_MODELS_ADMIN_ACTION:-0}" = 1 ] && via=admin
+if [ "${BASALT_MODELS_ADMIN_ACTION:-0}" = 1 ]; then via="admin"; fi
 policy=$(conf downloads everyone)
 
 json_str() {
