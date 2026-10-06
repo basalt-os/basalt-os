@@ -137,8 +137,15 @@ var Outcomes = map[string]bool{"ok": true, "allowed": true, "denied": true, "err
 // producer.
 func Severity(event, outcome string) string {
 	switch {
-	case event == "ledger.chain_error":
+	case event == "ledger.chain_error", event == "gate.seal_error":
 		return "critical"
+	// The approval gate (basalt-gate): an emergency stop and a rule that
+	// reached its limit are worth a look; rule changes, resumes and
+	// unlocks widen or restore what may run.
+	case event == "gate.stop", event == "gate.limit":
+		return "warning"
+	case strings.HasPrefix(event, "gate.rule."), event == "gate.resume", event == "gate.unlock":
+		return "notice"
 	case strings.HasPrefix(event, "selinux."), event == EventRefused, event == EventRateLimited,
 		event == "ledger.dropped", event == "dns.rebinding", event == "auth.failure":
 		return "warning"

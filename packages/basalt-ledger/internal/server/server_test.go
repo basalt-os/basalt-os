@@ -79,6 +79,17 @@ func TestProducerRules(t *testing.T) {
 	if _, err := l.Accept(Peer{UID: 0, Context: "unconfined_u:unconfined_r:unconfined_t:s0"}, res); err == nil {
 		t.Error("resolver records accepted from another domain")
 	}
+	// The approval gate: root in basalt_gate_t only.
+	gate := record.Incoming{V: 1, Producer: "basalt-gate", UID: intp(1000), Event: "gate.decision", Outcome: "allowed"}
+	if _, err := l.Accept(Peer{UID: 0, Context: "system_u:system_r:basalt_gate_t:s0"}, gate); err != nil {
+		t.Errorf("gate refused: %v", err)
+	}
+	for _, p := range []Peer{{UID: 0, Context: "unconfined_u:unconfined_r:unconfined_t:s0"}, dev,
+		{UID: 1000, Context: "unconfined_u:unconfined_r:basalt_gate_tty_t:s0"}} {
+		if _, err := l.Accept(p, gate); err == nil {
+			t.Errorf("gate records accepted from %+v", p)
+		}
+	}
 	// Refusals are recorded, visible to the user who was refused.
 	recs, _ := l.Query(dev, Filter{Event: record.EventRefused})
 	if len(recs) == 0 {

@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-ledger
-Version:        0.2.4
+Version:        0.2.5
 Release:        1%{?dist}
 Summary:        Append-only, hash-chained system audit service
 License:        Apache-2.0
@@ -122,6 +122,15 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_ledger.if
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.5-1
+- Records of the approval gate (basalt-gate, ADR 0020): the producer
+  basalt-gate is accepted only from root in basalt_gate_t, like the
+  resolver. Plain-English sentences for gate.request, gate.decision (who
+  or which rule decided), gate.claim, gate.result, gate.rule.add,
+  gate.rule.change, gate.rule.remove, gate.stop, gate.resume, gate.unlock,
+  gate.limit, gate.start and gate.seal_error; the stop and a tripped limit
+  are warnings, rule changes notices, a seal error critical.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.4-1
 - Sentences for the desktop's model downloads (basalt-models:
   model.download.request, model.download, model.enable, model.remove):

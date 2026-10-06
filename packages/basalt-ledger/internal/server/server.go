@@ -53,8 +53,10 @@ func DefaultConfig() Config {
 var Reserved = map[string]bool{record.Producer: true, "selinux": true, "journal": true, "polkit": true, "login": true,
 	"snapper": true, "basalt-assistant": true, "sudo": true, "pkexec": true, "basalt-agent-grant": true}
 
-// trustedProducers must come from root in a specific SELinux domain.
-var trustedProducers = map[string]string{"basalt-resolver": "basalt_resolver_t"}
+// trustedProducers must come from root in a specific SELinux domain: the
+// resolver, and the approval gate (basalt-gate), whose records name who or
+// which rule decided each request.
+var trustedProducers = map[string]string{"basalt-resolver": "basalt_resolver_t", "basalt-gate": "basalt_gate_t"}
 
 // Ledger is the daemon state.
 type Ledger struct {

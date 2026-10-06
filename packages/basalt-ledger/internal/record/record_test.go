@@ -142,3 +142,38 @@ func TestDescribeModels(t *testing.T) {
 		t.Errorf("failed model.download severity %s", s)
 	}
 }
+
+// The approval gate (basalt-gate): requests, decisions naming the rule or
+// person that decided, claims, the emergency stop and rule limits.
+func TestDescribeGate(t *testing.T) {
+	rec := func(ev, out, data string) Record {
+		return Record{Producer: "basalt-gate", UID: 1000, Event: ev, Outcome: out, Data: json.RawMessage(data)}
+	}
+	cases := map[string]Record{
+		"Agent claude (session s-0123456789ab) asked for files.trash (Undoable), request g-7f3a9c21d04b": rec("gate.request", "ok",
+			`{"id":"g-7f3a9c21d04b","who":"Agent claude (session s-0123456789ab)","actions":["files.trash"],"class":"C1","class_name":"Undoable"}`),
+		"Request g-7f3a9c21d04b (files.trash): allowed by the rule r-9b2e41": rec("gate.decision", "allowed",
+			`{"id":"g-7f3a9c21d04b","actions":["files.trash"],"verdict":"allowed by the rule r-9b2e41","by":"rule:r-9b2e41@0a1b2c3d"}`),
+		"Request g-7f3a9c21d04b (selinux.mode): refused, always protected (selinux.permissive)": rec("gate.decision", "denied",
+			`{"id":"g-7f3a9c21d04b","actions":["selinux.mode"],"verdict":"refused, always protected (selinux.permissive)"}`),
+		"basalt-shell tried to take request g-7f3a9c21d04b and was refused: already claimed": rec("gate.claim", "denied",
+			`{"id":"g-7f3a9c21d04b","executor":"basalt-shell","reason":"already claimed"}`),
+		"uid 1000 stopped all automation: every request asks a person until it is resumed": rec("gate.stop", "ok", `{"who":"uid 1000"}`),
+		"The rule r-9b2e41 reached its limit (per_day 1); it asks a person again until someone looks at it": rec("gate.limit", "ok",
+			`{"rule":"r-9b2e41","limit":"per_day 1"}`),
+	}
+	for want, r := range cases {
+		if got := Describe(r); got != want {
+			t.Errorf("got  %q\nwant %q", got, want)
+		}
+	}
+	for _, c := range []struct{ ev, out, want string }{
+		{"gate.request", "ok", "info"}, {"gate.decision", "allowed", "info"}, {"gate.decision", "denied", "warning"},
+		{"gate.stop", "ok", "warning"}, {"gate.limit", "ok", "warning"}, {"gate.rule.add", "ok", "notice"},
+		{"gate.resume", "ok", "notice"}, {"gate.seal_error", "error", "critical"},
+	} {
+		if got := Severity(c.ev, c.out); got != c.want {
+			t.Errorf("%s/%s: %s, want %s", c.ev, c.out, got, c.want)
+		}
+	}
+}
