@@ -171,10 +171,10 @@ export). Its public key lands next to the tree as
 
 ## Upload
 
-`upload.sh` checks the tree against `SIGNED-OK`, then uploads source RPMs,
-binary RPMs and repodata blobs first and each `repomd.xml` and its
-signature last, so a client never sees metadata that points at missing
-files.
+`upload.sh` checks the tree against `SIGNED-OK`, then uploads the RPMs
+and repodata blobs first (`OB_UPLOAD_JOBS` at a time, default 4) and,
+once all of them are in the bucket, each `repomd.xml` and its signature,
+so a client never sees metadata that points at missing files.
 
 | Objects | Cache-Control |
 |---|---|
@@ -184,7 +184,19 @@ files.
 This matches the obpkg.org cache rules (repository metadata 60 seconds,
 artifacts 30 days at the edge). A published RPM or blob is never
 replaced: an existing object with different content stops the upload;
-an identical one is skipped. Credentials come from 0600 files named by
+an identical one is skipped. One listing of each repository directory
+(`ListObjectsV2`) gives the ETag and size of every published object, so a
+publish that keeps a hundred published RPMs makes a few requests instead
+of one per RPM. The script uploads every object in a single part, whose
+ETag is the MD5 of the content; an object with another ETag form is
+compared through its `sha256` metadata (set on every upload) or, without
+it, downloaded and compared. Any difference stops the upload before
+anything is sent. A new object gets one more check (HEAD) right before
+its upload, for an object published since the listing.
+`scripts/release/tests/upload-test.sh` (`make upload-test`, and in
+`scripts/ci/lint.sh`) runs `upload.sh` against a local fake S3 endpoint.
+
+Credentials come from 0600 files named by
 `OB_R2_ACCESS_KEY_ID_FILE`, `OB_R2_SECRET_ACCESS_KEY_FILE` and
 `OB_R2_ENDPOINT_FILE` (or `OB_R2_ENDPOINT`); the AWS CLI configuration is
 written to a tmpfs and shredded. `upload.sh --dry-run` prints the plan
@@ -241,8 +253,9 @@ apt/dists/<suite>/main/binary-<arch>/by-hash/SHA256/<sha256>
   SHA-256 from `by-hash/`, whose objects never change, so a client never
   combines a new `InRelease` with a `Packages` file still cached at the
   edge.
-- `upload.sh` sends the .deb files, then the `by-hash/` objects, then the
-  other index files, and `Release`, `Release.gpg` and `InRelease` last.
+- `upload.sh` sends the .deb files and the `by-hash/` objects (in
+  parallel), then the other index files, and `Release`, `Release.gpg` and
+  `InRelease` last.
   .deb files and `by-hash/` objects are immutable (30 days, never
   replaced: different content stops the upload); the rest of `dists/` is
   metadata (60 seconds).

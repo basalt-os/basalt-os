@@ -8,7 +8,8 @@
 #
 # Checks: `make lint` (shell and Python syntax, ShellCheck, ksvalidator),
 # the basalt-nvidia tests,
-# ShellCheck on the CI scripts, the basalt-llm model selection tests, rpmlint on every package spec (filters in
+# ShellCheck on the CI scripts, the basalt-llm model selection tests, the upload.sh tests
+# (a local fake S3 endpoint), rpmlint on every package spec (filters in
 # scripts/ci/rpmlint.toml), ksvalidator on the kickstart for this Fedora
 # release, actionlint on the workflows.
 source "$(dirname "$0")/../lib.sh"
@@ -22,7 +23,7 @@ if [[ "${1:-}" == --container ]]; then
   in_fedora -v "$REPO_ROOT:/src:ro" -w /src \
     -e FEDORA_RELEASE="$FEDORA_RELEASE" -e ACTIONLINT_VERSION="$ACTIONLINT_VERSION" -e ACTIONLINT_SHA256="$ACTIONLINT_SHA256" \
     "$FEDORA_IMAGE" bash -euc '
-      dnf -q -y install make ShellCheck rpmlint pykickstart python3 tar gzip git zsh fish openssl libxml2 >/dev/null 2>&1 ||
+      dnf -q -y install make ShellCheck rpmlint pykickstart python3 tar gzip git zsh fish openssl libxml2 awscli2 bc >/dev/null 2>&1 ||
         { echo "dnf install failed" >&2; exit 1; }
       tmp=$(mktemp -d)
       url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
@@ -67,6 +68,11 @@ LC_ALL=C.UTF-8 packages/basalt-prompt/tests/prompt-test.sh || fail=1
 
 step "basalt-llm: model selection tests"
 packages/basalt-llm/tests/select-test.sh || fail=1
+
+step "Release upload: ShellCheck, upload.sh against a local fake S3 endpoint (skipped without the AWS CLI)"
+shellcheck -x -S warning scripts/release/tests/upload-test.sh || fail=1
+python3 -m py_compile scripts/release/tests/fake-s3.py && rm -rf scripts/release/tests/__pycache__ || fail=1
+scripts/release/tests/upload-test.sh || fail=1
 
 step "basalt-voice: ShellCheck, speech model manifest (pinned, checksummed, public-domain Piper voices only)"
 shellcheck -x -S warning packages/basalt-voice/build.sh packages/basalt-voice/basalt-voice-fetch packages/basalt-voice/tests/manifest-test.sh || fail=1

@@ -20,13 +20,18 @@
 # OB_R2_BUCKET defaults to obpkg. The AWS CLI configuration is written to a
 # tmpfs and shredded on exit.
 #
-# Order: source RPMs, binary RPMs, repodata blobs, then repomd.xml and
-# repomd.xml.asc of each repository last, so a client never sees metadata
-# that points at missing files. Cache-Control: repomd.xml and its signature
-# public, max-age=60; RPMs and repodata blobs (content-addressed names)
-# public, max-age=2592000, immutable. A published RPM is never replaced: an
-# existing object with the same key and a different MD5 stops the upload.
-# APT: .deb files, then the by-hash indexes, then Packages* and the
+# Order: RPMs and repodata blobs first (OB_UPLOAD_JOBS at a time, default
+# 4), then, once all of them are in the bucket, repomd.xml and repomd.xml.asc
+# of each repository, so a client never sees metadata that points at missing
+# files. Cache-Control: repomd.xml and its signature public, max-age=60; RPMs
+# and repodata blobs (content-addressed names) public, max-age=2592000,
+# immutable. A published RPM is never replaced: one listing of each
+# repository directory gives the ETag (the MD5 of a single-part upload) and
+# size of every published object, and an existing object with the same key
+# and other content stops the upload before anything is sent. A new object
+# is checked once more with a HEAD right before its upload. Objects carry
+# their SHA-256 as metadata (x-amz-meta-sha256).
+# APT: .deb files and the by-hash indexes, then Packages* and the
 # per-architecture Release, then Release, Release.gpg and InRelease last.
 # .deb files and by-hash objects are immutable (never replaced, max-age
 # 30 days); the other files under dists/ are metadata (max-age=60).
@@ -41,6 +46,8 @@ tree="${1:?usage: $0 [--dry-run] TREE_DIR}"
 tree="$(cd "$tree" && pwd)" || die "no $tree"
 : "${OB_R2_BUCKET:=obpkg}"
 : "${OB_PUBLIC_URL:=https://obpkg.org}"
+: "${OB_UPLOAD_JOBS:=4}"
+[[ "$OB_UPLOAD_JOBS" =~ ^[1-9][0-9]?$ ]] || die "OB_UPLOAD_JOBS must be 1 to 99"
 
 # 1. The tree is exactly what sign.sh verified.
 [[ -f "$tree/SIGNED-OK" ]] || die "$tree/SIGNED-OK missing: sign and verify with scripts/release/sign.sh first"
@@ -148,30 +155,126 @@ export AWS_EC2_METADATA_DISABLED=true AWS_PAGER=""
 s3api() { aws --endpoint-url "$endpoint" s3api "$@"; }
 
 # 4. Immutable objects: refuse to replace a different RPM or blob; skip identical ones.
-log "checking existing objects in $OB_R2_BUCKET"
-todo=()
+# One paged listing per repository directory gives the key, ETag and size of
+# every published object (instead of one request per object). put-object is
+# a single-part upload (multipart_threshold above), so the ETag of what this
+# script published is the MD5 of the content; an object with another ETag form
+# (multipart) is proved by its sha256 metadata or by downloading it.
+log "listing published objects in $OB_R2_BUCKET"
+if [[ "$repo" == apt ]]; then prefixes=(apt/); else prefixes=(); for r in "${repos[@]}"; do prefixes+=("$r/"); done; fi
+declare -A remote_etag=() remote_size=()
+i=0
+for p in "${prefixes[@]}"; do
+  i=$((i + 1))
+  # A failed listing must stop here: read as empty, it would let a different
+  # object be overwritten.
+  s3api list-objects-v2 --bucket "$OB_R2_BUCKET" --prefix "$p" \
+    --query 'Contents[].[Key,ETag,Size]' --output text >"$cfg/list.$i" || die "cannot list s3://$OB_R2_BUCKET/$p"
+  while IFS=$'\t' read -r key etag size; do
+    [[ -z "$key" || "$key" == None ]] && continue
+    remote_etag["$key"]="${etag//\"/}"
+    remote_size["$key"]="$size"
+  done <"$cfg/list.$i"
+done
+log "${#remote_etag[@]} objects published under ${prefixes[*]}"
+
+dl="$(mktemp -d "${TMPDIR:-/tmp}/basalt-upload-check.XXXXXX")"
+trap 'find "$cfg" -type f -exec shred -u {} + 2>/dev/null; rm -rf "$cfg" "$dl"' EXIT
+
+# same_object KEY ETAG SIZE: 0 when the published object with this ETag and
+# size has the content of the tree's file, 1 when it differs, dies when it
+# cannot tell.
+same_object() {
+  local k="$1" etag="$2" size="$3" f="$tree/$1" sha meta tmpf
+  [[ "$size" == "$(stat -c %s "$f")" ]] || return 1
+  if [[ "$etag" =~ ^[0-9a-f]{32}$ ]]; then
+    [[ "$etag" == "$(md5sum "$f" | cut -d' ' -f1)" ]]
+    return
+  fi
+  sha="$(sha256sum "$f" | cut -d' ' -f1)"
+  meta="$(s3api head-object --bucket "$OB_R2_BUCKET" --key "$k" --query 'Metadata.sha256' --output text)" ||
+    die "cannot read the metadata of $k"
+  if [[ "$meta" =~ ^[0-9a-f]{64}$ ]]; then
+    [[ "$meta" == "$sha" ]]
+    return
+  fi
+  tmpf="$(mktemp "$dl/obj.XXXXXX")"
+  s3api get-object --bucket "$OB_R2_BUCKET" --key "$k" "$tmpf" >/dev/null || die "cannot download $k to compare it"
+  [[ "$(sha256sum "$tmpf" | cut -d' ' -f1)" == "$sha" ]] && { rm -f "$tmpf"; return 0; }
+  rm -f "$tmpf"
+  return 1
+}
+
+immutable=() metadata=()
 for k in "${plan[@]}"; do
-  is_metadata "$k" && { todo+=("$k"); continue; }
-  etag="$(s3api head-object --bucket "$OB_R2_BUCKET" --key "$k" --query ETag --output text 2>/dev/null || true)"
-  etag="${etag//\"/}"
-  if [[ -z "$etag" || "$etag" == None ]]; then
-    todo+=("$k")
-  elif [[ "$etag" == "$(md5sum "$tree/$k" | cut -d' ' -f1)" ]]; then
-    log "already published, identical: $k"
+  if is_metadata "$k"; then
+    metadata+=("$k")
+  elif [[ -n "${remote_etag[$k]+x}" ]]; then
+    if same_object "$k" "${remote_etag[$k]}" "${remote_size[$k]}"; then
+      log "already published, identical: $k"
+    else
+      die "$k is already published with different content; a published file is never replaced"
+    fi
   else
-    die "$k is already published with different content; a published file is never replaced"
+    immutable+=("$k")
   fi
 done
 
-# 5. Upload in order.
-n=0
-for k in "${todo[@]}"; do
+# put_object KEY: one single-part upload, checked by the server against
+# Content-MD5, with the SHA-256 of the content as object metadata.
+put_object() {
+  local k="$1"
   s3api put-object --bucket "$OB_R2_BUCKET" --key "$k" --body "$tree/$k" \
     --content-type "$(content_type "$k")" --cache-control "$(cache_control "$k")" \
-    --content-md5 "$(openssl dgst -md5 -binary "$tree/$k" | base64)" >/dev/null || die "upload of $k failed"
-  n=$((n + 1))
-  log "[$n/${#todo[@]}] $k"
+    --metadata "sha256=$(sha256sum "$tree/$k" | cut -d' ' -f1)" \
+    --content-md5 "$(openssl dgst -md5 -binary "$tree/$k" | base64)" >/dev/null
+}
+
+# new_object KEY: upload an object the listing did not show. A HEAD first
+# covers an object published since the listing (or missing from it): that one
+# is compared like a listed one and never replaced.
+new_object() {
+  local k="$1" head err etag size ef="$cfg/err.$BASHPID"
+  if head="$(s3api head-object --bucket "$OB_R2_BUCKET" --key "$k" --query '[ETag,ContentLength]' --output text 2>"$ef")"; then
+    read -r etag size <<<"${head//\"/}"
+    if same_object "$k" "$etag" "$size"; then
+      log "already published, identical: $k"
+      return 0
+    fi
+    printf 'error: %s is already published with different content; a published file is never replaced\n' "$k" >&2
+    return 1
+  fi
+  err="$(cat "$ef")"
+  [[ "$err" == *"(404)"* || "$err" == *"Not Found"* ]] || { printf 'error: cannot check %s: %s\n' "$k" "$err" >&2; return 1; }
+  put_object "$k" || { printf 'error: upload of %s failed\n' "$k" >&2; return 1; }
+  log "uploaded $k"
+}
+
+# 5. Upload: new RPMs and blobs in parallel (at most OB_UPLOAD_JOBS at once),
+# then, once every one of them is in the bucket, the metadata in order.
+log "uploading ${#immutable[@]} new objects (${OB_UPLOAD_JOBS} at a time), then ${#metadata[@]} metadata files"
+failed=0 running=0
+for k in "${immutable[@]}"; do
+  if ((running >= OB_UPLOAD_JOBS)); then
+    wait -n || failed=1
+    running=$((running - 1))
+  fi
+  [[ $failed == 0 ]] || break
+  new_object "$k" &
+  running=$((running + 1))
 done
+while ((running > 0)); do
+  wait -n || failed=1
+  running=$((running - 1))
+done
+[[ $failed == 0 ]] || die "an upload failed; no metadata was published"
+n=0
+for k in "${metadata[@]}"; do
+  put_object "$k" || die "upload of $k failed"
+  n=$((n + 1))
+  log "[$n/${#metadata[@]}] $k"
+done
+todo=("${immutable[@]}" "${metadata[@]}")
 
 # 6. Public check: the metadata served by obpkg.org is the one just signed.
 if [[ "$OB_R2_BUCKET" == obpkg && "$repo" == apt ]]; then

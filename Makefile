@@ -8,7 +8,7 @@ SHELL := /bin/bash
 S := scripts
 L := scripts/lab
 
-.PHONY: help rpms rpms-lab repo repo-verify iso-fetch iso all lint prompt-test clean \
+.PHONY: help rpms rpms-lab repo repo-verify iso-fetch iso all lint prompt-test upload-test clean \
         lab-tools lab-keys lab-net lab-repo lab-repo-down lab-install lab-start lab-stop \
         lab-ssh lab-console lab-measure lab-sb-test lab-snapshot-test lab-rollback-test \
         lab-destroy lab-sb-keys lab-tang lab-mok-test lab-sb-custom-test lab-tang-test lab-kernels-test \
@@ -52,6 +52,9 @@ lint: ## Shell and Python syntax checks (shellcheck when installed)
 
 prompt-test: ## Tests of basalt-prompt (colors, NO_COLOR, root, SSH, non-interactive no-op, git states; zsh and fish when installed)
 	packages/basalt-prompt/tests/prompt-test.sh
+
+upload-test: ## Tests of scripts/release/upload.sh against a local fake S3 endpoint (needs the AWS CLI)
+	scripts/release/tests/upload-test.sh
 
 clean: ## Remove build outputs in this tree
 	rm -rf build
