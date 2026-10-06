@@ -5,7 +5,8 @@
 # - Whisper and Silero models are MIT;
 # - every Piper voice is one trained on public-domain data (allowlist below)
 #   and is labeled public-domain-data; other Piper voices are refused;
-# - the default set of basalt-voice-fetch exists in the manifest;
+# - the default and multilingual sets of basalt-voice-fetch exist in the
+#   manifest, and every Whisper model comes from one pinned revision;
 # - basalt-voice-fetch refuses a file whose checksum does not match.
 #
 #   packages/basalt-voice/tests/manifest-test.sh
@@ -41,6 +42,20 @@ done <"$manifest"
 
 for n in ggml-base.en ggml-silero-v5.1.2 en_US-ljspeech-medium en_US-ljspeech-medium.json; do
   awk -v n="$n" '$1 == n {f = 1} END {exit !f}' "$manifest" || bad "default model $n missing"
+done
+# The multilingual set (speech in languages other than English).
+for n in ggml-small-q5_1 ggml-silero-v5.1.2; do
+  awk -v n="$n" '$1 == n {f = 1} END {exit !f}' "$manifest" || bad "multilingual model $n missing"
+done
+grep -q 'multilingual | default-multilingual) names+=(ggml-small-q5_1 ggml-silero-v5.1.2)' "$fetch" || bad "fetch has no multilingual set"
+# Every Whisper model of one pinned whisper.cpp revision.
+revs=$(awk '!/^#/ && $1 ~ /^ggml-/ && $1 !~ /silero/ {split($5, p, "/"); print p[7]}' "$manifest" | sort -u | wc -l)
+((revs == 1)) || bad "Whisper models come from $revs revisions, want one"
+
+# The allowlist itself: Piper voices fine-tuned from lessac (every
+# pt_BR voice, for example) or trained on CC BY data are not allowed.
+for v in en_US-lessac-medium en_US-amy-medium pt_BR-faber-medium pt_BR-cadu-medium; do
+  [[ ! "$v" =~ $piper_ok ]] || bad "allowlist accepts $v"
 done
 
 # --verify reports a model file whose checksum does not match (no network:

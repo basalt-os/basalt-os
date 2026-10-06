@@ -285,6 +285,36 @@ built as shown above and set `MODEL` to its path. Measurements and the
 recommendation (templates stay the default):
 [milestone-2c-report.md](milestone-2c-report.md).
 
+## The desktop's assistant
+
+The Basalt desktop shell uses the same local model for its command bar
+and its skills (the `[translator]` settings). Each person may choose,
+in the desktop's Settings (Voice and assistant), the language the
+assistant answers in and, only where the administrator allows it, a
+remote model instead of the local one:
+
+```ini
+# /etc/basalt/desktop-models.conf (read by the desktop shell)
+[policy]
+allow_remote = no          # yes: people may opt in to a model listed below
+
+[remote example]
+label = Example provider
+endpoint = https://api.example.com/v1
+model = their-model-name
+```
+
+A remote model needs both `allow_remote = yes` here and the person's own
+opt-in, and only the listed endpoints (https) can be chosen; each person
+keeps their key in a private file of their own. When the answer language
+is not English, the desktop adds one line to the model's system prompt:
+answer the person in that language and keep every identifier, key, enum
+value, path and name in English, as specified. The schemas and the
+checks of the answers are the same in every language. In the lab,
+qwen3-1.7b answered in Brazilian Portuguese as asked; its summaries were
+understandable but not always faithful (a weekday translated wrong once,
+left in English once). basalt-shell's `docs/voice.md` has the details.
+
 ## Confinement
 
 Three independent fences keep the model service off the network:

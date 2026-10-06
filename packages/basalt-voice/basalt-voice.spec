@@ -15,7 +15,7 @@
 %global __requires_exclude ^lib(whisper|ggml|parakeet).*$
 
 Name:           basalt-voice
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Local speech to text for the Basalt OS desktop (no network)
 # basalt-voice files: Apache-2.0. whisper.cpp and ggml: MIT; bundled
@@ -84,6 +84,14 @@ LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basal
 %dir %{_sharedstatedir}/basalt-voice/models
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- Multilingual Whisper models in the manifest (ggml-base, ggml-small and
+  their q5_1 quantizations, from the same pinned whisper.cpp revision),
+  for a speech language other than English; basalt-voice-fetch
+  multilingual fetches ggml-small-q5_1 and Silero VAD. No Portuguese
+  Piper voice qualifies (each is fine-tuned from lessac or ryan): answers
+  in Portuguese are shown, not spoken.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: whisper.cpp 1.9.4 whisper-cli for the CPU, model
   manifest (Whisper, Silero VAD, public-domain Piper voices) and
