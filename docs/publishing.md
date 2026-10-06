@@ -116,6 +116,18 @@ scripts/release/upload.sh /tmp/nonfree-out
   and a publish; until then dnf holds the kernel back on machines with the
   NVIDIA driver (docs/nvidia.md, Kernel updates).
 
+### basalt-nonfree-testing
+
+Everything that is not official goes to a testing channel first. New
+builds of the non-free drivers are published to `basalt-nonfree-testing`
+(off by default, defined by `basalt-nonfree-release` next to
+basalt-nonfree; never mixed into basalt-testing, so the license
+separation holds), tested on real hardware, and only then published to
+`basalt-nonfree`. The steps are the ones above with
+`OB_REPO=basalt-nonfree-testing`. Testers turn it on in Settings, Updates
+and channels (docs/updates.md), which asks for their consent to preview
+builds.
+
 ## Build
 
 `build.sh` builds every package from a clean checkout of a commit:

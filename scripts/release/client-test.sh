@@ -32,7 +32,7 @@ key="${2:?KEY}"
 shift 2
 pkgs=("$@")
 : "${OB_REPO:=basalt}"
-case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing or basalt-nonfree" ;; esac
+case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree | basalt-nonfree-testing) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing, basalt-nonfree or basalt-nonfree-testing" ;; esac
 if [[ ${#pkgs[@]} -eq 0 ]]; then
   [[ "$OB_REPO" == basalt ]] || die "name the packages to install from $OB_REPO"
   pkgs=(basalt-release basalt-logos)

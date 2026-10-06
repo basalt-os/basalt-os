@@ -63,7 +63,8 @@ action: the schema of its arguments, its class, the resources it touches
 (paths, units, packages, hosts, recipients), whether only the person or
 only an agent may ask for it, and which program runs it. The first
 registry files describe the actions that exist today without changing
-them: the system assistant's 11 actions, the shell's 16 desktop actions
+them: the system assistant's 18 actions (with updates, channels and
+software sources: `source.add` is Critical, a new trust root), the shell's 16 desktop actions
 (plus agent control and screenshots, which only agents ask for, and the 5
 that only the person's own words ask for), basalt-agent grants and
 allowlist changes, model downloads, skill grants (one action per kind:

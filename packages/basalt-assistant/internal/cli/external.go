@@ -17,7 +17,8 @@ var externalDirs = []string{"/usr/libexec/basalt", "/usr/bin"}
 // they always win over an external program of the same name.
 var builtins = map[string]bool{"help": true, "version": true, "status": true, "why": true, "fix": true,
 	"snapshots": true, "snapshot": true, "disk": true, "pending": true, "show": true, "apply": true,
-	"ignore": true, "confirm": true, "submit": true, "audit": true, "ask": true, "feedback": true, "drivers": true}
+	"ignore": true, "confirm": true, "submit": true, "audit": true, "ask": true, "feedback": true, "drivers": true,
+	"updates": true, "update": true, "channels": true, "channel": true, "__source": true}
 
 // internalHelpers live in /usr/libexec/basalt but are not commands for
 // people: the assistant's daemon and helpers its services run.

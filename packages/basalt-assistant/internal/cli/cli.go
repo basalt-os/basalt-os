@@ -43,6 +43,9 @@ Look (no changes, no confirmation):
   basalt audit [N] | audit verify     the audit log (tamper-evident, checked across rotated files)
   basalt drivers                      the graphics hardware and the driver that fits (Additional drivers)
   basalt drivers license nvidia       the NVIDIA Driver License Agreement
+  basalt updates                      the updates the last check found, grouped, the restart state, history
+  basalt updates check                download the newest package lists (update.check; as root)
+  basalt channels                     Basalt's channels, added software sources, their signing keys
 
 Change (as root; you see the exact commands first and confirm them):
   basalt apply ID [--yes --confirm CODE]
@@ -57,6 +60,15 @@ Change (as root; you see the exact commands first and confirm them):
   basalt drivers install nvidia [display|compute]
                                       the NVIDIA driver from basalt-nonfree (Turing and newer GPUs)
   basalt drivers rollback             back to the snapshot taken before the NVIDIA driver install
+  basalt updates install [--security] install the updates shown, a snapshot first (update.install)
+  basalt updates rollback             undo the last update: back to its snapshot (update.rollback)
+  basalt channels enable|disable NAME basalt-tools, basalt-testing, basalt-nonfree-testing or an added
+                                      source (repo.enable, repo.disable; testing channels need
+                                      --consent preview-builds-1)
+  basalt channels add ENTRY | copr --id OWNER/PROJECT | custom --repo-url URL
+                  | custom --baseurl URL --key-url URL --name NAME
+                                      a software source; its signing key becomes trusted (source.add)
+  basalt channels remove SOURCE       remove a source added through Basalt (source.remove)
   basalt audit rotate [--force]       seal the audit log and continue in a new file
   basalt why UNIT --apply, basalt fix selinux --apply, basalt disk --apply
                                       store the proposal and go straight to the confirmation
@@ -93,10 +105,19 @@ type opts struct {
 	kind, email, source string
 	include             string
 	includeSet, preview bool
+
+	// basalt updates, basalt channels and basalt __source
+	security bool
+	kv       map[string]string
 }
 
+// valueOpts are the options of basalt channels and basalt __source that
+// take a value (kept in opts.kv).
+var valueOpts = map[string]bool{"--consent": true, "--repo-url": true, "--baseurl": true, "--key-url": true, "--name": true,
+	"--id": true, "--url-type": true, "--url": true, "--fingerprint": true, "--repo-gpgcheck": true, "--catalog": true, "--group": true}
+
 func parse(argv []string) (opts, error) {
-	o := opts{since: time.Hour, config: config.DefaultPath}
+	o := opts{since: time.Hour, config: config.DefaultPath, kv: map[string]string{}}
 	for i := 0; i < len(argv); i++ {
 		a := argv[i]
 		val := func() (string, error) {
@@ -152,11 +173,17 @@ func parse(argv []string) (opts, error) {
 			o.includeSet = true
 		case "--preview":
 			o.preview = true
+		case "--security":
+			o.security = true
 		case "--source":
 			o.source, err = val()
 		case "-h", "--help":
 			o.args = append([]string{"help"}, o.args...)
 		default:
+			if valueOpts[name] {
+				o.kv[name], err = val()
+				break
+			}
 			if strings.HasPrefix(a, "-") && a != "-" {
 				return o, fmt.Errorf("unknown option %s", a)
 			}
@@ -267,6 +294,12 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.feedback(ctx)
 	case "drivers":
 		return a.drivers(ctx)
+	case "updates", "update":
+		return a.updates(ctx)
+	case "channels", "channel":
+		return a.channels(ctx)
+	case "__source":
+		return a.sourceHelper(ctx)
 	}
 	return fmt.Errorf("unknown command %q (basalt help)", a.o.args[0])
 }

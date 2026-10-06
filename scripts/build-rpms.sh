@@ -13,8 +13,9 @@
 # BASALT_DEFAULT_REPO_URL, BASALT_DEFAULT_TOOLS_URL and BASALT_DEFAULT_TESTING_URL,
 # when set, replace the default repository URLs basalt-release ships
 # (https://obpkg.org/basalt, /basalt-tools, /basalt-testing), for a lab or a mirror;
-# BASALT_DEFAULT_NONFREE_URL likewise for basalt-nonfree-release
-# (https://obpkg.org/basalt-nonfree).
+# BASALT_DEFAULT_NONFREE_URL and BASALT_DEFAULT_NONFREE_TESTING_URL likewise
+# for basalt-nonfree-release (https://obpkg.org/basalt-nonfree,
+# https://obpkg.org/basalt-nonfree-testing).
 # BASALT_MODULE_CA_CERT and BASALT_MODULE_SIGNING_CERT (DER or PEM), when set,
 # replace the kernel module CA (the MOK) and signing certificate shipped in
 # basalt-security (a lab override; otherwise the OpenBasalt certificates in
@@ -45,7 +46,8 @@ fi
 # Default repository URLs in basalt-release (/etc/dnf/vars): https://obpkg.org
 # unless a lab or a mirror build overrides them.
 for pair in "BASALT_DEFAULT_REPO_URL:basalt_repo_url" "BASALT_DEFAULT_TOOLS_URL:basalt_tools_url" \
-  "BASALT_DEFAULT_TESTING_URL:basalt_testing_url" "BASALT_DEFAULT_NONFREE_URL:basalt_nonfree_url"; do
+  "BASALT_DEFAULT_TESTING_URL:basalt_testing_url" "BASALT_DEFAULT_NONFREE_URL:basalt_nonfree_url" \
+  "BASALT_DEFAULT_NONFREE_TESTING_URL:basalt_nonfree_testing_url"; do
   var="${pair%%:*}" dst="${pair#*:}"
   url="${!var:-}"
   [[ -n "$url" ]] || continue

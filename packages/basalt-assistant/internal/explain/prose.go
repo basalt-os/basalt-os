@@ -476,6 +476,23 @@ func Effect(a action.Action) string {
 	case action.DriverInstall:
 		return "turn on the basalt-nonfree repository, install the NVIDIA driver with the signed kernel module for kernel " +
 			p["kernel"] + " and turn nouveau off from the next start"
+	case action.UpdateCheck:
+		return "download the newest list of packages"
+	case action.UpdateInstall:
+		if p["scope"] == "security" {
+			return "install " + p["count"] + " security updates, exactly the versions shown"
+		}
+		return "install " + p["count"] + " updates, exactly the versions shown"
+	case action.UpdateRollback:
+		return "make snapshot " + p["snapshot"] + ", taken just before the update " + p["proposal"] + ", the root from the next boot"
+	case action.RepoEnable:
+		return "turn the " + p["repo"] + " channel on"
+	case action.RepoDisable:
+		return "turn the " + p["repo"] + " channel off"
+	case action.SourceAdd:
+		return "add the software source " + p["name"] + " (" + p["url"] + ") and trust its signing key " + p["fingerprint"]
+	case action.SourceRemove:
+		return "remove the software source " + p["id"]
 	}
 	return a.Kind
 }

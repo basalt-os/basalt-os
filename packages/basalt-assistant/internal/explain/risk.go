@@ -63,6 +63,23 @@ func riskOf(a action.Action) (int, string) {
 		return RiskHigh, "snapshot " + a.Params["snapshot"] + " is gone for good and can no longer be rolled back to"
 	case action.DriverInstall:
 		return RiskHigh, "the graphics driver changes at the next start; if it does not work there, the start after it uses nouveau again"
+	case action.UpdateCheck:
+		return RiskLow, "only the list of available packages is downloaded"
+	case action.UpdateInstall:
+		return RiskMedium, "programs and system parts are replaced by newer versions; some need a restart"
+	case action.UpdateRollback:
+		return RiskHigh, "the whole system, but not your data, goes back to how it was before the update at the next boot"
+	case action.RepoEnable:
+		if strings.HasSuffix(a.Params["repo"], "-testing") {
+			return RiskMedium, "updates from now on may include preview builds, which can break things"
+		}
+		return RiskLow, "updates from now on also come from " + a.Params["repo"]
+	case action.RepoDisable:
+		return RiskLow, "no more updates come from " + a.Params["repo"] + "; what is installed stays"
+	case action.SourceAdd:
+		return RiskHigh, "software from " + a.Params["name"] + " can change the whole system: its signing key becomes trusted"
+	case action.SourceRemove:
+		return RiskLow, "no more software comes from " + a.Params["id"] + "; what is installed from it stays"
 	}
 	return RiskHigh, "unknown change"
 }
@@ -88,6 +105,15 @@ func Risk(acts []action.Action) (int, string) {
 // snapshot before and after (except for a rollback, which works on
 // snapshots itself). The command to run is rendered separately.
 func Undo(acts []action.Action) (text string, rollbackCmd bool) {
+	toggles := len(acts) > 0
+	for _, a := range acts {
+		if (a.Kind != action.RepoEnable && a.Kind != action.RepoDisable) || a.Params["definition"] != "" {
+			toggles = false
+		}
+	}
+	if toggles {
+		return "turn the channel back the other way in Settings, Updates and channels, or with basalt channels; no snapshot is needed for one setting, and every update takes its own.", false
+	}
 	var caveats []string
 	rollback, reversible := false, false
 	for _, a := range acts {
@@ -97,7 +123,7 @@ func Undo(acts []action.Action) (text string, rollbackCmd bool) {
 			reversible = true
 		}
 		switch a.Kind {
-		case action.SnapshotRollback:
+		case action.SnapshotRollback, action.UpdateRollback:
 			rollback = true
 		case action.SnapshotDelete:
 			caveats = append(caveats, "deleting snapshot "+a.Params["snapshot"]+" cannot be undone")

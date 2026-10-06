@@ -56,7 +56,7 @@ source "$(dirname "$0")/../lib.sh"
 : "${SIGN_PODMAN:=podman}"
 SIGNER_IMAGE="localhost/basalt-signer:$FEDORA_RELEASE"
 : "${OB_REPO:=basalt}"
-case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing or basalt-nonfree" ;; esac
+case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree | basalt-nonfree-testing) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing, basalt-nonfree or basalt-nonfree-testing" ;; esac
 export OP_ACCOUNT
 
 mode="${1:-}"

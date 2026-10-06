@@ -17,7 +17,10 @@ report problems with it to the Basalt OS project.
 
 https://obpkg.org/basalt-nonfree/, signed with the OpenBasalt release key
 like the other Basalt repositories (`gpgcheck=1`, `repo_gpgcheck=1`).
-`basalt-nonfree-release` (in the basalt repository) defines it, off.
+`basalt-nonfree-release` (in the basalt repository) defines it, off, and
+also `basalt-nonfree-testing`, off: new builds of the driver are published
+there first and tested on real hardware before they reach basalt-nonfree.
+Testers turn it on in Settings, Updates and channels ([updates.md](updates.md)).
 
 | Package | Content | License |
 |---|---|---|

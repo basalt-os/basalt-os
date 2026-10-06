@@ -144,6 +144,8 @@ Read-only, no confirmation:
 | `basalt pending [--all]`, `basalt show ID` | proposals |
 | `basalt audit [N]`, `basalt audit verify` | the audit log and its hash chain, checked across rotated files |
 | `basalt drivers` | the display controllers by PCI id and their kernel driver, the driver that fits (the NVIDIA driver of basalt-nonfree for Turing and newer GPUs, from NVIDIA's list of supported GPUs), what installing it changes, the Secure Boot state, and the state of an installed NVIDIA driver (waiting for its first start, in use, fell back to nouveau and why, a kernel held back); `basalt drivers license nvidia` prints the NVIDIA Driver License Agreement (docs/nvidia.md) |
+| `basalt updates` | what the last check for updates found, grouped (security, Basalt OS components, apps, system) with sizes and advisories, whether a restart is needed, an update being installed, the history and the last update that can be undone ([updates.md](updates.md)) |
+| `basalt channels` | Basalt's channels and how each is signed, the sources added through Basalt, other repositories, the catalog of well-known sources |
 | `basalt ask "REQUEST"` | (optional, needs the local model) the request translated into one of the commands above, which then runs; a change (apply, rollback) is only printed, see [local-model.md](local-model.md) |
 
 Options: `--json` (machine-readable output), `--verbose` (all evidence and
@@ -161,6 +163,12 @@ Changes (root):
 | `basalt why UNIT --apply`, `basalt fix selinux --apply`, `basalt disk --apply` | store the proposal and go straight to the confirmation |
 | `basalt drivers install nvidia [display\|compute] [--apply]` | the `driver.install` proposal for the recommended driver (refused without a supported GPU, while the basalt-nonfree repository is not published, when it is installed already, or with Secure Boot on and the Basalt module CA not enrolled) |
 | `basalt drivers rollback [--apply]` | the rollback to the snapshot `basalt apply` took before the NVIDIA driver install |
+| `basalt updates check` | update.check: refresh the package lists (`dnf makecache --refresh`), without a proposal: nothing is installed; recorded as a `check` audit record |
+| `basalt updates install [--security] [--apply]` | the `update.install` proposal for exactly the updates shown (all, or the security ones) |
+| `basalt updates rollback [--apply]` | the `update.rollback` proposal: back to the snapshot taken before the last update |
+| `basalt channels enable\|disable NAME [--consent preview-builds-1] [--apply]` | `repo.enable` or `repo.disable` of basalt-tools, basalt-testing, basalt-nonfree-testing or a source added through Basalt (testing channels need the consent) |
+| `basalt channels add ENTRY\|copr --id OWNER/PROJECT\|custom ... [--apply]` | the `source.add` proposal: the key is downloaded now and shown with its fingerprint and owner |
+| `basalt channels remove SOURCE [--apply]` | the `source.remove` proposal |
 
 Other Basalt tools through `basalt`: a first word that is not one of the
 commands above runs the program `basalt-<word>` with the rest of the
@@ -198,13 +206,27 @@ changes, with parameters that pass strict validators:
 | `journal.vacuum` | `journalctl --vacuum-size=SIZE` |
 | `dnf.clean` | `dnf clean packages` |
 | `driver.install` | `dnf -y install basalt-nonfree-release`, `dnf config-manager setopt basalt-nonfree.enabled=1`, `dnf -y install --skip-unavailable nvidia-driver` (or `nvidia-driver-compute`) `kmod-nvidia-open-KERNEL`, `basalt-nvidia arm` (docs/nvidia.md) |
+| `update.check` | `dnf makecache --refresh` (run by `basalt updates check` without a proposal) |
+| `update.install` | `dnf -y upgrade --downloadonly NEVRA...`, `dnf -y upgrade NEVRA...` (exactly the packages shown) |
+| `update.rollback` | `basalt-rollback --yes N` (N: the snapshot taken before an applied update.install) |
+| `repo.enable`, `repo.disable` | `dnf config-manager setopt REPO.enabled=1` (or `0`); a basalt-nonfree channel not yet defined first gets `dnf -y install` and `dnf -y upgrade basalt-nonfree-release` |
+| `source.add` | `basalt __source add ...`: download the key again, refuse another fingerprint, write the key, the repository file (or the Flatpak remote) and the record |
+| `source.remove` | `basalt __source remove --id ID` |
 
 Each action also carries its verification: the label is the policy
 default (`matchpathcon -V`), the port or boolean has the new value, the
 unit is active and no new denial appeared since the change, the restored
 file matches the snapshot, a rollback is pending, the snapshot is gone,
 the driver's repository is on, its packages are installed, nouveau is off
-and the next start is a trial.
+and the next start is a trial, every update shown is installed, the
+channel is on or off, the source is recorded or gone.
+
+The validators of the update and channel actions are in
+[updates.md](updates.md): an update names exactly the packages shown; a
+channel toggle accepts only Basalt's toggleable channels and sources added
+through Basalt, and a testing channel needs the person's consent; a new
+source needs https, its key and signature checks on, and a catalog entry
+its pinned key.
 
 `driver.install` also carries the SHA-256 of the NVIDIA Driver License
 Agreement the person was shown (`license`); any other value is refused.

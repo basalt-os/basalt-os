@@ -21,7 +21,7 @@ export ENV_FILE
 source "$(dirname "$0")/../lib.sh"
 
 out="${1:?usage: $0 OUT_DIR}"
-for var in BASALT_GPG_PUBKEY BASALT_DEFAULT_REPO_URL BASALT_DEFAULT_TOOLS_URL BASALT_DEFAULT_TESTING_URL BASALT_DEFAULT_NONFREE_URL \
+for var in BASALT_GPG_PUBKEY BASALT_DEFAULT_REPO_URL BASALT_DEFAULT_TOOLS_URL BASALT_DEFAULT_TESTING_URL BASALT_DEFAULT_NONFREE_URL BASALT_DEFAULT_NONFREE_TESTING_URL \
   BASALT_MODULE_CA_CERT BASALT_MODULE_SIGNING_CERT BASALT_SOURCES_MANIFEST; do
   [[ -z "${!var:-}" ]] || die "$var is set: a release build ships the OpenBasalt defaults, unset it"
 done
@@ -56,10 +56,12 @@ cmp -s "$chk/etc/pki/rpm-gpg/RPM-GPG-KEY-basalt" "$REPO_ROOT/packages/basalt-rel
 [[ "$(cat "$chk/etc/dnf/vars/basalt_repo_url")" == https://obpkg.org/basalt ]] || die "basalt-release does not point at https://obpkg.org/basalt"
 nf="$(find "$out" -maxdepth 1 -name 'basalt-nonfree-release-[0-9]*.noarch.rpm' | head -1)"
 [[ -n "$nf" ]] || die "basalt-nonfree-release not built"
-(cd "$chk" && rpm2cpio "$nf" | cpio -idm --quiet ./etc/dnf/vars/basalt_nonfree_url ./etc/yum.repos.d/basalt-nonfree.repo)
+(cd "$chk" && rpm2cpio "$nf" | cpio -idm --quiet ./etc/dnf/vars/basalt_nonfree_url ./etc/dnf/vars/basalt_nonfree_testing_url ./etc/yum.repos.d/basalt-nonfree.repo)
 [[ "$(cat "$chk/etc/dnf/vars/basalt_nonfree_url")" == https://obpkg.org/basalt-nonfree ]] ||
   die "basalt-nonfree-release does not point at https://obpkg.org/basalt-nonfree"
-grep -q '^enabled=1' "$chk/etc/yum.repos.d/basalt-nonfree.repo" && die "basalt-nonfree must be off by default"
+[[ "$(cat "$chk/etc/dnf/vars/basalt_nonfree_testing_url")" == https://obpkg.org/basalt-nonfree-testing ]] ||
+  die "basalt-nonfree-release does not point at https://obpkg.org/basalt-nonfree-testing"
+grep -q '^enabled=1' "$chk/etc/yum.repos.d/basalt-nonfree.repo" && die "basalt-nonfree and basalt-nonfree-testing must be off by default"
 
 cat >"$out/BUILD-INFO.txt" <<EOF
 Basalt OS release build (UNSIGNED, input for scripts/release/sign.sh)

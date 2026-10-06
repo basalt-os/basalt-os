@@ -19,7 +19,8 @@ For the details:
   (IDs starting with BSC-), with where it is built and how it is tested;
 - [audit-guide.md](audit-guide.md): how to check each control yourself;
 - [change-policy.md](change-policy.md): how the controls change, and how
-  to report a problem.
+  to report a problem;
+- [updates.md](updates.md): how updates and software sources are verified.
 
 ## The idea in one paragraph
 

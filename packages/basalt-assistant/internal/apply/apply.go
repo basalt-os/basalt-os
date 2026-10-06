@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
 )
 
 // Applier carries what an apply needs.
@@ -41,6 +43,9 @@ type Applier struct {
 	// Follow is how often and how long the command line follows the
 	// executor unit (tests shorten them).
 	FollowEvery, FollowFor time.Duration
+
+	decidedBy string    // who decided the apply in progress
+	started   time.Time // when it started
 }
 
 // ErrCancelled is returned when the person declines.
@@ -94,6 +99,8 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	snapNote := "a snapshot is taken before and after"
 	if rollbackAction(p.Actions) {
 		snapNote = "no extra snapshot: the rollback works on snapshots itself"
+	} else if toggleOnly(p.Actions) {
+		snapNote = "no snapshot: turning a channel on or off changes one setting, and the next update takes its own snapshot"
 	}
 	what := "the command shown above"
 	if len(cmds) > 1 {
@@ -130,7 +137,18 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	}
 	a.audit("confirm", fmt.Sprintf("confirmed %s (%s) by %s", p.ID, fp, by), map[string]any{"proposal": p.ID, "fingerprint": fp,
 		"commands": strs(cmds), "by": by})
+	a.decidedBy = by
 	return a.run(ctx, p, cmds, fp)
+}
+
+// progress records where a running apply is (the desktop's Updates page
+// shows it as steps: the snapshot, each command, the checks), in
+// proposal.ProgressDir, outside the snapshots. Best effort.
+func (a *Applier) progress(p *proposal.Proposal, step, steps int, what string) {
+	if a.started.IsZero() {
+		a.started = time.Now()
+	}
+	proposal.WriteProgress(p.ID, step, steps, what, a.started)
 }
 
 // run takes the snapshots, runs the commands, verifies and records.
@@ -139,7 +157,14 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	start := time.Now()
 	res := &proposal.Result{Time: start.UTC(), Fingerprint: fp}
 	desc := "basalt apply " + p.ID
-	snap := a.Snapshots && snapperReady() && !rollbackAction(p.Actions)
+	snap := a.Snapshots && snapperReady() && !rollbackAction(p.Actions) && !toggleOnly(p.Actions)
+	// Steps: the snapshot (when taken), each command, the checks.
+	steps, step := len(cmds)+1, 0
+	if snap {
+		steps++
+		step++
+		a.progress(p, step, steps, "snapshot")
+	}
 	if snap {
 		if n, err := a.snapper(ctx, "pre", 0, desc, p.ID); err == nil {
 			res.PreSnapshot = n
@@ -151,6 +176,8 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 
 	ok := true
 	for _, c := range cmds {
+		step++
+		a.progress(p, step, steps, c.Description)
 		a.printf("$ %s\n", c.String())
 		r := a.Exec.Run(ctx, c)
 		step := proposal.Step{What: c.String(), OK: r.OK(), Code: r.Code, Output: clip(r.Out, 4000)}
@@ -176,6 +203,8 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	}
 
 	if ok {
+		step++
+		a.progress(p, step, steps, "checks")
 		if a.Settle > 0 {
 			time.Sleep(a.Settle)
 		}
@@ -192,7 +221,16 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 		}
 	}
 	res.OK = ok
+	a.progress(p, 0, 0, "")
 	p.Result = res
+	if ok {
+		// A source keeps who added it (shown on its card).
+		for _, act := range p.Actions {
+			if act.Kind == action.SourceAdd {
+				_ = sources.Stamp(action.SourcePaths, act.Params["id"], p.ID, a.decidedBy+actorSuffix())
+			}
+		}
+	}
 	if ok {
 		p.Status = proposal.Applied
 	} else {
@@ -254,11 +292,39 @@ func snapperReady() bool {
 
 func rollbackAction(as []action.Action) bool {
 	for _, a := range as {
-		if a.Kind == action.SnapshotRollback || a.Kind == action.SnapshotDelete {
+		if a.Kind == action.SnapshotRollback || a.Kind == action.SnapshotDelete || a.Kind == action.UpdateRollback {
 			return true
 		}
 	}
 	return false
+}
+
+// toggleOnly: a proposal that only turns channels on or off needs no
+// snapshot (one setting; every update takes its own).
+func toggleOnly(as []action.Action) bool {
+	for _, a := range as {
+		if a.Kind != action.RepoEnable && a.Kind != action.RepoDisable {
+			return false
+		}
+		if a.Params["definition"] != "" {
+			return false
+		}
+	}
+	return len(as) > 0
+}
+
+// actorSuffix names the person behind sudo or pkexec, when known.
+func actorSuffix() string {
+	if u := os.Getenv("SUDO_USER"); u != "" {
+		return ", user " + u
+	}
+	if id := os.Getenv("PKEXEC_UID"); id != "" {
+		if u, err := user.LookupId(id); err == nil {
+			return ", user " + u.Username
+		}
+		return ", uid " + id
+	}
+	return ""
 }
 
 func (a *Applier) snapper(ctx context.Context, typ string, pre int, desc, id string) (int, error) {
@@ -282,9 +348,12 @@ func strs(cs []runner.Command) []string {
 	return out
 }
 
+// clip keeps the start and the end of a long output: the end is where a
+// failing command says why.
 func clip(s string, n int) string {
 	if len(s) > n {
-		return s[:n] + "\n(truncated)"
+		head := n / 4
+		return s[:head] + "\n(truncated)\n" + s[len(s)-(n-head):]
 	}
 	return s
 }

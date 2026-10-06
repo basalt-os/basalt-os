@@ -57,7 +57,7 @@ if [[ "$mode" == test-key && "$OB_R2_BUCKET" == obpkg ]]; then
 fi
 repo="$(awk '/^repo: / {print $2}' "$tree/SIGNED-OK")"
 repo="${repo:-basalt}"
-case "$repo" in basalt | basalt-tools | basalt-testing | basalt-nonfree | apt) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
+case "$repo" in basalt | basalt-tools | basalt-testing | basalt-nonfree | basalt-nonfree-testing | apt) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
 listed="$(grep -E "^[0-9a-f]{64}  $repo/" "$tree/SIGNED-OK")"
 (cd "$tree" && sha256sum -c --quiet <<<"$listed") || die "the tree changed after it was verified"
 [[ "$(awk '{print $2}' <<<"$listed" | sort)" == "$(cd "$tree" && find "$repo" -type f | sort)" ]] ||

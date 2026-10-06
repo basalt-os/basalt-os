@@ -8,7 +8,9 @@
 # Packages and repository metadata are signature checked with the
 # OpenBasalt release key, like the other Basalt repositories. The base URL
 # comes from /etc/dnf/vars/basalt_nonfree_url (default
-# https://obpkg.org/basalt-nonfree).
+# https://obpkg.org/basalt-nonfree); the testing channel's from
+# /etc/dnf/vars/basalt_nonfree_testing_url (default
+# https://obpkg.org/basalt-nonfree-testing).
 [basalt-nonfree]
 name=Basalt OS non-free drivers $releasever - $basearch
 baseurl=$basalt_nonfree_url/$releasever/$basearch/
@@ -22,6 +24,22 @@ metadata_expire=6h
 [basalt-nonfree-source]
 name=Basalt OS non-free drivers $releasever - source
 baseurl=$basalt_nonfree_url/$releasever/source/
+enabled=0
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-basalt
+skip_if_unavailable=True
+metadata_expire=6h
+
+# Preview builds of the non-free drivers, before they reach basalt-nonfree
+# (ADR 0017's release channel: everything that is not official is tested
+# here first, on real hardware). Off by default, for testers; never mixed
+# into basalt-testing, so the license separation holds. Turn it on from
+# Settings, Updates and channels (it asks for your consent to preview
+# builds), or: sudo basalt channels enable basalt-nonfree-testing --consent preview-builds-1
+[basalt-nonfree-testing]
+name=Basalt OS non-free drivers testing $releasever - $basearch
+baseurl=$basalt_nonfree_testing_url/$releasever/$basearch/
 enabled=0
 gpgcheck=1
 repo_gpgcheck=1
