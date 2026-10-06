@@ -188,6 +188,9 @@ fi
   /proc/sys/fs, the devpts root, /dev/log) are refused quietly, so allowed
   work leaves no denials in the log.
 - tests/normal.sh: a local server and a client of it, in both modes.
+- basalt-agent install: when npm (or python3 for pip) is missing, says so
+  and prints the dnf command for the profile's packages, instead of
+  "exec: npm: executable file not found".
 
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.0-1
 - The approval gate (ADR 0020 phase 2, docs/gate.md): basalt-agent grant
