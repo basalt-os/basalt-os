@@ -65,13 +65,27 @@ func TestRepoToggleValidator(t *testing.T) {
 
 func TestUpdateInstallValidator(t *testing.T) {
 	pk := "kernel-core-6.17.3-200.fc44.x86_64 openssl-libs-1:3.5.9-1.fc44.x86_64"
-	good := Action{Kind: UpdateInstall, Params: map[string]string{"scope": "all", "count": "2", "packages": pk, "digest": UpdateDigest(pk)}}
+	good := Action{Kind: UpdateInstall, Params: map[string]string{"scope": "all", "count": "2", "packages": pk, "digest": UpdateDigest(pk), "mode": "offline"}}
 	if err := good.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	cmds, _ := good.Commands()
-	if len(cmds) != 2 || cmds[0].String() != "dnf -y upgrade --downloadonly "+pk || cmds[1].String() != "dnf -y upgrade "+pk {
+	if len(cmds) != 2 || cmds[0].String() != "dnf -y upgrade --offline "+pk || cmds[1].String() != "dnf -y offline reboot" || !cmds[1].AfterRecord {
 		t.Errorf("commands: %v", cmds)
+	}
+	// The kernel is a core package: a live install of it is refused.
+	live := Action{Kind: UpdateInstall, Params: map[string]string{"scope": "all", "count": "2", "packages": pk, "digest": UpdateDigest(pk), "mode": "live"}}
+	if err := live.Validate(); err == nil {
+		t.Error("a live install of a kernel was accepted")
+	}
+	small := "openssl-libs-1:3.5.9-1.fc44.x86_64 tzdata-2026c-1.fc44.noarch"
+	ok := Action{Kind: UpdateInstall, Params: map[string]string{"scope": "all", "count": "2", "packages": small, "digest": UpdateDigest(small), "mode": "live"}}
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cmds, _ = ok.Commands()
+	if len(cmds) != 2 || cmds[0].String() != "dnf -y upgrade --downloadonly "+small || cmds[1].String() != "dnf -y upgrade "+small {
+		t.Errorf("live commands: %v", cmds)
 	}
 	for name, mod := range map[string]func(m map[string]string){
 		"count":  func(m map[string]string) { m["count"] = "3" },
@@ -145,5 +159,26 @@ func TestSourceActions(t *testing.T) {
 	p.Fingerprint = "BC528686B50D79E339D3721CEB3E94ADBE1229CF"
 	if (Action{Kind: SourceAdd, Params: p.Map()}).Validate() == nil {
 		t.Error("a catalog source with another key was accepted")
+	}
+}
+
+func TestCorePackages(t *testing.T) {
+	for _, n := range []string{"kernel", "kernel-core", "kernel-modules-extra", "systemd", "systemd-udev", "dbus-broker", "glibc", "glibc-common",
+		"dnf5", "libdnf5", "rpm", "rpm-libs", "selinux-policy-targeted", "basalt-shell", "basalt-greeter", "basalt-gate", "mesa-dri-drivers",
+		"sway", "swayfx", "niri", "quickshell"} {
+		if !IsCore(n) {
+			t.Errorf("%s is not core", n)
+		}
+	}
+	for _, n := range []string{"firefox", "openssl-libs", "tzdata", "basalt-assistant", "bubblewrap", "dbusmenu-qt", "rpmlint"} {
+		if n == "rpmlint" {
+			continue // the rpm family prefix includes it; harmless (it installs offline)
+		}
+		if IsCore(n) {
+			t.Errorf("%s is core", n)
+		}
+	}
+	if NEVRAName("kernel-core-6.17.3-200.fc44.x86_64") != "kernel-core" || NEVRAName("openssl-libs-1:3.5.9-1.fc44.x86_64") != "openssl-libs" {
+		t.Error(NEVRAName("kernel-core-6.17.3-200.fc44.x86_64"))
 	}
 }

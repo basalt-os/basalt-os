@@ -1,6 +1,7 @@
 /usr/libexec/basalt/basalt-assistantd	--	gen_context(system_u:object_r:basalt_assistant_exec_t,s0)
 /usr/libexec/basalt/basalt-mcp		--	gen_context(system_u:object_r:basalt_mcp_exec_t,s0)
 /usr/bin/basalt-mcp			--	gen_context(system_u:object_r:basalt_mcp_exec_t,s0)
+/usr/libexec/basalt-assistant/basalt-apply-exec	--	gen_context(system_u:object_r:basalt_apply_exec_t,s0)
 
 /var/lib/basalt-assistant(/.*)?			gen_context(system_u:object_r:basalt_assistant_var_lib_t,s0)
 /var/log/basalt-assistant(/.*)?			gen_context(system_u:object_r:basalt_assistant_log_t,s0)

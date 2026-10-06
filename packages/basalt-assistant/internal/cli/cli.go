@@ -24,6 +24,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/updates"
 )
 
 const usage = `basalt: the Basalt OS system assistant
@@ -300,6 +301,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.channels(ctx)
 	case "__source":
 		return a.sourceHelper(ctx)
+	case "__offline-finish":
+		return a.offlineFinish(ctx)
 	}
 	return fmt.Errorf("unknown command %q (basalt help)", a.o.args[0])
 }
@@ -319,6 +322,9 @@ func (a *app) applier() *apply.Applier {
 		// The approval gate, when installed: it decides (enforce) or is told
 		// what was decided here (shadow mode); without it, nothing changes.
 		ap.Gate = gatelink.Detect("requester")
+		ap.StateDir = a.cfg.StateDir
+		// After an update: the report drops what is installed now.
+		ap.OnUpdated = func() { updates.Refresh(context.Background(), a.updatesSys(), time.Time{}) }
 	}
 	return ap
 }

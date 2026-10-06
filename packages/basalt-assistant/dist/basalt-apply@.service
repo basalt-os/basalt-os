@@ -1,0 +1,18 @@
+[Unit]
+Description=Apply the system assistant proposal %I confirmed in Settings
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/updates.md
+After=network-online.target basalt-ledger.service
+Wants=network-online.target
+
+[Service]
+# Started by the desktop (systemctl start basalt-apply@ID_CODE.service)
+# after the person confirmed the proposal; polkit asks for an
+# administrator's password (50-basalt-assistant.rules). It runs exactly
+# basalt apply ID --yes --confirm CODE: a changed proposal has another
+# code and is refused. SELinux: basalt_apply_t.
+Type=oneshot
+ExecStart=/usr/libexec/basalt-assistant/basalt-apply-exec apply %i
+# An update downloads and installs for as long as it takes.
+TimeoutStartSec=infinity
+StandardOutput=journal
+StandardError=journal

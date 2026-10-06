@@ -30,6 +30,9 @@ const (
 	Failed   = "failed"
 	Ignored  = "ignored"
 	Resolved = "resolved" // the problem went away without an apply
+	// Scheduled: applied as far as it can be now; the rest happens at the
+	// next start (an offline update), and the boot finishes the record.
+	Scheduled = "scheduled"
 )
 
 // DefaultDir holds proposal files.

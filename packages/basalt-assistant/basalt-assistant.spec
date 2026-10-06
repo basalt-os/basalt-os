@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.11.0
+Version:        0.12.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -90,7 +90,7 @@ write only its state directory and (append only) its audit log.
 
 %build
 export GOFLAGS="-mod=mod -trimpath" GOTOOLCHAIN=local GOPROXY=off
-for c in basalt basalt-assistantd basalt-mcp basalt-notify basalt-gate-exec; do
+for c in basalt basalt-assistantd basalt-mcp basalt-notify basalt-gate-exec basalt-apply-exec; do
     go build -buildmode=pie -ldflags "-B gobuildid -X main.version=%{version}-%{release}" -o bin/$c ./cmd/$c
 done
 for po in po/*.po; do
@@ -113,6 +113,16 @@ install -Dpm 0755 bin/basalt-notify %{buildroot}%{_libexecdir}/basalt/basalt-not
 install -Dpm 0755 dist/basalt-policy-query %{buildroot}%{_libexecdir}/basalt/basalt-policy-query
 install -Dpm 0755 bin/basalt-gate-exec %{buildroot}%{_libexecdir}/basalt-assistant/basalt-gate-exec
 install -Dpm 0644 dist/basalt-gate-exec@.service %{buildroot}%{_unitdir}/basalt-gate-exec@.service
+%{_libexecdir}/basalt-assistant/basalt-apply-exec
+%{_unitdir}/basalt-apply@.service
+%{_unitdir}/basalt-updates-check.service
+%{_unitdir}/basalt-offline-finish.service
+%{_datadir}/polkit-1/rules.d/50-basalt-assistant.rules
+install -Dpm 0755 bin/basalt-apply-exec %{buildroot}%{_libexecdir}/basalt-assistant/basalt-apply-exec
+install -Dpm 0644 dist/basalt-apply@.service %{buildroot}%{_unitdir}/basalt-apply@.service
+install -Dpm 0644 dist/basalt-updates-check.service %{buildroot}%{_unitdir}/basalt-updates-check.service
+install -Dpm 0644 dist/basalt-offline-finish.service %{buildroot}%{_unitdir}/basalt-offline-finish.service
+install -Dpm 0644 dist/50-basalt-assistant.rules %{buildroot}%{_datadir}/polkit-1/rules.d/50-basalt-assistant.rules
 install -Dpm 0644 dist/basalt-assistantd.service %{buildroot}%{_unitdir}/basalt-assistantd.service
 install -Dpm 0644 dist/basalt-notify.service %{buildroot}%{_unitdir}/basalt-notify.service
 install -Dpm 0644 dist/basalt-audit-rotate.service %{buildroot}%{_unitdir}/basalt-audit-rotate.service
@@ -137,10 +147,10 @@ done
 
 %post
 %tmpfiles_create %{name}.conf
-%systemd_post basalt-assistantd.service basalt-notify.service basalt-audit-rotate.timer
+%systemd_post basalt-assistantd.service basalt-notify.service basalt-audit-rotate.timer basalt-offline-finish.service
 
 %preun
-%systemd_preun basalt-assistantd.service basalt-notify.service basalt-audit-rotate.service basalt-audit-rotate.timer
+%systemd_preun basalt-assistantd.service basalt-notify.service basalt-audit-rotate.service basalt-audit-rotate.timer basalt-offline-finish.service
 
 %postun
 %systemd_postun_with_restart basalt-assistantd.service basalt-notify.service
@@ -190,6 +200,18 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.0-1
+- Updates, channels and software sources (docs/updates.md): basalt updates
+  and basalt channels, and the actions update.check, update.install,
+  update.rollback, repo.enable, repo.disable, source.add, source.remove.
+- update.install installs offline (dnf offline, at the next start, before
+  the session) when the set replaces core packages; snapshots before and
+  after in both modes; basalt-offline-finish.service records the result.
+- The desktop applies proposals through basalt-apply@.service and checks
+  for updates through basalt-updates-check.service (basalt-apply-exec,
+  SELinux basalt_apply_t, polkit rule 50-basalt-assistant.rules); it never
+  runs dnf or basalt apply itself.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.11.0-1
 - The approval gate (ADR 0020 phase 2, docs/gate.md): with basalt-gate
   installed, basalt apply tells the gate what root decided at the

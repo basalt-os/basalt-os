@@ -120,6 +120,51 @@ func UpdateDigest(packages string) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
+// corePrefixes are the packages that replace core parts of the running
+// system: the kernel, systemd, dbus, glibc, the package manager itself,
+// the SELinux policy, Basalt's session (shell, login screen, gate), Mesa
+// and the session's compositor. An update that touches one of them is
+// installed offline, at the next start, before the session runs.
+var corePrefixes = []string{"kernel", "systemd", "dbus", "glibc", "dnf", "libdnf", "python3-dnf", "python3-libdnf", "rpm",
+	"librepo", "libsolv", "selinux-policy", "basalt-shell", "basalt-greeter", "basalt-gate", "mesa", "sway", "niri",
+	"quickshell", "wlroots", "greetd"}
+
+// NEVRAName is the package name of name-[epoch:]version-release.arch.
+func NEVRAName(nevra string) string {
+	if i := strings.LastIndex(nevra, "."); i > 0 {
+		nevra = nevra[:i]
+	}
+	parts := strings.Split(nevra, "-")
+	if len(parts) < 3 {
+		return nevra
+	}
+	return strings.Join(parts[:len(parts)-2], "-")
+}
+
+// IsCore reports a package whose update is installed offline.
+func IsCore(name string) bool {
+	for _, p := range corePrefixes {
+		// Families whose names continue without a hyphen (swayfx, dnf5,
+		// libdnf5, rpmlint) count as a whole.
+		loose := p == "sway" || p == "kernel" || p == "rpm" || p == "dnf" || p == "libdnf"
+		if name == p || strings.HasPrefix(name, p+"-") || loose && strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// CoreIn lists the core packages of an update.install's package list.
+func CoreIn(packages string) []string {
+	var out []string
+	for _, n := range UpdatePackages(packages) {
+		if name := NEVRAName(n); IsCore(name) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // UpdatePackages splits an update.install's package list.
 func UpdatePackages(packages string) []string { return strings.Fields(packages) }
 
@@ -292,6 +337,15 @@ func (a Action) Validate() error {
 		if !reDigest.MatchString(p["digest"]) || p["digest"] != UpdateDigest(p["packages"]) {
 			return fmt.Errorf("digest %q does not match the package list", p["digest"])
 		}
+		switch p["mode"] {
+		case "offline":
+		case "live":
+			if core := CoreIn(p["packages"]); len(core) > 0 {
+				return fmt.Errorf("the update replaces core packages (%s): it installs offline, at the next start", strings.Join(core, ", "))
+			}
+		default:
+			return fmt.Errorf("mode %q (live or offline)", p["mode"])
+		}
 	case UpdateRollback:
 		if _, err := snapNum(p["snapshot"]); err != nil {
 			return err
@@ -382,6 +436,14 @@ func (a Action) Commands() ([]runner.Command, error) {
 		what := p["count"] + " updates"
 		if p["scope"] == "security" {
 			what = p["count"] + " security updates"
+		}
+		if p["mode"] == "offline" {
+			return []runner.Command{
+				{Argv: append([]string{"dnf", "-y", "upgrade", "--offline"}, pk...),
+					Description: "download " + what + " (checked against the repositories' signing keys) and prepare them to install at the next start"},
+				{Argv: []string{"dnf", "-y", "offline", "reboot"}, AfterRecord: true,
+					Description: "restart now: they install before the desktop starts, then the computer starts normally"},
+			}, nil
 		}
 		return []runner.Command{
 			{Argv: append([]string{"dnf", "-y", "upgrade", "--downloadonly"}, pk...),
@@ -544,6 +606,21 @@ func (a Action) Verify(since time.Time) []Check {
 	case UpdateCheck:
 		return nil
 	case UpdateInstall:
+		if p["mode"] == "offline" {
+			return []Check{{Description: "the updates wait for the next start",
+				Argv: []string{"dnf", "offline", "status"}, Want: []string{"offline transaction was initiated"}}}
+		}
+		return a.InstalledChecks()
+	}
+	return a.verifyOther(since)
+}
+
+// InstalledChecks prove that an update.install's packages are installed
+// (after a live install, or at the start after an offline one).
+func (a Action) InstalledChecks() []Check {
+	p := a.Params
+	switch a.Kind {
+	case UpdateInstall:
 		pk := UpdatePackages(p["packages"])
 		return []Check{{Description: "the " + p["count"] + " updates are installed",
 			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
@@ -558,6 +635,13 @@ func (a Action) Verify(since time.Time) []Check {
 				}
 				return res.Code == 0, fmt.Sprintf("%d installed", len(pk))
 			}}}
+	}
+	return nil
+}
+
+func (a Action) verifyOther(since time.Time) []Check {
+	p := a.Params
+	switch a.Kind {
 	case UpdateRollback:
 		return Action{Kind: SnapshotRollback, Params: map[string]string{"snapshot": p["snapshot"]}}.Verify(since)
 	case RepoEnable, RepoDisable:

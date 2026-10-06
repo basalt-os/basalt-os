@@ -53,6 +53,12 @@ const advisories = `[
 ]`
 
 func testSys(t *testing.T) Sys {
+	s := newSys(t)
+	Refresh(context.Background(), s, time.Now())
+	return s
+}
+
+func newSys(t *testing.T) Sys {
 	d := t.TempDir()
 	apps := filepath.Join(d, "applications")
 	_ = os.MkdirAll(apps, 0o755)
@@ -68,12 +74,17 @@ func testSys(t *testing.T) Sys {
 		"btrfs inspect-internal rootid": "256",
 		"uname -r":                      "6.17.1-200.fc44.x86_64",
 	}
-	return Sys{R: f, Store: proposal.Store{Dir: filepath.Join(d, "proposals")}, StampPath: filepath.Join(d, "stamp"),
+	return Sys{R: f, Store: proposal.Store{Dir: filepath.Join(d, "proposals")}, CachePath: filepath.Join(d, "updates.json"),
+		BootID:  func() string { return "boot-1" },
 		AppsDir: apps, BootTime: func() time.Time { return boot }}
 }
 
 func TestPreviewParsing(t *testing.T) {
-	s := testSys(t)
+	s := newSys(t)
+	if r := Build(context.Background(), s); len(r.Updates) != 0 || r.Checked != "" {
+		t.Fatalf("a report before any check: %+v", r)
+	}
+	Refresh(context.Background(), s, time.Time{})
 	r := Build(context.Background(), s)
 	if len(r.Errors) > 0 {
 		t.Fatal(r.Errors)
@@ -184,9 +195,7 @@ func TestRunningProgress(t *testing.T) {
 	if r.Running == nil || r.Running.Step != 2 || r.Running.Steps != 4 || r.Pending != "" {
 		t.Errorf("running %+v pending %q", r.Running, r.Pending)
 	}
-	if len(r.Updates) != 0 {
-		t.Error("dnf was queried while an update is applied")
-	}
+	// The report reads the cache only; nothing queries dnf while it runs.
 	proposal.WriteProgress(p.ID, 0, 0, "", time.Now())
 	r = Build(context.Background(), s)
 	if r.Running != nil || r.Pending != p.ID || len(r.Updates) != 4 {
@@ -239,5 +248,30 @@ func TestInterruptedApplyCanBeUndone(t *testing.T) {
 	r := Build(context.Background(), s)
 	if r.Undo == nil || r.Undo.Snapshot != 87 || len(r.History) != 1 || r.History[0].Status != "interrupted" || r.Pending != "" {
 		t.Fatalf("undo %+v history %+v pending %q", r.Undo, r.History, r.Pending)
+	}
+}
+
+// A set with core packages installs offline; a small set without them
+// stays live; the report says which.
+func TestOfflineMode(t *testing.T) {
+	s := testSys(t)
+	r := Build(context.Background(), s)
+	if !r.Offline || r.OfflineSecurity {
+		t.Fatalf("offline %v security %v core %v", r.Offline, r.OfflineSecurity, r.Core)
+	}
+	us, _ := Query(context.Background(), s, true)
+	us = append(us, Update{Name: "kernel-core", NEVRA: "kernel-core-6.17.3-200.fc44.x86_64", Group: GroupSystem})
+	p, err := InstallProposal(us, "cli", "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := p.Actions[0]
+	cmds, _ := a.Commands()
+	if a.Params["mode"] != "offline" || len(cmds) != 2 || !cmds[1].AfterRecord || cmds[1].String() != "dnf -y offline reboot" {
+		t.Fatalf("%+v %v", a.Params["mode"], cmds)
+	}
+	sec, _ := InstallProposal(us, "cli", "security")
+	if sec.Actions[0].Params["mode"] != "live" {
+		t.Errorf("security set without core packages: %s", sec.Actions[0].Params["mode"])
 	}
 }

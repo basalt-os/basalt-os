@@ -29,6 +29,9 @@ const MutationGrace = 10 * time.Second
 type Command struct {
 	Argv        []string `json:"argv"`
 	Description string   `json:"description,omitempty"`
+	// AfterRecord: run only once the apply's result is recorded (a
+	// restart that ends the apply itself). Shown like any other command.
+	AfterRecord bool `json:"-"`
 }
 
 // String renders the argv the way a POSIX shell reads it back.

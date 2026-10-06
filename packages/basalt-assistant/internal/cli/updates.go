@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/apply"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
@@ -18,7 +19,8 @@ import (
 
 // updatesSys is the real system for the updates report.
 func (a *app) updatesSys() updates.Sys {
-	return updates.Sys{R: runner.Exec{Timeout: 2 * time.Minute}, Store: a.store, AuditPath: a.cfg.AuditPath, StampPath: a.cfg.StateDir + "/updates-checked",
+	return updates.Sys{R: runner.Exec{Timeout: 2 * time.Minute}, Store: a.store, AuditPath: a.cfg.AuditPath,
+		CachePath: a.cfg.StateDir + "/updates.json", BootID: bootID,
 		AppsDir: "/usr/share/applications", BootTime: bootTime,
 		PreSnapshots: func() map[string]int {
 			m := map[string]int{}
@@ -29,6 +31,12 @@ func (a *app) updatesSys() updates.Sys {
 			}
 			return m
 		}}
+}
+
+// bootID is this boot's id.
+func bootID() string {
+	b, _ := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	return strings.TrimSpace(string(b))
 }
 
 // bootTime reads btime from /proc/stat.
@@ -52,7 +60,7 @@ func bootTime() time.Time {
 //
 //	basalt updates [--json]                   what the last check found, grouped; restart; history
 //	basalt updates status [--json]            the running step, restart and history only (no dnf query)
-//	basalt updates check [--json]             update.check: refresh the package lists, then the same
+//	basalt updates check [--json]             update.check: refresh the package lists and the report (root)
 //	basalt updates install [--security]       the update.install proposal (root stores it)
 //	basalt updates rollback                   the update.rollback proposal for the last update
 func (a *app) updates(ctx context.Context) error {
@@ -87,10 +95,11 @@ func (a *app) updates(ctx context.Context) error {
 		start := time.Now()
 		res := runner.Exec{}.Run(ctx, cmds[0])
 		ok := res.OK()
+		checked := time.Time{}
 		if ok {
-			_ = os.MkdirAll(a.cfg.StateDir, 0o700)
-			_ = os.WriteFile(s.StampPath, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
+			checked = time.Now()
 		}
+		updates.Refresh(ctx, s, checked)
 		r := updates.Build(ctx, s)
 		_, _ = a.audit.Append("check", fmt.Sprintf("update.check: %d updates available (%d security)", r.Counts["total"], r.Counts["security"]),
 			map[string]any{"action": action.UpdateCheck, "ok": ok, "seconds": int(time.Since(start).Seconds()), "updates": r.Counts["total"],
@@ -111,11 +120,13 @@ func (a *app) updates(ctx context.Context) error {
 		if a.o.security {
 			scope = "security"
 		}
-		us, errs := updates.Query(ctx, s, true)
-		if len(errs) > 0 && len(us) == 0 {
-			return errors.New(strings.Join(errs, "; "))
+		// Exactly what the last check found and the page shows (no dnf
+		// query here: the desktop's read helper runs this).
+		c := updates.ReadCache(s)
+		if c.Checked == "" && len(c.Updates) == 0 {
+			return errors.New("no check for updates yet: sudo basalt updates check (or Check for updates in Settings)")
 		}
-		p, err := updates.InstallProposal(us, "cli", scope)
+		p, err := updates.InstallProposal(c.Updates, "cli", scope)
 		if err != nil {
 			return err
 		}
@@ -538,4 +549,20 @@ func (a *app) sourceHelper(ctx context.Context) error {
 		return nil
 	}
 	return errors.New("usage: basalt __source add|remove")
+}
+
+// offlineFinish is `basalt __offline-finish` (basalt-offline-finish.service,
+// at the start after an offline update): the after snapshot, the checks,
+// the record.
+func (a *app) offlineFinish(ctx context.Context) error {
+	if !a.root {
+		return errors.New("__offline-finish runs as root, from basalt-offline-finish.service")
+	}
+	ap := a.applier()
+	defer ap.Gate.Close()
+	err := ap.FinishOffline(ctx)
+	if errors.Is(err, apply.ErrNoPending) {
+		return nil
+	}
+	return err
 }

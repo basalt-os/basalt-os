@@ -46,6 +46,14 @@ type Applier struct {
 
 	decidedBy string    // who decided the apply in progress
 	started   time.Time // when it started
+	after     []runner.Command
+
+	// OnUpdated runs after an update applied live (the updates report is
+	// refreshed: the installed ones are gone from it).
+	OnUpdated func()
+	// StateDir holds the record of an offline update waiting for the next
+	// start (default: next to the proposals).
+	StateDir string
 }
 
 // ErrCancelled is returned when the person declines.
@@ -138,7 +146,11 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	a.audit("confirm", fmt.Sprintf("confirmed %s (%s) by %s", p.ID, fp, by), map[string]any{"proposal": p.ID, "fingerprint": fp,
 		"commands": strs(cmds), "by": by})
 	a.decidedBy = by
-	return a.run(ctx, p, cmds, fp)
+	err := a.run(ctx, p, cmds, fp)
+	if err == nil && o.DecidedBy == "" {
+		a.RunAfter(ctx)
+	}
+	return err
 }
 
 // progress records where a running apply is (the desktop's Updates page
@@ -157,6 +169,19 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	start := time.Now()
 	res := &proposal.Result{Time: start.UTC(), Fingerprint: fp}
 	desc := "basalt apply " + p.ID
+	// Commands that end the apply itself (a restart into an offline
+	// update) run only once the result is recorded (RunAfter).
+	var now []runner.Command
+	a.after = nil
+	for _, c := range cmds {
+		if c.AfterRecord {
+			a.after = append(a.after, c)
+		} else {
+			now = append(now, c)
+		}
+	}
+	cmds = now
+	offline := OfflineUpdate(p.Actions)
 	snap := a.Snapshots && snapperReady() && !rollbackAction(p.Actions) && !toggleOnly(p.Actions)
 	// Steps: the snapshot (when taken), each command, the checks.
 	steps, step := len(cmds)+1, 0
@@ -195,7 +220,9 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 		}
 	}
 
-	if snap && res.PreSnapshot > 0 {
+	// An offline update changes the system at the next start: the boot
+	// takes the "after" snapshot once it is installed (FinishOffline).
+	if snap && res.PreSnapshot > 0 && !offline {
 		if n, err := a.snapper(ctx, "post", res.PreSnapshot, desc, p.ID); err == nil {
 			res.PostSnapshot = n
 			a.printf("Snapshot %d taken (after the change).\n", n)
@@ -231,19 +258,32 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 			}
 		}
 	}
-	if ok {
+	typ := "apply"
+	switch {
+	case ok && offline:
+		p.Status, typ = proposal.Scheduled, "schedule"
+		if err := writePending(a.pendingPath(), Pending{Proposal: p.ID, PreSnapshot: res.PreSnapshot, Time: start.UTC()}); err != nil {
+			a.printf("Warning: the boot will not finish the record: %v\n", err)
+		}
+	case ok:
 		p.Status = proposal.Applied
-	} else {
+	default:
 		p.Status = proposal.Failed
+		a.after = nil
 	}
-	rec := a.audit("apply", fmt.Sprintf("%s %s: %s", p.ID, p.Status, p.Title), map[string]any{
+	rec := a.audit(typ, fmt.Sprintf("%s %s: %s", p.ID, p.Status, p.Title), map[string]any{
 		"proposal": p.ID, "title": p.Title, "actions": p.Actions, "result": res})
 	res.AuditSeq = rec.Seq
 	if err := a.Store.Save(p); err != nil {
 		a.printf("Warning: could not update the proposal: %v\n", err)
 	}
-	if ok {
+	if ok && offline {
+		a.printf("\nReady: %s installs at the next start (audit record #%d).\n", p.ID, rec.Seq)
+	} else if ok {
 		a.printf("\nDone: %s is applied and every check passed (audit record #%d).\n", p.ID, rec.Seq)
+		if a.OnUpdated != nil && isUpdate(p.Actions) {
+			a.OnUpdated()
+		}
 	} else {
 		a.printf("\n%s did not work as expected: see the failed step or check above (audit record #%d).\n", p.ID, rec.Seq)
 	}
@@ -367,4 +407,42 @@ func mark(ok bool) string {
 		return "ok"
 	}
 	return "FAIL"
+}
+
+// RunAfter runs the commands that wait for the recorded result (the
+// restart into an offline update). Apply does it itself; the gate's
+// executor calls it after reporting to the gate.
+func (a *Applier) RunAfter(ctx context.Context) {
+	cmds := a.after
+	a.after = nil
+	for _, c := range cmds {
+		a.printf("$ %s\n", c.String())
+		r := a.Exec.Run(ctx, c)
+		if r.Out != "" {
+			a.printf("%s\n", indent(clip(r.Out, 2000)))
+		}
+		if !r.OK() {
+			a.printf("That command failed (exit code %d). The update stays prepared: restart the computer to install it.\n", r.Code)
+		}
+	}
+}
+
+// OfflineUpdate reports a proposal that installs an update at the next
+// start.
+func OfflineUpdate(as []action.Action) bool {
+	for _, a := range as {
+		if a.Kind == action.UpdateInstall && a.Params["mode"] == "offline" {
+			return true
+		}
+	}
+	return false
+}
+
+func isUpdate(as []action.Action) bool {
+	for _, a := range as {
+		if a.Kind == action.UpdateInstall {
+			return true
+		}
+	}
+	return false
 }

@@ -1,0 +1,20 @@
+// Settings, Updates and channels (and every proposal applied from the
+// desktop) start fixed units of the system assistant instead of running
+// anything as root themselves:
+// - basalt-apply@ID_CODE.service applies one confirmed proposal: always an
+//   administrator's password, never kept;
+// - basalt-updates-check.service refreshes the package lists (installs
+//   nothing): no password for an administrator at the computer.
+polkit.addRule(function(action, subject) {
+    if (action.id != "org.freedesktop.systemd1.manage-units" || action.lookup("verb") != "start") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit") || "";
+    if (unit == "basalt-updates-check.service" && subject.local && subject.active && subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+    if (unit.indexOf("basalt-apply@") == 0) {
+        return polkit.Result.AUTH_ADMIN;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

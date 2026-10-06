@@ -1,0 +1,17 @@
+[Unit]
+Description=Record the offline update installed at this start
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/updates.md
+ConditionPathExists=/var/lib/basalt-assistant/offline-pending.json
+After=local-fs.target basalt-ledger.service
+Before=display-manager.service
+
+[Service]
+# After dnf installed an offline update at the start (system-update.target):
+# the snapshot after it, the checks that every package is installed, the
+# proposal's result and its audit record. SELinux: basalt_apply_t.
+Type=oneshot
+ExecStart=/usr/libexec/basalt-assistant/basalt-apply-exec offline-finish
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=multi-user.target

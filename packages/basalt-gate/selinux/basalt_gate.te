@@ -1,4 +1,4 @@
-policy_module(basalt_gate, 0.2.0)
+policy_module(basalt_gate, 0.3.0)
 
 # basalt-gate: the approval gate (docs/gate.md). A root service in its own
 # domain that
@@ -157,6 +157,12 @@ miscfiles_read_localization(basalt_gate_tty_t)
 # identity for the gate's claims.
 optional_policy(`
 	unconfined_domain(basalt_gate_exec_t)
+')
+# dnf in rpm_t, so package scriptlets run in rpm_script_t (an update, a
+# driver, a channel's definition); without it they are refused and the
+# transaction fails half way.
+optional_policy(`
+	rpm_domtrans(basalt_gate_exec_t)
 ')
 basalt_gate_stream_connect(basalt_gate_exec_t)
 

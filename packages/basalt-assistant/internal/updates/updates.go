@@ -103,6 +103,29 @@ type Report struct {
 	CacheOnly   bool           `json:"cache_only"`
 	Kernel      string         `json:"kernel,omitempty"`
 	CheckedNote string         `json:"checked_note,omitempty"`
+	// Offline: installing all of them replaces core parts of the system,
+	// so they install at the next start (OfflineSecurity: the security
+	// ones only). Core names the core packages among them.
+	Offline         bool     `json:"offline"`
+	OfflineSecurity bool     `json:"offline_security"`
+	Core            []string `json:"core,omitempty"`
+	// Scheduled: an update prepared to install at the next start.
+	Scheduled string `json:"scheduled,omitempty"`
+}
+
+// Cache is what the last check found, kept by root in the assistant's
+// state directory. Only root's processes that may run dnf write it (the
+// check, an apply, the start after an offline update): the desktop and
+// the read helper only read it, so nothing in the desktop's domain runs
+// dnf or rpm.
+type Cache struct {
+	Checked string   `json:"checked"`
+	Updates []Update `json:"updates"`
+	Errors  []string `json:"errors,omitempty"`
+	Kernel  string   `json:"kernel,omitempty"`
+	// The restart state when it was written, valid for that boot only.
+	BootID  string   `json:"boot_id"`
+	Restart []string `json:"restart,omitempty"`
 }
 
 // Sys is what the report reads; tests feed fixtures.
@@ -113,7 +136,8 @@ type Sys struct {
 	// proposals themselves go back with the root).
 	AuditPath string
 	Store     proposal.Store
-	StampPath string // touched by update.check
+	CachePath string // the Cache
+	BootID    func() string
 	AppsDir   string // desktop entries (apps group)
 	BootTime  func() time.Time
 	// PreSnapshots: the "pre" snapshots basalt apply took, by proposal
@@ -212,10 +236,10 @@ func classify(us []Update, adv map[string]Advisory, apps map[string]bool) {
 var restartPackages = []string{"kernel-core", "kernel", "glibc", "linux-firmware", "systemd", "systemd-udev", "dbus-broker",
 	"dbus-daemon", "openssl-libs", "gnutls", "microcode_ctl"}
 
-// restartNeeded compares the install time of those packages with the
-// boot time, and the newest installed kernel with the running one.
-func restartNeeded(ctx context.Context, s Sys) Restart {
-	var r Restart
+// restartReasons compares the install time of those packages with the
+// boot time (root, with the cache).
+func restartReasons(ctx context.Context, s Sys) []string {
+	var reasons []string
 	boot := s.BootTime()
 	res := s.R.Read(ctx, append([]string{"rpm", "-q", "--qf", `%{NAME} %{INSTALLTIME} %{VERSION}-%{RELEASE}.%{ARCH}\n`}, restartPackages...)...)
 	seen := map[string]bool{}
@@ -229,8 +253,17 @@ func restartNeeded(ctx context.Context, s Sys) Restart {
 			continue
 		}
 		seen[f[0]] = true
-		r.Needed = true
-		r.Reasons = append(r.Reasons, f[0]+" "+f[2])
+		reasons = append(reasons, f[0]+" "+f[2])
+	}
+	return reasons
+}
+
+// restartNeeded is the restart state: the reasons the cache recorded in
+// this boot, and a rollback waiting for the next one.
+func restartNeeded(ctx context.Context, s Sys, c Cache) Restart {
+	var r Restart
+	if c.BootID != "" && s.BootID != nil && c.BootID == s.BootID() && len(c.Restart) > 0 {
+		r.Needed, r.Reasons = true, append(r.Reasons, c.Restart...)
 	}
 	// A rollback waits for the next boot: the default subvolume is not the
 	// running root.
@@ -397,6 +430,19 @@ func history(s Sys) ([]History, *Running, string, *Undo) {
 		}
 	}
 	done, ok := fromAudit(s.AuditPath)
+	// Offline updates waiting for the next start.
+	var scheduled []History
+	for _, p := range ps {
+		if _, a, isUpd := IsUpdate(p); isUpd && p.Status == proposal.Scheduled {
+			h := History{Proposal: p.ID, Kind: "install", Status: proposal.Scheduled, OK: true, Time: p.Updated.UTC().Format(time.RFC3339),
+				Scope: a.Params["scope"]}
+			h.Count, _ = strconv.Atoi(a.Params["count"])
+			if p.Result != nil {
+				h.PreSnapshot = p.Result.PreSnapshot
+			}
+			scheduled = append(scheduled, h)
+		}
+	}
 	if !ok {
 		for _, p := range ps {
 			if _, _, isUpd := IsUpdate(p); !isUpd || (p.Status != proposal.Applied && p.Status != proposal.Failed) {
@@ -441,7 +487,7 @@ func history(s Sys) ([]History, *Running, string, *Undo) {
 			undone[a.Params["snapshot"]] = true
 		}
 	}
-	var hs []History
+	hs := scheduled
 	var undo *Undo
 	for _, d := range done {
 		k, a, _ := IsUpdate(&proposal.Proposal{Actions: d.acts})
@@ -472,58 +518,91 @@ func history(s Sys) ([]History, *Running, string, *Undo) {
 	return hs, run, pending, undo
 }
 
-// Build is the report: the updates from the cache, the restart state, the
-// history. It never refreshes metadata (that is update.check).
-func Build(ctx context.Context, s Sys) Report {
-	r := Report{Counts: map[string]int{}, CacheOnly: true, Updates: []Update{}, History: []History{},
-		AutoNote: "automatic security updates come with the approval gate's schedules (docs/gate.md); until then they are installed from here"}
-	if st, err := os.Stat(s.StampPath); err == nil {
-		r.Checked = st.ModTime().UTC().Format(time.RFC3339)
+// ReadCache reads the last check's result (empty when there is none).
+func ReadCache(s Sys) Cache {
+	var c Cache
+	if b, err := os.ReadFile(s.CachePath); err == nil {
+		_ = json.Unmarshal(b, &c)
 	}
-	// While an update is applied, dnf is busy with it: no query (each one
-	// loads every repository's metadata; a few in parallel can exhaust a
-	// small machine's memory in the middle of the transaction).
-	if _, run, _, _ := history(s); run != nil {
-		p := Progress(ctx, s)
-		p.AutoNote = r.AutoNote
-		return p
-	}
+	return c
+}
+
+// Refresh queries dnf's cached metadata and the rpm database and writes
+// the Cache. Root only: the check, an apply and the start after an
+// offline update call it, never the desktop.
+func Refresh(ctx context.Context, s Sys, checked time.Time) Cache {
+	old := ReadCache(s)
 	us, errs := Query(ctx, s, true)
-	r.Errors = errs
-	r.Updates = us
+	c := Cache{Checked: old.Checked, Updates: us, Errors: errs, Kernel: strings.TrimSpace(s.R.Read(ctx, "uname", "-r").Out),
+		Restart: restartReasons(ctx, s)}
+	if !checked.IsZero() {
+		c.Checked = checked.UTC().Format(time.RFC3339)
+	}
+	if s.BootID != nil {
+		c.BootID = s.BootID()
+	}
+	if c.Updates == nil {
+		c.Updates = []Update{}
+	}
+	b, _ := json.MarshalIndent(c, "", " ")
+	if err := os.MkdirAll(filepath.Dir(s.CachePath), 0o700); err == nil {
+		tmp := s.CachePath + ".tmp"
+		if os.WriteFile(tmp, b, 0o600) == nil {
+			_ = os.Rename(tmp, s.CachePath)
+		}
+	}
+	return c
+}
+
+// Build is the report: the updates the last check found (the Cache; no
+// dnf query), the restart state, the history.
+func Build(ctx context.Context, s Sys) Report {
+	c := ReadCache(s)
+	r := Progress(ctx, s)
+	r.CacheOnly = true
+	r.AutoNote = "automatic security updates come with the approval gate's schedules (docs/gate.md); until then they are installed from here"
+	r.Updates, r.Errors, r.Kernel = c.Updates, c.Errors, c.Kernel
 	if r.Updates == nil {
 		r.Updates = []Update{}
 	}
-	for _, u := range us {
+	var all, sec []string
+	for _, u := range r.Updates {
 		r.Counts[u.Group]++
 		r.Counts["total"]++
 		r.Download += u.Download
+		if action.IsCore(u.Name) {
+			all = append(all, u.Name)
+			if u.Group == GroupSecurity {
+				sec = append(sec, u.Name)
+			}
+		}
 	}
-	r.Restart = restartNeeded(ctx, s)
-	hs, run, pending, undo := history(s)
-	if hs != nil {
-		r.History = hs
+	r.Offline, r.OfflineSecurity = len(all) > 0, len(sec) > 0
+	r.Core = all
+	if len(r.Core) > 12 {
+		r.Core = r.Core[:12]
 	}
-	r.Running, r.Pending, r.Undo = run, pending, undo
-	r.Kernel = strings.TrimSpace(s.R.Read(ctx, "uname", "-r").Out)
 	return r
 }
 
-// Progress is the cheap part of the report, for following an update
-// while it is applied: the running step, the restart state and the
-// history, without querying dnf (which an install keeps busy).
+// Progress is the report without the list of updates: the running step,
+// the restart state, the history.
 func Progress(ctx context.Context, s Sys) Report {
-	r := Report{Counts: map[string]int{}, Updates: []Update{}, History: []History{}}
-	if st, err := os.Stat(s.StampPath); err == nil {
-		r.Checked = st.ModTime().UTC().Format(time.RFC3339)
-	}
+	c := ReadCache(s)
+	r := Report{Counts: map[string]int{}, Updates: []Update{}, History: []History{}, Checked: c.Checked}
 	hs, run, pending, undo := history(s)
 	if hs != nil {
 		r.History = hs
 	}
 	r.Running, r.Pending, r.Undo = run, pending, undo
+	for _, h := range r.History {
+		if h.Status == proposal.Scheduled {
+			r.Scheduled = h.Proposal
+			break
+		}
+	}
 	if run == nil {
-		r.Restart = restartNeeded(ctx, s)
+		r.Restart = restartNeeded(ctx, s, c)
 	}
 	return r
 }
@@ -564,8 +643,13 @@ func InstallProposal(us []Update, source, scope string) (*proposal.Proposal, err
 	if n > action.MaxUpdatePackages {
 		return nil, fmt.Errorf("%d updates are more than one proposal holds (%d); run sudo dnf upgrade", n, action.MaxUpdatePackages)
 	}
+	mode := "live"
+	core := action.CoreIn(pk)
+	if len(core) > 0 {
+		mode = "offline"
+	}
 	a := action.Action{Kind: action.UpdateInstall, Params: map[string]string{"scope": scope, "count": strconv.Itoa(n),
-		"packages": pk, "digest": action.UpdateDigest(pk)}}
+		"packages": pk, "digest": action.UpdateDigest(pk), "mode": mode}}
 	if err := a.Validate(); err != nil {
 		return nil, err
 	}
@@ -589,6 +673,11 @@ func InstallProposal(us []Update, source, scope string) (*proposal.Proposal, err
 	p.Report = fmt.Sprintf("%d updates are ready: %d security, %d Basalt OS components, %d apps, %d system. "+
 		"A snapshot is taken first, so the update can be undone from Settings, Updates and channels, or with "+
 		"sudo basalt updates rollback.", n, counts[GroupSecurity], counts[GroupBasalt], counts[GroupApps], counts[GroupSystem])
+	if mode == "offline" {
+		p.Title = strings.Replace(p.Title, "install ", "restart and install ", 1)
+		p.Report += fmt.Sprintf(" Some of them replace core parts of the system (%s), so they install while the computer restarts, "+
+			"before the desktop starts; a snapshot is taken before and after.", strings.Join(uniq(core, 8), ", "))
+	}
 	for _, u := range us {
 		if scope == "security" && u.Group != GroupSecurity {
 			continue
@@ -637,4 +726,19 @@ func human(n int64) string {
 		return fmt.Sprintf("%d kB", n/1000)
 	}
 	return fmt.Sprintf("%d B", n)
+}
+
+func uniq(xs []string, max int) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	if len(out) > max {
+		out = append(out[:max], fmt.Sprintf("%d more", len(out)-max))
+	}
+	return out
 }

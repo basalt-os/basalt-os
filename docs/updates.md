@@ -26,7 +26,7 @@ sudo basalt channels remove vscode [--apply]
 | Action | Commands | Class at the gate | Snapshot |
 |---|---|---|---|
 | `update.check` | `dnf makecache --refresh` | Look (C0) | no: nothing is installed |
-| `update.install` | `dnf -y upgrade --downloadonly NEVRA...`, `dnf -y upgrade NEVRA...` | System change (C2) | before and after |
+| `update.install` | live: `dnf -y upgrade --downloadonly NEVRA...`, `dnf -y upgrade NEVRA...`; offline: `dnf -y upgrade --offline NEVRA...`, then `dnf -y offline reboot` | System change (C2) | before and after (offline: the after one at the next start) |
 | `update.rollback` | `basalt-rollback --yes N` | System change (C2) | works on snapshots |
 | `repo.enable`, `repo.disable` | `dnf config-manager setopt REPO.enabled=1` (or `=0`); for a basalt-nonfree channel not yet defined, first `dnf -y install` and `upgrade basalt-nonfree-release` | System change (C2) | no: one setting |
 | `source.add` | `basalt __source add ...` | Critical (C4): a new trust root | before and after |
@@ -72,6 +72,37 @@ source in `/etc/basalt/sources.d/ID.json`. Once the apply verified it,
 source removes the repository file (or the remote; flatpak refuses while
 apps from it are installed), the record, and, with the group's last
 repository, the key file and the key in rpm's database.
+
+## How the desktop applies a proposal
+
+The desktop's own domains never run dnf, rpm or basalt apply. Where the
+approval gate decides the assistant's proposals, the shell queues the
+proposal there and the gate's executor (basalt-gate-exec@REQUEST.service,
+basalt_gate_exec_t) applies it. Otherwise the shell starts the
+assistant's unit `basalt-apply@ID_CODE.service`; polkit asks for an
+administrator's password (rule 50-basalt-assistant.rules) and
+basalt-apply-exec runs `basalt apply ID --yes --confirm CODE` in
+basalt_apply_t. Both executors start dnf in rpm_t, so package scriptlets
+run in rpm_script_t. Checking for updates starts
+`basalt-updates-check.service` (no password for an administrator at the
+computer); it refreshes the package lists and the report the assistant
+keeps in `/var/lib/basalt-assistant/updates.json`, which is all the desktop
+reads. The Additional drivers page applies its proposals the same way.
+
+## Offline updates
+
+A set that replaces core packages (the kernel, systemd, dbus, glibc, the
+package manager, the SELinux policy, basalt-shell, basalt-greeter,
+basalt-gate, Mesa, the compositor and the session's shell) installs
+offline: update.install carries `mode=offline` (the validator refuses a
+live install of such a set), the packages are downloaded and checked now,
+the snapshot before is taken, and `dnf offline reboot` restarts the
+computer once the result is recorded; dnf installs them before the
+session starts (system-update.target). At the next start
+basalt-offline-finish.service takes the snapshot after, checks that every
+package is installed and records the result; the page offers undo as for
+a live update. Smaller sets without core packages stay live. The page
+says it in one sentence and its button is "Restart and update".
 
 ## Channels
 

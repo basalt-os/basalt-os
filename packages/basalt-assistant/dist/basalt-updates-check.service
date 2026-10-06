@@ -1,0 +1,15 @@
+[Unit]
+Description=Check for Basalt OS updates (update.check)
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/updates.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Refreshes the package lists and the updates report; installs nothing.
+# Settings starts it (no password for a local administrator,
+# 50-basalt-assistant.rules). SELinux: basalt_apply_t.
+Type=oneshot
+ExecStart=/usr/libexec/basalt-assistant/basalt-apply-exec check
+TimeoutStartSec=10min
+StandardOutput=journal
+StandardError=journal

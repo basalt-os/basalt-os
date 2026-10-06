@@ -1,4 +1,4 @@
-policy_module(basalt_assistant, 0.2.0)
+policy_module(basalt_assistant, 0.3.0)
 
 # Basalt OS system assistant.
 #
@@ -27,6 +27,17 @@ init_nnp_daemon_domain(basalt_assistant_t)
 
 type basalt_mcp_exec_t;
 domain_entry_file(basalt_assistant_t, basalt_mcp_exec_t)
+
+# basalt_apply_t: the assistant's executor for the desktop
+# (basalt-apply-exec, from basalt-apply@.service, basalt-updates-check.service
+# and basalt-offline-finish.service). It applies a proposal the person
+# confirmed with an administrator's password, as basalt apply does at an
+# administrator's terminal: root, snapshots, and dnf in rpm_t (package
+# scriptlets in rpm_script_t). The desktop's own domains never run dnf or
+# rpm; they start these units.
+type basalt_apply_t;
+type basalt_apply_exec_t;
+init_daemon_domain(basalt_apply_t, basalt_apply_exec_t)
 
 type basalt_assistant_var_lib_t;
 files_type(basalt_assistant_var_lib_t)
@@ -154,4 +165,16 @@ optional_policy(`
 optional_policy(`
 	# The MCP server is started by the MCP client of an administrator.
 	unconfined_run_to(basalt_assistant_t, basalt_mcp_exec_t)
+')
+
+########################################
+#
+# basalt_apply_t
+#
+
+optional_policy(`
+	unconfined_domain(basalt_apply_t)
+')
+optional_policy(`
+	rpm_domtrans(basalt_apply_t)
 ')
