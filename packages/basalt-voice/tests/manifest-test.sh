@@ -6,7 +6,8 @@
 # - every Piper voice is one trained on public-domain data (allowlist below)
 #   and is labeled public-domain-data; other Piper voices are refused;
 # - the default and multilingual sets of basalt-voice-fetch exist in the
-#   manifest, and every Whisper model comes from one pinned revision;
+#   manifest (multilingual: ggml-base-q5_1 and Silero; ggml-small-q5_1
+#   stays listed), and every Whisper model comes from one pinned revision;
 # - basalt-voice-fetch refuses a file whose checksum does not match.
 #
 #   packages/basalt-voice/tests/manifest-test.sh
@@ -43,11 +44,13 @@ done <"$manifest"
 for n in ggml-base.en ggml-silero-v5.1.2 en_US-ljspeech-medium en_US-ljspeech-medium.json; do
   awk -v n="$n" '$1 == n {f = 1} END {exit !f}' "$manifest" || bad "default model $n missing"
 done
-# The multilingual set (speech in languages other than English).
-for n in ggml-small-q5_1 ggml-silero-v5.1.2; do
+# The multilingual set (speech in languages other than English): the
+# base quantized model by default; the small one stays fetchable by name
+# (better for long dictation).
+for n in ggml-base-q5_1 ggml-small-q5_1 ggml-silero-v5.1.2; do
   awk -v n="$n" '$1 == n {f = 1} END {exit !f}' "$manifest" || bad "multilingual model $n missing"
 done
-grep -q 'multilingual | default-multilingual) names+=(ggml-small-q5_1 ggml-silero-v5.1.2)' "$fetch" || bad "fetch has no multilingual set"
+grep -q 'multilingual | default-multilingual) names+=(ggml-base-q5_1 ggml-silero-v5.1.2)' "$fetch" || bad "fetch has no multilingual set (ggml-base-q5_1 and Silero)"
 # Every Whisper model of one pinned whisper.cpp revision.
 revs=$(awk '!/^#/ && $1 ~ /^ggml-/ && $1 !~ /silero/ {split($5, p, "/"); print p[7]}' "$manifest" | sort -u | wc -l)
 ((revs == 1)) || bad "Whisper models come from $revs revisions, want one"

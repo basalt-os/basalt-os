@@ -15,7 +15,7 @@
 %global __requires_exclude ^lib(whisper|ggml|parakeet).*$
 
 Name:           basalt-voice
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Local speech to text for the Basalt OS desktop (no network)
 # basalt-voice files: Apache-2.0. whisper.cpp and ggml: MIT; bundled
@@ -84,6 +84,12 @@ LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basal
 %dir %{_sharedstatedir}/basalt-voice/models
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
+- basalt-voice-fetch multilingual fetches ggml-base-q5_1 (with Silero
+  VAD) instead of ggml-small-q5_1: about three times faster, and it
+  heard short spoken commands best in the lab. ggml-small-q5_1 stays in
+  the manifest, fetched by name, for long dictation.
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
 - Multilingual Whisper models in the manifest (ggml-base, ggml-small and
   their q5_1 quantizations, from the same pinned whisper.cpp revision),

@@ -27,7 +27,8 @@ An administrator runs `basalt-voice-fetch` once:
 
 ```sh
 sudo basalt-voice-fetch default      # ggml-base.en, Silero VAD, en_US-ljspeech-medium (+ .json)
-sudo basalt-voice-fetch multilingual # ggml-small-q5_1 and Silero VAD: speech in other languages
+sudo basalt-voice-fetch multilingual # ggml-base-q5_1 and Silero VAD: speech in other languages
+sudo basalt-voice-fetch ggml-small-q5_1 # multilingual, slower: better for long dictation
 basalt-voice-fetch --list            # every model of the manifest, size, license, present or not
 sudo basalt-voice-fetch ggml-small.en
 sudo basalt-voice-fetch --verify     # re-check the files already downloaded
@@ -54,9 +55,17 @@ multilingual and are what a speech language other than English needs:
 |---|---|---|---|
 | `ggml-base.en`, `ggml-base.en-q5_1` | 141 MiB, 56 MiB | English | about 1.4 s per request |
 | `ggml-small.en`, `ggml-small.en-q5_1` | 465 MiB, 181 MiB | English | |
-| `ggml-base`, `ggml-base-q5_1` | 141 MiB, 56 MiB | multilingual | about 1.3 s (q5_1) |
-| `ggml-small`, `ggml-small-q5_1` | 465 MiB, 181 MiB | multilingual | about 3.8 s (q5_1), fewer mistakes |
+| `ggml-base`, `ggml-base-q5_1` | 141 MiB, 56 MiB | multilingual | about 1.3 s (q5_1); the default multilingual model |
+| `ggml-small`, `ggml-small-q5_1` | 465 MiB, 181 MiB | multilingual | about 3.8 s (q5_1), fewer mistakes on long dictation |
 | `ggml-large-v3-turbo-q5_0` | 547 MiB | multilingual | slow on a CPU |
+
+`ggml-base-q5_1` is the default for another language (`multilingual`
+fetches it, and the desktop's Settings switch to it first): it is about
+three times faster than `ggml-small-q5_1` and, in the lab, heard short
+spoken commands better (it never took "escuro" for another word, the
+small model did in 4 of 6 runs). `ggml-small-q5_1` makes fewer mistakes
+on longer sentences, so it is the better choice for long dictation; an
+administrator fetches it by name and a person chooses it in Settings.
 
 Each person picks their own speech language, speech model and voice in
 the desktop's Settings (Voice and assistant), within the administrator's
