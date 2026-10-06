@@ -170,7 +170,9 @@ The kickstart (`kickstart/basalt-server.ks`):
   installer's memory; `%post` enrolls a TPM2 key and a recovery key with it
   and then removes it;
 - sets a serial-first boot (GRUB menu and kernel console on the serial port
-  and the screen, no `rhgb quiet`), the Basalt Plymouth theme for screens,
+  and the screen, no `rhgb quiet` on a server; the desktop edition adds
+  `rhgb quiet plymouth.ignore-serial-consoles` for the graphical splash),
+  the Basalt Plymouth theme for screens,
   and a visible 5 second boot menu;
 - adds `lockdown=integrity module.sig_enforce=1` to the kernel command line
   (`basalt.lockdown=0` to leave them out): Fedora kernels already lock down

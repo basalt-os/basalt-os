@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=Basalt
-Description=Basalt OS boot splash: centered mark, subtle progress line and a readable passphrase prompt.
+Description=Basalt OS boot splash: the Basalt mark drawing in over the basalt columns, a sweeping line, and a passphrase card like the login screen's (en).
 ModuleName=script
 
 [script]

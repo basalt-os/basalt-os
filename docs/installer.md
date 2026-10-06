@@ -59,7 +59,7 @@ has one.
 
 | Field | Default | Notes |
 |---|---|---|
-| `edition` | `server` | `desktop` is accepted and marked experimental: the server system plus the desktop package set (`basalt-desktop`, `basalt-shell-selinux`, `basalt-voice`, `basalt-models`, `basalt-llm`, `basalt-llm-selinux`; no model: the desktop asks the person before it downloads one, see [models.md](models.md)) and `packages.extra` |
+| `edition` | `server` | `desktop` is accepted and marked experimental: the server system plus the desktop package set (`basalt-desktop`, `basalt-shell-selinux`, `basalt-greeter-selinux`, `basalt-voice`, `basalt-models`, `basalt-llm`, `basalt-llm-selinux`; no model: the desktop asks the person before it downloads one, see [models.md](models.md)) and `packages.extra`; the graphical boot splash (`rhgb quiet plymouth.ignore-serial-consoles` on the kernel command line; the serial console keeps working and can also answer the disk passphrase) and the Basalt login screen. A server keeps the text boot and console login |
 | `target.disk` | | the disk Basalt OS goes on |
 | `target.wipe` | `false` | `true` erases the whole disk; `false` keeps every partition on it and installs into its largest free region (dual boot, GPT only); a plan for an empty disk must say `true` |
 | `target.esp` | none | with `wipe: false`, an existing EFI system partition to share (for example Windows'); by default Basalt OS gets its own in the free space |
@@ -159,9 +159,11 @@ lists them all. In order:
 6. System: SELinux enforcing, accounts and SSH keys, the SSH and network
    drop-ins, the `basalt-tools` URL (and an override when the plan turns
    it off) and the tui-tools repository, the Basalt
-   boot splash, `multi-user.target` as the default target (what Anaconda
-   sets for a server; systemd's own default is graphical), the same
-   services the kickstart enables.
+   boot splash (theme `basalt`, or `basalt-pt_BR` for a Portuguese
+   locale), `multi-user.target` as the default target (what Anaconda
+   sets for a server; systemd's own default is graphical; the desktop
+   edition gets `graphical.target`), the same services the kickstart
+   enables.
 7. Boot loader: the ESP stub that points Fedora's signed GRUB at `/boot`,
    `grub2-mkconfig`, a firmware boot entry (the removable-media fallback
    path also holds Fedora's shim).
@@ -325,8 +327,8 @@ itself.
 trying the desktop edition, from the same tooling: the installer image plus
 the files in `packages/basalt-installer/live/desktop/`.
 
-- Packages: `basalt-desktop` (the Basalt shell on SwayFX, the greetd login
-  screen, portals, PipeWire, fonts, themes, foot, Files, Text Editor and
+- Packages: `basalt-desktop` (the Basalt shell on SwayFX, the Basalt login
+  screen on greetd (basalt-greeter), portals, PipeWire, fonts, themes, foot, Files, Text Editor and
   Firefox) and the assistant, from the media repository, which must hold
   them (the shell is built in its own repository); Fedora packages come
   from Fedora's repositories with their updates, so the image ships the

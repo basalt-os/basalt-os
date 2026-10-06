@@ -9,7 +9,7 @@
 # grub2-mkconfig writes /boot/grub2/grub.cfg from /etc/grub.d.
 
 Name:           basalt-logos
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Basalt OS logos and icons
 License:        CC-BY-SA-4.0
@@ -48,10 +48,16 @@ Requires:       plymouth-scripts
 Requires(postun): plymouth-scripts
 
 %description -n plymouth-theme-basalt
-Boot splash with the Basalt mark on a dark background, a thin progress line
-and a readable passphrase prompt for encrypted disks. Ships assets for
-standard and HiDPI screens. Select it with plymouth-set-default-theme basalt
-and rebuild the initramfs.
+Boot splash in the family of the GRUB theme and the login screen: the
+basalt-column background of the GRUB menu, the Basalt mark drawing in with
+"Basalt OS" under it, a short terra roxa line sweeping while the system
+starts, and a passphrase card for encrypted disks (also the fallback when
+TPM2 unlock fails) that says when a passphrase did not work. Assets for
+standard and HiDPI screens. English (theme basalt) and Brazilian
+Portuguese (theme basalt-pt_BR, same images): Plymouth cannot know the
+system's language in the initramfs, so the installer picks the theme of
+the system's language. Select one with plymouth-set-default-theme and
+rebuild the initramfs.
 
 %package -n basalt-grub2-theme
 Summary:        Basalt OS theme for the GRUB boot menu
@@ -125,7 +131,7 @@ fi
 
 %postun -n plymouth-theme-basalt
 if [ $1 -eq 0 ]; then
-    if [ "$(%{_bindir}/plymouth-set-default-theme)" = "basalt" ]; then
+    if [ "$(%{_bindir}/plymouth-set-default-theme)" = "basalt" ] || [ "$(%{_bindir}/plymouth-set-default-theme)" = "basalt-pt_BR" ]; then
         %{_bindir}/plymouth-set-default-theme --reset || :
     fi
 fi
@@ -153,6 +159,7 @@ fi
 %files -n plymouth-theme-basalt
 %license %{_datadir}/licenses/%{name}/COPYING
 %{_datadir}/plymouth/themes/basalt/
+%{_datadir}/plymouth/themes/basalt-pt_BR/
 
 %files -n basalt-grub2-theme
 %license %{_datadir}/licenses/%{name}/COPYING
@@ -189,6 +196,17 @@ fi
 %{_datadir}/plymouth/themes/spinner/watermark.png
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
+- New boot splash, matching the GRUB theme and the login screen: the GRUB
+  menu's basalt-column background, the mark drawing in (ring, core, then
+  "Basalt OS"), a sweeping terra roxa line instead of the progress bar,
+  the core breathing slowly.
+- Passphrase prompt as a card like the login screen's: lock, "Unlock the
+  disk", the entry with a terra roxa edge, and "That did not work. Try
+  again." when the same disk asks again.
+- "Restarting" and "Shutting down" on the reboot and shutdown screens.
+- plymouth-theme-basalt also ships basalt-pt_BR (Brazilian Portuguese).
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
 - New GRUB theme: Basalt OS lockup, entries on a dark panel with icons (a
   clock for the snapshot entries), terra roxa edge on the selected entry,

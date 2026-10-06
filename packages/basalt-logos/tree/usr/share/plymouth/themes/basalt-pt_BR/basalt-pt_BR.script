@@ -23,13 +23,13 @@
 # the script only draws images and text.
 
 # ------------------------------------------------------------------ strings
-t_unlock = "Unlock the disk";
-t_hint = "Type its passphrase or its recovery key.";
-t_wrong = "That did not work. Try again.";
-t_updates = "Installing updates. Do not turn off the computer.";
-t_firmware = "Updating the firmware. Do not turn off the computer.";
-t_restart = "Restarting";
-t_poweroff = "Shutting down";
+t_unlock = "Desbloquear o disco";
+t_hint = "Digite a senha ou a chave de recuperação.";
+t_wrong = "Não funcionou. Tente de novo.";
+t_updates = "Instalando atualizações. Não desligue o computador.";
+t_firmware = "Atualizando o firmware. Não desligue o computador.";
+t_restart = "Reiniciando";
+t_poweroff = "Desligando";
 
 Window.SetBackgroundTopColor(0.078, 0.090, 0.106);
 Window.SetBackgroundBottomColor(0.078, 0.090, 0.106);

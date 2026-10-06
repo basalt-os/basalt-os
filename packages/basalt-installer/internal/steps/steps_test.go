@@ -415,3 +415,23 @@ func TestDesktopPackages(t *testing.T) {
 		}
 	}
 }
+
+// The desktop edition boots with the graphical splash in the system's
+// language; a server keeps the text boot.
+func TestSplash(t *testing.T) {
+	if SplashTheme("pt_BR.UTF-8") != "basalt-pt_BR" || SplashTheme("en_US.UTF-8") != "basalt" || SplashTheme("") != "basalt" {
+		t.Fatal("SplashTheme")
+	}
+	for _, edition := range []string{"server", "desktop"} {
+		p := basePlan("/dev/vda")
+		p.Edition = edition
+		p.Locale = "pt_BR.UTF-8"
+		_, list := generate(t, p, facts("kvm", true))
+		_, cmdline := mustFind(t, list, "write /mnt/sysroot/etc/kernel/cmdline")
+		splash := strings.Contains(cmdline.Write.Content, "rhgb quiet plymouth.ignore-serial-consoles")
+		if splash != (edition == "desktop") {
+			t.Errorf("%s: kernel command line %q", edition, cmdline.Write.Content)
+		}
+		mustFind(t, list, "plymouth-set-default-theme basalt-pt_BR")
+	}
+}
