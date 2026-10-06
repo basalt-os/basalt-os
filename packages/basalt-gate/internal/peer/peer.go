@@ -102,6 +102,10 @@ type Config struct {
 	SystemAssistant []string
 	// AppPrefix marks desktop app domains (basalt_app_<name>_t).
 	AppPrefix string
+	// RootRelays are the requester kinds root (uid 0) outside the agent
+	// domains may report (the system assistant's command line, run as
+	// root, asks as the system assistant).
+	RootRelays []string
 }
 
 // DefaultConfig is the packaged classification.
@@ -113,6 +117,7 @@ func DefaultConfig() Config {
 		AgentPrefixes:   []string{"basalt_agent", "container_", "basalt_skill"},
 		SystemAssistant: []string{"basalt_assistant_t"},
 		AppPrefix:       "basalt_app_",
+		RootRelays:      []string{"system-assistant"},
 	}
 }
 
@@ -144,7 +149,14 @@ func (c Config) Classify(p Peer, client string) Roles {
 		r.Decider, r.Polkit = true, true
 	}
 	if kinds, ok := c.Relays[t]; ok {
-		r.Relay = kinds
+		r.Relay = append(r.Relay, kinds...)
+	}
+	if p.UID == 0 {
+		for _, k := range c.RootRelays {
+			if !has(r.Relay, k) {
+				r.Relay = append(r.Relay, k)
+			}
+		}
 	}
 	switch {
 	case has(c.SystemAssistant, t):

@@ -18,6 +18,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/audit"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/gatelink"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
@@ -33,6 +34,13 @@ type Applier struct {
 	Interactive bool // stdin is a terminal
 	Snapshots   bool // take pre/post snapshots when snapper is set up
 	Settle      time.Duration
+	// Gate is the approval gate (nil or Absent: the confirmation here, as
+	// always; Observe: the confirmation here, told to the gate; Enforce:
+	// the gate decides and basalt-gate-exec@ID.service applies).
+	Gate *gatelink.Link
+	// Follow is how often and how long the command line follows the
+	// executor unit (tests shorten them).
+	FollowEvery, FollowFor time.Duration
 }
 
 // ErrCancelled is returned when the person declines.
@@ -42,6 +50,10 @@ var ErrCancelled = errors.New("cancelled, nothing was changed")
 type Options struct {
 	Yes     bool   // non-interactive
 	Confirm string // the fingerprint typed by the person (required with Yes)
+	// DecidedBy: the approval gate already decided (the executor,
+	// basalt apply ID --gate, after claiming): no confirmation here; the
+	// audit names who decided.
+	DecidedBy string
 }
 
 func (a *Applier) printf(format string, args ...any) { fmt.Fprintf(a.Out, format, args...) }
@@ -89,12 +101,19 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	}
 	a.printf("Applying runs %s, as root (%s).\n", what, snapNote)
 
+	by := "root at a terminal"
 	switch {
+	case o.DecidedBy != "":
+		by = "the approval gate (" + o.DecidedBy + ")"
+	case a.Gate != nil && a.Gate.Mode == gatelink.Enforce:
+		return a.throughGate(ctx, p, o, fp)
 	case o.Yes:
 		if o.Confirm != fp {
 			a.audit("refuse", "confirmation code mismatch for "+p.ID, map[string]any{"proposal": p.ID, "expected": fp, "given": o.Confirm})
+			a.Gate.Observe(p, "refused", "a wrong confirmation code")
 			return fmt.Errorf("--yes needs --confirm %s (the code shown for exactly these commands); nothing was changed", fp)
 		}
+		by = "root with the confirmation code"
 	case !a.Interactive:
 		return fmt.Errorf("not a terminal: confirm with --yes --confirm %s", fp)
 	default:
@@ -102,10 +121,20 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 		line, _ := bufio.NewReader(a.In).ReadString('\n')
 		if strings.TrimSpace(line) != "yes" {
 			a.audit("decline", "declined "+p.ID, map[string]any{"proposal": p.ID, "fingerprint": fp})
+			a.Gate.Observe(p, "declined", by)
 			return ErrCancelled
 		}
 	}
-	a.audit("confirm", fmt.Sprintf("confirmed %s (%s)", p.ID, fp), map[string]any{"proposal": p.ID, "fingerprint": fp, "commands": strs(cmds)})
+	if o.DecidedBy == "" {
+		a.Gate.Observe(p, "approved", by)
+	}
+	a.audit("confirm", fmt.Sprintf("confirmed %s (%s) by %s", p.ID, fp, by), map[string]any{"proposal": p.ID, "fingerprint": fp,
+		"commands": strs(cmds), "by": by})
+	return a.run(ctx, p, cmds, fp)
+}
+
+// run takes the snapshots, runs the commands, verifies and records.
+func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.Command, fp string) error {
 
 	start := time.Now()
 	res := &proposal.Result{Time: start.UTC(), Fingerprint: fp}

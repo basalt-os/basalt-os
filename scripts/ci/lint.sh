@@ -63,6 +63,16 @@ for f in allowlist.go allowlist_test.go; do
     { echo "packages/basalt-resolver/internal/allowlist/$f differs from basalt-agent's copy" >&2; fail=1; }
 done
 
+step "Approval gate client: the copies in basalt-assistant and basalt-agent match pkg/gate"
+for m in basalt-assistant basalt-agent; do
+  [ -d "packages/$m/internal/gateclient" ] || continue
+  for f in canon.go client.go digest.go protocol.go; do
+    sed 's/^package gate$/package gateclient/' "packages/basalt-gate/pkg/gate/$f" |
+      cmp -s - "packages/$m/internal/gateclient/$f" ||
+      { echo "packages/$m/internal/gateclient/$f differs from packages/basalt-gate/pkg/gate/$f" >&2; fail=1; }
+  done
+done
+
 step "basalt-prompt: ShellCheck and tests (bash, and zsh and fish when installed)"
 LC_ALL=C.UTF-8 shellcheck -x -S warning packages/basalt-prompt/basalt-prompt.bash packages/basalt-prompt/basalt-prompt.sh \
   packages/basalt-prompt/basalt-prompt packages/basalt-prompt/tests/prompt-test.sh || fail=1

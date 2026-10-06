@@ -12,7 +12,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-gate
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Approval gate: one decision point for every side effect
 License:        Apache-2.0 AND (MIT OR Apache-2.0)
@@ -145,6 +145,21 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_gate.if
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
+- ADR 0020 phase 2, first wave: hello tells components which approval
+  paths the gate decides (enforce in gate.conf: apply, shell, skills,
+  models, consent, agent; default skills, models, consent); the others
+  stay in shadow mode and report what they decided with observe, recorded
+  with what the gate would have decided. confirm: root's typed yes or
+  --yes --confirm CODE for a system assistant proposal, recorded as
+  person:tty-root (allow_code_confirm). Root may ask as the system
+  assistant (root_relays). Executors read the requests addressed to them
+  and may claim with their calls instead of a digest; the gate starts an
+  executor's unit (basalt-gate-exec@ID.service) once a request for it is
+  approved (exec_units). SELinux: the executor domain basalt_gate_exec_t
+  (entered only by systemd from basalt-gate-exec@.service), the daemon's
+  program type is now basalt_gated_exec_t, the gate may start that unit.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version (ADR 0020 phase 1): the gate alone, no existing approval
   path uses it yet. Proposal format version 1 with a canonical digest and

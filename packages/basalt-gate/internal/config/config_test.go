@@ -26,3 +26,27 @@ func TestLoad(t *testing.T) {
 		}
 	}
 }
+
+func TestMigrationKeys(t *testing.T) {
+	c := Default()
+	if !c.Enforced("skills") || c.Enforced("shell") || !c.ExecUnits || len(c.Peers.RootRelays) != 1 {
+		t.Fatalf("defaults: %+v", c)
+	}
+	f := filepath.Join(t.TempDir(), "gate.conf")
+	_ = os.WriteFile(f, []byte("enforce = apply, shell\nexec_units = no\nroot_relays = system-assistant person\nsystemctl = /bin/true\n"), 0o644)
+	c, err := Load(f)
+	if err != nil || !c.Enforced("apply") || !c.Enforced("shell") || c.Enforced("skills") || c.ExecUnits ||
+		len(c.Peers.RootRelays) != 2 || c.Systemctl != "/bin/true" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	_ = os.WriteFile(f, []byte("enforce = none\n"), 0o644)
+	if c, err := Load(f); err != nil || len(c.Enforce) != 0 {
+		t.Fatalf("none: %+v %v", c.Enforce, err)
+	}
+	for _, bad := range []string{"enforce = everything\n", "exec_units = maybe\n", "systemctl = systemctl\n"} {
+		_ = os.WriteFile(f, []byte(bad), 0o644)
+		if _, err := Load(f); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}

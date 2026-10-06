@@ -19,7 +19,7 @@ type storeUseT = store.Use
 // canSee: the requester sees its own requests; a decider sees the
 // requests of its own user and the system's (root sees all).
 func (s *Server) canSee(c *conn, e *entry) bool {
-	if e.Owner == c.owner() {
+	if e.Owner == c.owner() || s.isExecutorOf(c, e) {
 		return true
 	}
 	return c.roles.Decider && (c.p.UID == 0 || e.P.Requester.UID == c.p.UID || e.P.Requester.UID == 0)
@@ -28,7 +28,7 @@ func (s *Server) canSee(c *conn, e *entry) bool {
 // view renders an entry for a client; the short code only for deciders.
 func (s *Server) view(c *conn, e *entry) gate.View {
 	p := e.P
-	v := gate.View{ID: p.ID, Group: p.Group, Decision: e.Status, Class: p.Class, ClassName: proposal.ClassNames[p.Class],
+	v := gate.View{ID: p.ID, Group: p.Group, Ref: p.Ref, Decision: e.Status, Class: p.Class, ClassName: proposal.ClassNames[p.Class],
 		Actions: p.Actions(), Who: p.Requester.Who(), UID: p.Requester.UID, Taint: p.Requester.Taint,
 		Origin: p.Requester.Origin, Leaves: p.Leaves, Created: p.Created.Format(time.RFC3339),
 		Expires: p.Expires.Format(time.RFC3339), Deferrable: p.Deferrable, By: e.DecidedBy, Reason: e.Decision.Reason,
@@ -339,6 +339,11 @@ func (s *Server) decide(ctx context.Context, c *conn, req gate.Request) gate.Rep
 		}
 	}
 	s.saveQueueLocked()
+	var starts []unitStart
+	for _, e := range es {
+		starts = append(starts, s.unitFor(e)...)
+	}
+	defer s.startUnits(starts)
 	rep := gate.Reply{OK: true, Decided: out}
 	if len(es) == 1 {
 		rep.ID, rep.Decision = es[0].P.ID, es[0].Status
@@ -427,7 +432,15 @@ func (s *Server) claim(c *conn, req gate.Request) gate.Reply {
 	case now.Sub(e.DecidedAt) > s.cfg.ClaimWindow:
 		return deny(name, "the decision is too old; ask again")
 	}
-	if req.Digest != e.P.Digest {
+	digest := req.Digest
+	if digest == "" && len(req.Calls) > 0 {
+		d, err := s.digestFromCalls(e, req.Calls, req.Preview)
+		if err != nil {
+			d = "invalid: " + err.Error()
+		}
+		digest = d
+	}
+	if digest != e.P.Digest {
 		// What would run is not what was approved: the request is void and
 		// must be planned and decided again.
 		e.Status, e.DecidedBy = gate.Refused, "stale"

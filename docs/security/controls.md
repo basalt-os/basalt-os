@@ -2,7 +2,7 @@
 
 <!-- Generated from controls.yaml by scripts/ci/security-controls-check.sh --render. Do not edit by hand. -->
 
-Version 1, updated 2026-10-06. Each control has a
+Version 2, updated 2026-10-06. Each control has a
 stable ID, a requirement, the reason for it, where it is enforced, how it
 is verified and its status. Implemented means enforced in the shipped
 packages and checked; partial means enforced for part of the scope or
@@ -19,7 +19,7 @@ built, so nothing should rely on it yet. How controls change:
 | PKG: Packages, repositories and the build and release pipeline | 6 | 0 | 2 | 8 |
 | DISK: Disk encryption and unlock | 5 | 0 | 0 | 5 |
 | MAC: Mandatory access control (SELinux) and service hardening | 6 | 0 | 3 | 9 |
-| GATE: Approvals, confirmations and the approval gate | 6 | 1 | 5 | 12 |
+| GATE: Approvals, confirmations and the approval gate | 6 | 2 | 4 | 12 |
 | LEDGER: The audit ledger and audit logs | 8 | 0 | 2 | 10 |
 | NET: Network egress and inbound access | 9 | 0 | 1 | 10 |
 | AGENT: Confinement of AI agents | 9 | 0 | 0 | 9 |
@@ -28,7 +28,7 @@ built, so nothing should rely on it yet. How controls change:
 | UPD: Updates, snapshots and rollback | 4 | 1 | 0 | 5 |
 | KEY: Signing keys and their custody | 1 | 4 | 0 | 5 |
 | GOV: Process, disclosure and the security program itself | 2 | 2 | 0 | 4 |
-| All | 68 | 12 | 17 | 97 |
+| All | 68 | 13 | 16 | 97 |
 
 ## BOOT: Secure Boot, kernel lockdown and module signatures
 
@@ -542,12 +542,14 @@ Requirement: A non-interactive confirmation MUST carry a code derived from the S
 
 Rationale: Approve A, run B (replay or swap) is impossible, and an agent never holds a token that confirms.
 
-Implemented in: `packages/basalt-assistant/internal`.
+Implemented in: `packages/basalt-assistant/internal`, `packages/basalt-gate/internal/server/migrate.go`.
 
 Verified by:
 
 - Test: `packages/basalt-assistant`, `func TestFingerprintBindsCommands(`
 - Test: `packages/basalt-assistant`, `func TestProtocolAndProposeOnly(`
+- Test: `packages/basalt-assistant/internal/gatelink/gatelink_test.go`, `func TestShortCodeIsTheFingerprint(`
+- Test: `packages/basalt-gate/internal/server/migrate_test.go`, `func TestRootConfirmsWithTheCode(`
 - Manual: audit guide, [BSC-GATE-003](audit-guide.md#bsc-gate-003)
 
 ### BSC-GATE-004
@@ -605,13 +607,23 @@ Verified by:
 
 One approval gate for every side effect.
 
-Status: planned. Decided in: ADR 0020.
+Status: partial. Decided in: ADR 0020.
 
 Requirement: Every request for a side effect (from the person by voice or command bar, the assistant, agents, apps, tools, schedules, the phone) MUST go through one local gate that validates it against an action registry, computes its risk class, applies hard limits and deterministic policy, queues what must be asked, and hands executors a single-use claim bound to the proposal digest.
 
 Rationale: One format, one queue, one history and one stop button instead of many separate approval paths.
 
-Gap: Proposed; phase 1 (the gate core) is being built. Until then the approval paths above (GATE-001 to GATE-006, AGENT-008, AI-004) are the enforced ones.
+Implemented in: `packages/basalt-gate`, `packages/basalt-assistant/internal/gatelink/gatelink.go`.
+
+Verified by:
+
+- Test: `packages/basalt-gate/internal/server/server_test.go`, `func TestClaims(`
+- Test: `packages/basalt-gate/internal/server/migrate_test.go`, `func TestObserve(`
+- Test: `packages/basalt-gate/internal/server/migrate_test.go`, `func TestExecutorClaimWithOtherCalls(`
+- Lab: `scripts/lab/gate-test.sh`, `gate`
+- Manual: audit guide, [BSC-GATE-007](audit-guide.md#bsc-gate-007)
+
+Gap: The gate is built (phase 1) and the approval paths move to it one by one (phase 2): each path decides through the gate only where /etc/basalt-gate/gate.conf enforces it, and keeps its own confirmation (reporting it to the gate) elsewhere. The gate is not in the default install yet; until a path is enforced, its own approval (GATE-001 to GATE-006, AGENT-008, AI-004) is the one that holds.
 
 ### BSC-GATE-008
 

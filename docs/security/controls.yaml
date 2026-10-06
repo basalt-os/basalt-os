@@ -33,7 +33,7 @@
 # partial = enforced for some of the scope or without the full verification;
 # planned = decided or proposed, not built yet (nothing to rely on today).
 
-version: 1
+version: 2
 updated: 2026-10-06
 
 areas:
@@ -610,9 +610,12 @@ controls:
     adr: ["0004", "0020"]
     implemented_in:
       - packages/basalt-assistant/internal
+      - packages/basalt-gate/internal/server/migrate.go
     verification:
       - {type: test, file: packages/basalt-assistant, match: "func TestFingerprintBindsCommands("}
       - {type: test, file: packages/basalt-assistant, match: "func TestProtocolAndProposeOnly("}
+      - {type: test, file: packages/basalt-assistant/internal/gatelink/gatelink_test.go, match: "func TestShortCodeIsTheFingerprint("}
+      - {type: test, file: packages/basalt-gate/internal/server/migrate_test.go, match: "func TestRootConfirmsWithTheCode("}
       - {type: manual, guide: BSC-GATE-003}
 
   - id: BSC-GATE-004
@@ -678,14 +681,24 @@ controls:
     rationale: >-
       One format, one queue, one history and one stop button instead of many
       separate approval paths.
-    status: planned
+    status: partial
     adr: ["0020"]
-    implemented_in: []
-    verification: []
+    implemented_in:
+      - packages/basalt-gate
+      - packages/basalt-assistant/internal/gatelink/gatelink.go
+    verification:
+      - {type: test, file: packages/basalt-gate/internal/server/server_test.go, match: "func TestClaims("}
+      - {type: test, file: packages/basalt-gate/internal/server/migrate_test.go, match: "func TestObserve("}
+      - {type: test, file: packages/basalt-gate/internal/server/migrate_test.go, match: "func TestExecutorClaimWithOtherCalls("}
+      - {type: lab, file: scripts/lab/gate-test.sh, match: "gate"}
+      - {type: manual, guide: BSC-GATE-007}
     gap: >-
-      Proposed; phase 1 (the gate core) is being built. Until then the
-      approval paths above (GATE-001 to GATE-006, AGENT-008, AI-004) are the
-      enforced ones.
+      The gate is built (phase 1) and the approval paths move to it one by
+      one (phase 2): each path decides through the gate only where
+      /etc/basalt-gate/gate.conf enforces it, and keeps its own
+      confirmation (reporting it to the gate) elsewhere. The gate is not in
+      the default install yet; until a path is enforced, its own approval
+      (GATE-001 to GATE-006, AGENT-008, AI-004) is the one that holds.
 
   - id: BSC-GATE-008
     title: Hard limits no rule can lift

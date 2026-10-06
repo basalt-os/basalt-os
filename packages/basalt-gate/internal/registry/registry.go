@@ -100,10 +100,14 @@ type Executor struct {
 	// Requester set means the requester itself runs the action.
 	Types []string `json:"types,omitempty"`
 	// UID the executor must run as (-1: any).
-	UID       *int   `json:"uid,omitempty"`
-	Requester bool   `json:"requester,omitempty"` // the requester runs it itself (tool.exec)
-	Internal  bool   `json:"internal,omitempty"`  // the gate itself (rule changes)
-	Note      string `json:"note,omitempty"`
+	UID       *int `json:"uid,omitempty"`
+	Requester bool `json:"requester,omitempty"` // the requester runs it itself (tool.exec)
+	Internal  bool `json:"internal,omitempty"`  // the gate itself (rule changes)
+	// Unit is a systemd template unit the gate starts, with the request id
+	// as the instance, once a request for this executor is approved (the
+	// executor then claims it): "basalt-gate-exec@.service".
+	Unit string `json:"unit,omitempty"`
+	Note string `json:"note,omitempty"`
 }
 
 // ToolOperation is an operation a tool's package declares (tool-NAME.json):
@@ -136,6 +140,7 @@ var (
 	argNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,40}$`)
 	kindRe    = regexp.MustCompile(`^(path|unit|package|host|recipient|boolean|user|disk|rule|module|key|device|setting|window|app|session|model)$`)
 	execRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)
+	unitRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{1,60}@\.service$`)
 )
 
 // Load reads every *.json file of dir (sorted). An action defined twice
@@ -216,6 +221,11 @@ func (r *Registry) Add(name string, b []byte) error {
 
 // Check verifies cross references: executors and group members exist.
 func (r *Registry) Check() error {
+	for n, e := range r.Executors {
+		if e.Unit != "" && !unitRe.MatchString(e.Unit) {
+			return fmt.Errorf("executor %s: unit %q (a template: name@.service)", n, e.Unit)
+		}
+	}
 	for _, a := range r.Actions {
 		if _, ok := r.Executors[a.Executor]; !ok {
 			return fmt.Errorf("action %s: unknown executor %q", a.ID, a.Executor)

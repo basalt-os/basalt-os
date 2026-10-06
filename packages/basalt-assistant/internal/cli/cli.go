@@ -20,6 +20,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/explain"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/gatelink"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
@@ -45,6 +46,10 @@ Look (no changes, no confirmation):
 
 Change (as root; you see the exact commands first and confirm them):
   basalt apply ID [--yes --confirm CODE]
+                                      with the approval gate deciding (docs/gate.md): the proposal is
+                                      queued there, your yes or the code is your decision, and
+                                      basalt-gate-exec@REQUEST.service applies it
+  basalt submit ID [--json]           queue a proposal in the approval gate (a person decides there)
   basalt ignore ID [--reason TEXT]
   basalt confirm ID                   check, as root, a hint of the background service (a file
                                       restore, a rollback) and turn it into a proposal
@@ -76,6 +81,7 @@ Run as root, a diagnosis that finds a fix stores it as a pending proposal.
 // opts are the parsed flags.
 type opts struct {
 	json, apply, yes, all bool
+	gate                  bool // basalt apply REQUEST --gate: the gate's executor
 	dryRun, force         bool
 	verbose, plain        bool
 	since                 time.Duration
@@ -111,6 +117,8 @@ func parse(argv []string) (opts, error) {
 			o.json = true
 		case "--apply":
 			o.apply = true
+		case "--gate":
+			o.gate = true
 		case "--yes", "-y":
 			o.yes = true
 		case "--all":
@@ -245,6 +253,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.show()
 	case "apply":
 		return a.applyCmd(ctx)
+	case "submit":
+		return a.submit()
 	case "ignore":
 		return a.ignore()
 	case "confirm":
@@ -270,8 +280,14 @@ func (a *app) printJSON(v any) error {
 func (a *app) applier() *apply.Applier {
 	st, _ := os.Stdin.Stat()
 	interactive := st != nil && st.Mode()&os.ModeCharDevice != 0
-	return &apply.Applier{Store: a.store, Audit: a.audit, Exec: runner.Exec{}, In: os.Stdin, Out: a.out,
+	ap := &apply.Applier{Store: a.store, Audit: a.audit, Exec: runner.Exec{}, In: os.Stdin, Out: a.out,
 		Interactive: interactive, Snapshots: true, Settle: 2 * time.Second}
+	if a.root {
+		// The approval gate, when installed: it decides (enforce) or is told
+		// what was decided here (shadow mode); without it, nothing changes.
+		ap.Gate = gatelink.Detect("requester")
+	}
+	return ap
 }
 
 // keep stores a proposal (root only), reusing an open one with the same
@@ -733,11 +749,60 @@ func (a *app) show() error {
 }
 
 func (a *app) applyCmd(ctx context.Context) error {
+	if a.o.gate {
+		// The executor unit basalt-gate-exec@REQUEST.service: REQUEST is
+		// the gate's request id; the decision is already made there.
+		if !a.root || len(a.o.args) < 2 {
+			return errors.New("usage (root, from basalt-gate-exec@.service): basalt apply REQUEST --gate")
+		}
+		ap := a.applier()
+		defer ap.Gate.Close()
+		return ap.Execute(ctx, a.o.args[1])
+	}
 	p, err := a.load()
 	if err != nil {
 		return err
 	}
 	return a.applier().Apply(ctx, p, apply.Options{Yes: a.o.yes, Confirm: a.o.confirm})
+}
+
+// submit queues a proposal in the approval gate (the desktop shell asks
+// for it through its read helper before the person decides on the sheet).
+func (a *app) submit() error {
+	if !a.root {
+		return errors.New("queueing a proposal needs root (the proposals are root's)")
+	}
+	p, err := a.load()
+	if err != nil {
+		return err
+	}
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	if p.Status != proposal.Pending && p.Status != proposal.Failed {
+		return fmt.Errorf("proposal %s is %s", p.ID, p.Status)
+	}
+	if len(p.Actions) == 0 {
+		return fmt.Errorf("proposal %s has no change to apply", p.ID)
+	}
+	l := gatelink.Detect("requester")
+	defer l.Close()
+	if l.Mode == gatelink.Absent {
+		return errors.New("the approval gate is not running")
+	}
+	rep, err := l.Submit(p)
+	if err != nil {
+		return err
+	}
+	_, _ = a.audit.Append("propose", p.ID+" queued in the approval gate as "+rep.ID, map[string]any{"proposal": p.ID,
+		"gate_id": rep.ID, "decision": rep.Decision, "by": rep.By})
+	out := map[string]any{"proposal": p.ID, "id": rep.ID, "decision": rep.Decision, "class": rep.Class, "reason": rep.Reason,
+		"by": rep.By, "enforced": l.Mode == gatelink.Enforce}
+	if a.o.json {
+		return a.printJSON(out)
+	}
+	fmt.Fprintf(a.out, "%s is request %s in the approval gate: %s (%s)\n", p.ID, rep.ID, rep.Decision, rep.Reason)
+	return nil
 }
 
 func (a *app) ignore() error {

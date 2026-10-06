@@ -1,4 +1,4 @@
-policy_module(basalt_gate, 0.1.0)
+policy_module(basalt_gate, 0.2.0)
 
 # basalt-gate: the approval gate (docs/gate.md). A root service in its own
 # domain that
@@ -14,7 +14,15 @@ policy_module(basalt_gate, 0.1.0)
 #   - reads the power supply state in sysfs;
 #   - sends its records to basalt-ledger and reads its own records back
 #     for dry runs.
-# No network, no capabilities, no exec besides pkcheck.
+#   - starts the executor's unit (systemctl --no-block start
+#     basalt-gate-exec@ID.service) once a request for it is approved.
+# No network, no capabilities, no exec besides pkcheck and systemctl.
+#
+# The executor of the system assistant's proposals runs in
+# basalt_gate_exec_t: entered only by systemd from basalt-gate-exec@.service
+# (basalt apply ID --gate). It is the type the gate lets claim those
+# requests (actions.d/assistant.json); it keeps the powers `basalt apply`
+# has today as root (unconfined_domain), and no agent domain may enter it.
 #
 # The terminal decider basalt-gate-tty runs in basalt_gate_tty_t, entered
 # only from user domains; the gate lets that type decide, with polkit on
@@ -22,8 +30,8 @@ policy_module(basalt_gate, 0.1.0)
 # never enter the decider domain, and never reach the rule store.
 
 type basalt_gate_t;
-type basalt_gate_exec_t;
-init_daemon_domain(basalt_gate_t, basalt_gate_exec_t)
+type basalt_gated_exec_t;
+init_daemon_domain(basalt_gate_t, basalt_gated_exec_t)
 init_nnp_daemon_domain(basalt_gate_t)
 
 type basalt_gate_var_lib_t;
@@ -41,6 +49,13 @@ files_type(basalt_gate_data_t)
 type basalt_gate_tty_t;
 type basalt_gate_tty_exec_t;
 application_domain(basalt_gate_tty_t, basalt_gate_tty_exec_t)
+
+# The executor of approved system assistant proposals.
+type basalt_gate_exec_t;
+type basalt_gate_exec_exec_t;
+init_daemon_domain(basalt_gate_exec_t, basalt_gate_exec_exec_t)
+type basalt_gate_exec_unit_file_t;
+systemd_unit_file(basalt_gate_exec_unit_file_t)
 
 ########################################
 #
@@ -83,6 +98,16 @@ optional_policy(`
 	policykit_dbus_chat(basalt_gate_t)
 ')
 
+# Start the executor unit once a request for it is approved: systemctl
+# over systemd's private socket, for that unit only.
+systemd_exec_systemctl(basalt_gate_t)
+init_stream_connect(basalt_gate_t)
+init_rw_stream_sockets(basalt_gate_t)
+allow basalt_gate_t basalt_gate_exec_unit_file_t:service { start status };
+allow basalt_gate_t basalt_gate_exec_unit_file_t:file read_file_perms;
+init_read_state(basalt_gate_t)
+systemd_read_unit_files(basalt_gate_t)
+
 kernel_read_system_state(basalt_gate_t)
 # Go's listen reads net.core.somaxconn for the socket's backlog.
 kernel_read_net_sysctls(basalt_gate_t)
@@ -120,6 +145,20 @@ kernel_read_system_state(basalt_gate_tty_t)
 dev_read_urand(basalt_gate_tty_t)
 files_read_etc_files(basalt_gate_tty_t)
 miscfiles_read_localization(basalt_gate_tty_t)
+
+########################################
+#
+# basalt_gate_exec_t: the executor of approved system assistant proposals
+#
+
+# basalt apply runs semanage, restorecon, systemctl, snapper, journalctl,
+# dnf and basalt-rollback as root today; the executor keeps exactly that
+# (confining the actions themselves is later work). Its type is its
+# identity for the gate's claims.
+optional_policy(`
+	unconfined_domain(basalt_gate_exec_t)
+')
+basalt_gate_stream_connect(basalt_gate_exec_t)
 
 ########################################
 #
@@ -164,3 +203,7 @@ neverallow basalt_agent_domain basalt_gate_conf_t:file { write append create unl
 # The decider role: agents never enter, run or touch the deciding domains.
 neverallow basalt_agent_domain { basalt_gate_t basalt_gate_tty_t }:process { transition dyntransition ptrace };
 neverallow basalt_agent_domain basalt_gate_tty_exec_t:file { entrypoint execute execute_no_trans };
+# The executor's domain: agents never enter it, run its program as its
+# entrypoint or trace it.
+neverallow basalt_agent_domain basalt_gate_exec_t:process { transition dyntransition ptrace };
+neverallow basalt_agent_domain basalt_gate_exec_exec_t:file entrypoint;

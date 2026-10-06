@@ -5,7 +5,8 @@
     "basalt-gate-exec": {
       "types": ["basalt_gate_exec_t"],
       "uid": 0,
-      "note": "basalt apply ID --gate in basalt-gate-exec@.service (from phase 2; until then the system assistant applies through basalt apply as before)"
+      "unit": "basalt-gate-exec@.service",
+      "note": "the gate starts basalt-gate-exec@ID.service once a person (or a system rule) approves; it runs basalt apply ID --gate, which claims the decision and applies the proposal with its snapshots, checks and audit record"
     }
   },
   "groups": {

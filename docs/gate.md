@@ -28,12 +28,10 @@ basalt gate status                      the same through the basalt command
 
 ## Status
 
-This is the first step: the gate runs on its own and nothing that exists
-uses it yet. The shell, the system assistant, basalt-agent grants and
-model downloads keep their own confirmation until each moves to the gate,
-one at a time, keeping today's behavior when the gate is not running. The
-package is built and published with the others and is not part of the
-default install.
+The gate runs on its own, and the existing approval paths are moving to
+it one at a time (see "Migration" below). Each keeps today's behavior
+when the gate is not installed or not running. The package is built and
+published with the others and is not part of the default install.
 
 ## How a request is decided
 
@@ -227,6 +225,41 @@ last week against your rules plus the draft; `basalt-gate simulate
 a ledger export instead of the ledger. Users replay their own records;
 root replays all.
 
+## Migration
+
+Every approval path that existed before the gate moves to it in steps.
+`enforce` in `/etc/basalt-gate/gate.conf` lists the paths where Basalt's
+own components let the gate decide; on the others they keep their own
+confirmation and tell the gate what they decided (shadow mode: the
+`observe` operation, recorded as a request with `observed: true` and what
+the gate would have decided, so `basalt-gate simulate` has real data
+before the switch). Without the gate nothing changes at all. A component
+asks which paths are enforced in `hello`.
+
+| Path | `enforce` name | Default | With the gate deciding |
+|---|---|---|---|
+| The system assistant's proposals (`basalt apply`) | `apply` | shadow | see below |
+
+The system assistant's proposals (`apply`). `basalt apply ID` queues the
+proposal in the gate (calls: its typed actions; reference: its id;
+preview: its title, actions and exact command lines), so the short code
+in the queue is the fingerprint `basalt show` prints. Root's typed yes
+at the terminal, or `--yes --confirm CODE`, is recorded as the person's
+decision (`person:tty-root`; `allow_code_confirm = no` turns the code
+off); a decision in the queue (`basalt-gate approve`, the desktop shell)
+or a system rule counts the same. Once approved, the gate starts
+`basalt-gate-exec@REQUEST.service`, which runs `basalt apply REQUEST
+--gate` in its own SELinux domain (`basalt_gate_exec_t`, the only type
+the gate lets claim these requests): it reads the request, rebuilds the
+calls and the preview from the stored proposal, claims the decision with
+them (a different proposal is a digest mismatch and voids the decision),
+applies it with its snapshots, checks and audit record, and reports the
+result and the snapshots. `basalt apply` follows the unit and prints
+what it did. `basalt submit ID` queues a proposal without applying it
+(the desktop shell uses it before the person decides on its sheet). In
+shadow mode `basalt apply` asks at the terminal exactly as before and
+records the outcome with `observe`.
+
 ## Ledger records
 
 Producer `basalt-gate`, accepted by basalt-ledger only from root in
@@ -258,16 +291,24 @@ waits).
 may: manage its state and socket, read its registry, presets, hard limits
 and configuration, read the `/proc` entries of connecting processes, read
 the power supply in sysfs, run `pkcheck` and talk to polkit over the
-system bus, and connect to basalt-ledger. Requesters connect through the
+system bus, connect to basalt-ledger, and start the executor unit
+`basalt-gate-exec@.service` with systemctl (that unit only).
+`basalt_gate_exec_t` is entered only by systemd from that unit's program;
+it keeps the root powers `basalt apply` has, and no agent domain may
+enter or trace it. Requesters connect through the
 interface `basalt_gate_stream_connect`; user domains and agent domains
 may connect. `basalt_gate_tty_t` is entered only from user domains
 (`basalt_gate_run_tty`). The module forbids every agent domain
 (`neverallow`) to read or write the rule store, write the configuration,
-enter or trace the gate's domains, or execute the terminal decider.
+enter or trace the gate's domains (the executor's included), or execute
+the terminal decider.
 
 ## Configuration
 
-`/etc/basalt-gate/gate.conf`: `socket`, `state`, `registry`, `presets`,
+`/etc/basalt-gate/gate.conf`: `enforce` (the migration paths the gate
+decides, default `skills models consent`), `exec_units` (yes: start an
+executor's unit once approved), `systemctl`, `root_relays`
+(system-assistant: what root may say it asks as), `socket`, `state`, `registry`, `presets`,
 `hardlimits`, `ledger`, `default_preset` (careful), `allow_code_confirm`
 (yes: root's `basalt apply ID --yes --confirm CODE` stays a person's
 decision once the system assistant uses the gate), `interactive_expiry`
@@ -300,8 +341,11 @@ enforcing (see the script).
 
 ## Limits (today)
 
-- Nothing uses the gate yet; the shell, the assistant, basalt-agent and
-  model downloads move to it one by one.
+- The approval paths move to the gate one by one (Migration); until a
+  path is enforced, its own confirmation decides.
+- The executor of the system assistant's proposals keeps the powers
+  `basalt apply` has as root (its SELinux type is its identity for the
+  gate, not a confinement of the actions yet).
 - The seal key is a software key; a TPM-bound key comes later.
 - Presence and network conditions are not read yet (treated as unknown,
   which never allows).

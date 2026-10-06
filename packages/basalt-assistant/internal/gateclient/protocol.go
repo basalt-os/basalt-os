@@ -8,7 +8,7 @@
 // internal/gateclient, checked against the protocol fixtures).
 //
 // The package is dual-licensed MIT OR Apache-2.0, like PROTOCOL.md.
-package gate
+package gateclient
 
 import "encoding/json"
 

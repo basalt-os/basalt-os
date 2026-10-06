@@ -310,18 +310,7 @@ func (s *Server) classOf(a *registry.Action, args map[string]any, hint string) s
 func (s *Server) preview(c *conn, rq proposal.Requester, req gate.Request, p *proposal.Proposal) (proposal.Preview, error) {
 	trusted := len(c.roles.Relay) > 0 || c.roles.Kind == proposal.KindSystemAssistant
 	if trusted && req.Preview != nil {
-		b, err := json.Marshal(req.Preview)
-		if err != nil || len(b) > 32<<10 {
-			return proposal.Preview{}, refuse("preview unencodable or larger than 32 KiB")
-		}
-		var pv proposal.Preview
-		if err := json.Unmarshal(b, &pv); err != nil {
-			return pv, refuse("preview: %v", err)
-		}
-		if pv.TitleKey == "" || !proposal.ActionRe.MatchString(pv.TitleKey) {
-			return pv, refuse("preview title_key %q", pv.TitleKey)
-		}
-		return pv, nil
+		return toPreview(req.Preview)
 	}
 	pv := proposal.Preview{}
 	for i, call := range p.Calls {
@@ -351,6 +340,29 @@ func (s *Server) preview(c *conn, rq proposal.Requester, req gate.Request, p *pr
 		pv.Lines = append(pv.Lines, proposal.Line{Key: key, Args: show})
 	}
 	return pv, nil
+}
+
+// toPreview checks and converts a planner's preview.
+func toPreview(in *gate.Preview) (proposal.Preview, error) {
+	b, err := json.Marshal(in)
+	if err != nil || len(b) > 32<<10 {
+		return proposal.Preview{}, refuse("preview unencodable or larger than 32 KiB")
+	}
+	var pv proposal.Preview
+	if err := json.Unmarshal(b, &pv); err != nil {
+		return pv, refuse("preview: %v", err)
+	}
+	if pv.TitleKey == "" || !proposal.ActionRe.MatchString(pv.TitleKey) {
+		return pv, refuse("preview title_key %q", pv.TitleKey)
+	}
+	return pv, nil
+}
+
+// policyEnv is the machine's conditions at decision time.
+type policyEnv = policy.Env
+
+func policyInput(p *proposal.Proposal, facts []policy.CallFacts, env policy.Env, stopped bool) policy.Input {
+	return policy.Input{P: p, Calls: facts, Env: env, Stopped: stopped}
 }
 
 // shellQuote renders argv as one line a person can read and paste.
@@ -461,7 +473,9 @@ func (s *Server) propose(c *conn, req gate.Request, checkOnly bool) gate.Reply {
 	}
 	s.publishLocked(gate.Event{Type: "request", ID: p.ID, Note: e.Status}, e)
 	s.saveQueueLocked()
+	start := s.unitFor(e)
 	s.mu.Unlock()
+	s.startUnits(start)
 	return gate.Reply{OK: true, ID: p.ID, Decision: e.Status, Class: p.Class, Reason: d.Reason, By: d.By}
 }
 
@@ -648,7 +662,9 @@ func (s *Server) ExpireNow() {
 // ---------------------------------------------------------------------------
 // Records
 
-func (s *Server) recordRequest(e *entry, env policy.Env) {
+func (s *Server) recordRequest(e *entry, env policy.Env) { s.recordRequestData(e, env, nil) }
+
+func (s *Server) recordRequestData(e *entry, env policy.Env, extra map[string]any) {
 	p := e.P
 	calls := make([]map[string]any, 0, len(e.Facts))
 	for _, f := range e.Facts {
@@ -673,6 +689,12 @@ func (s *Server) recordRequest(e *entry, env policy.Env) {
 		"context": p.Requester.Context, "deferrable": p.Deferrable,
 		"env": map[string]any{"power": env.Power, "presence": env.Presence, "network": env.Network,
 			"local_time": env.Now.Local().Format("Mon 15:04")}}
+	if p.Ref != "" {
+		data["ref"] = p.Ref
+	}
+	for k, v := range extra {
+		data[k] = v
+	}
 	s.record(ledger.Record{UID: p.Requester.UID, Session: p.Requester.Session, Event: "gate.request", Data: data,
 		Subject: ledger.Subject{Profile: agentProfile(p.Requester)}})
 }

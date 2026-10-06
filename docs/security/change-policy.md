@@ -103,3 +103,8 @@ between releases.
 
 - Version 1 (2026-10-06, released as security model 0.1, draft): first catalog, 97 controls in 13 areas, with the
   threat model, the audit guide and this policy.
+- Version 2 (2026-10-06): approval gate phase 2, first wave. BSC-GATE-007 is
+  partial (the gate is built; paths move to it one by one, enforced per path
+  in gate.conf, shadow mode elsewhere); BSC-GATE-003 is also enforced by the
+  gate for the system assistant's proposals (the short code is the
+  fingerprint, root's confirmation is recorded as the person's decision).

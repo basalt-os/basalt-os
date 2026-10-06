@@ -62,6 +62,9 @@ type Options struct {
 	// ledger, as root).
 	History func(uid int, since time.Time) ([]ledger.Stored, error)
 	Logf    func(string, ...any)
+	// StartUnit starts an executor's unit (default: systemctl --no-block
+	// start); tests replace it.
+	StartUnit func(unit string) error
 }
 
 // Server is the daemon state.
@@ -329,6 +332,10 @@ func (s *Server) Handle(ctx context.Context, c *conn, req gate.Request) gate.Rep
 		return s.rulesApply(ctx, c, req)
 	case "rules.unpause":
 		return s.rulesUnpause(ctx, c, req)
+	case "observe":
+		return s.observe(c, req)
+	case "confirm":
+		return s.confirm(c, req)
 	}
 	op := req.Op
 	if len(op) > 40 {
@@ -352,7 +359,7 @@ func (s *Server) hello(c *conn, req gate.Request) gate.Reply {
 	if !c.roles.Agent {
 		roles = append(roles, "executor")
 	}
-	return gate.Reply{OK: true, Protocol: gate.Protocol, Roles: roles, Kind: c.roles.Kind}
+	return gate.Reply{OK: true, Protocol: gate.Protocol, Roles: roles, Kind: c.roles.Kind, Enforce: s.cfg.Enforce}
 }
 
 func (s *Server) gateStatus() gate.Reply {

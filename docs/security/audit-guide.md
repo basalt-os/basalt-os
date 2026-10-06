@@ -366,6 +366,19 @@ and immediately request a confirmation. Expected: the sheet ignores input
 for its arming delay, a confirmation within 1.5 seconds of synthetic input
 is refused, and only one sheet shows at a time.
 
+### BSC-GATE-007
+
+```
+repo$ make gate-test
+# grep -E '^enforce' /etc/basalt-gate/gate.conf
+# basalt-ledger --producer basalt-gate --since today
+```
+
+Expected: tests pass; `enforce` lists the approval paths the gate decides
+on this machine; every request of those paths has a `gate.request` and a
+`gate.decision` record naming the rule or the person, and the others have
+`observed` records (shadow mode).
+
 ### BSC-GATE-010
 
 On a desktop: start an agent control session and press Super+Shift+Escape

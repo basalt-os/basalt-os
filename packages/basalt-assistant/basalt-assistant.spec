@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.10.0
+Version:        0.11.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -90,7 +90,7 @@ write only its state directory and (append only) its audit log.
 
 %build
 export GOFLAGS="-mod=mod -trimpath" GOTOOLCHAIN=local GOPROXY=off
-for c in basalt basalt-assistantd basalt-mcp basalt-notify; do
+for c in basalt basalt-assistantd basalt-mcp basalt-notify basalt-gate-exec; do
     go build -buildmode=pie -ldflags "-B gobuildid -X main.version=%{version}-%{release}" -o bin/$c ./cmd/$c
 done
 for po in po/*.po; do
@@ -111,6 +111,8 @@ install -Dpm 0755 bin/basalt-mcp %{buildroot}%{_bindir}/basalt-mcp
 install -Dpm 0755 bin/basalt-assistantd %{buildroot}%{_libexecdir}/basalt/basalt-assistantd
 install -Dpm 0755 bin/basalt-notify %{buildroot}%{_libexecdir}/basalt/basalt-notify
 install -Dpm 0755 dist/basalt-policy-query %{buildroot}%{_libexecdir}/basalt/basalt-policy-query
+install -Dpm 0755 bin/basalt-gate-exec %{buildroot}%{_libexecdir}/basalt-assistant/basalt-gate-exec
+install -Dpm 0644 dist/basalt-gate-exec@.service %{buildroot}%{_unitdir}/basalt-gate-exec@.service
 install -Dpm 0644 dist/basalt-assistantd.service %{buildroot}%{_unitdir}/basalt-assistantd.service
 install -Dpm 0644 dist/basalt-notify.service %{buildroot}%{_unitdir}/basalt-notify.service
 install -Dpm 0644 dist/basalt-audit-rotate.service %{buildroot}%{_unitdir}/basalt-audit-rotate.service
@@ -166,6 +168,9 @@ fi
 %{_libexecdir}/basalt/basalt-assistantd
 %{_libexecdir}/basalt/basalt-notify
 %{_libexecdir}/basalt/basalt-policy-query
+%dir %{_libexecdir}/basalt-assistant
+%{_libexecdir}/basalt-assistant/basalt-gate-exec
+%{_unitdir}/basalt-gate-exec@.service
 %{_unitdir}/basalt-assistantd.service
 %{_unitdir}/basalt-notify.service
 %{_unitdir}/basalt-audit-rotate.service
@@ -185,6 +190,18 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.11.0-1
+- The approval gate (ADR 0020 phase 2, docs/gate.md): with basalt-gate
+  installed, basalt apply tells the gate what root decided at the
+  terminal (shadow mode); where the gate decides (enforce = apply), the
+  proposal is queued there with its fingerprint as the short code, root's
+  typed yes or --yes --confirm CODE is recorded as the person's decision,
+  a decision in the desktop shell or the queue is just as good, and
+  basalt-gate-exec@REQUEST.service (basalt apply REQUEST --gate, SELinux
+  basalt_gate_exec_t) claims the decision and applies the proposal with
+  its snapshots, checks and audit record. basalt submit ID queues a
+  proposal for the shell. Without the gate nothing changes.
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.10.0-1
 - Additional drivers: basalt drivers finds the graphics hardware and the
   driver that fits (the NVIDIA driver of the opt-in basalt-nonfree

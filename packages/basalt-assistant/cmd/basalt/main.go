@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/cli"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/gatelink"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sandbox"
 )
 
@@ -28,5 +29,6 @@ func main() {
 			os.Exit(126)
 		}
 	}
+	gatelink.Version = version
 	os.Exit(cli.Main(os.Args[1:], version))
 }

@@ -40,6 +40,34 @@ type Config struct {
 	// RequestsPerMinute per requester (bursts of half as many again).
 	RequestsPerMinute int
 	Peers             peer.Config
+	// Enforce lists the migration paths where Basalt's own components let
+	// the gate decide (ADR 0020 phase 2); on the others they keep their
+	// own confirmation and only send observe records (shadow mode).
+	Enforce []string
+	// ExecUnits: the gate starts the executor's unit (the registry's
+	// "unit", e.g. basalt-gate-exec@.service) once a request is approved.
+	ExecUnits bool
+	// Systemctl is the program that starts executor units.
+	Systemctl string
+}
+
+// Paths are the migration paths a component asks about in hello.
+var Paths = []string{"apply", "shell", "skills", "models", "consent", "agent"}
+
+// DefaultEnforce: the paths without a shadow phase in ADR 0020 (they had
+// no confirmation of their own beyond the card that now decides at the
+// gate). The system assistant, the shell's proposals and basalt-agent
+// start in shadow mode.
+var DefaultEnforce = []string{"skills", "models", "consent"}
+
+// Enforced reports whether the gate decides for a path.
+func (c Config) Enforced(path string) bool {
+	for _, p := range c.Enforce {
+		if p == path || p == "all" {
+			return true
+		}
+	}
+	return false
 }
 
 // Default is the packaged configuration.
@@ -60,6 +88,9 @@ func Default() Config {
 		AgentTaintFloor:   "web",
 		RequestsPerMinute: 30,
 		Peers:             peer.DefaultConfig(),
+		Enforce:           append([]string(nil), DefaultEnforce...),
+		ExecUnits:         true,
+		Systemctl:         "/usr/bin/systemctl",
 	}
 }
 
@@ -164,6 +195,39 @@ func (c *Config) set(k, v string) error {
 		c.Peers.Relays = m
 	case "agent_types":
 		c.Peers.AgentPrefixes = strings.Fields(v)
+	case "root_relays":
+		// Requester kinds root (uid 0, outside agent domains) may report:
+		// the system assistant's command line asks as the system assistant.
+		c.Peers.RootRelays = strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })
+	case "enforce":
+		var out []string
+		for _, f := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' }) {
+			ok := f == "all" || f == "none"
+			for _, p := range Paths {
+				ok = ok || p == f
+			}
+			if !ok {
+				return fmt.Errorf("enforce: %q is not a path (%s, all or none)", f, strings.Join(Paths, ", "))
+			}
+			if f != "none" {
+				out = append(out, f)
+			}
+		}
+		c.Enforce = out
+	case "exec_units":
+		switch v {
+		case "yes":
+			c.ExecUnits = true
+		case "no":
+			c.ExecUnits = false
+		default:
+			return fmt.Errorf("exec_units: yes or no")
+		}
+	case "systemctl":
+		if !strings.HasPrefix(v, "/") {
+			return fmt.Errorf("systemctl: an absolute path")
+		}
+		c.Systemctl = v
 	default:
 		return fmt.Errorf("unknown key %q", k)
 	}

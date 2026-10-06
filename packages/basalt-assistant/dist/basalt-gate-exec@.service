@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply the system assistant proposal approved as request %i
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/gate.md
+After=basalt-gated.service basalt-ledger.service
+
+[Service]
+# Started by basalt-gated once a person (or a system rule) approved the
+# request; it claims the decision and runs basalt apply %i --gate. Root,
+# like basalt apply at a terminal (SELinux: basalt_gate_exec_t).
+Type=oneshot
+ExecStart=/usr/libexec/basalt-assistant/basalt-gate-exec %i
+TimeoutStartSec=30min
+StandardOutput=journal
+StandardError=journal

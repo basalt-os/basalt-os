@@ -121,7 +121,7 @@ withdrew it). Replies carry `by`: `rule:<id>@<hash>`, `person:<surface>`,
 
 | op | Who | Request members | Reply members |
 |---|---|---|---|
-| `hello` | anyone | `role`, `client`, `protocol` | `protocol`, `roles`, `kind` |
+| `hello` | anyone | `role`, `client`, `protocol` | `protocol`, `roles`, `kind`, `enforce` |
 | `propose` | requester | see above | `id`, `decision`, `class`, `reason`, `by` |
 | `check` | requester | as `propose` | `decision`, `class`, `reason`, `by` (nothing is queued) |
 | `wait` | the requester, a decider | `id`, `timeout` (seconds, 1 to 600, default 180) | `id`, `decision`, `class`, `reason`, `by`, `timed_out` |
@@ -130,7 +130,7 @@ withdrew it). Replies carry `by`: `rule:<id>@<hash>`, `person:<surface>`,
 | `pending`, `history` | the requester (own), a decider | `limit` | `requests` |
 | `subscribe` | the requester (own), a decider | | then one `event` per line |
 | `decide` | decider | `id`, `ids` or `group`; `approve`; `remember` | `decided` (id to decision) |
-| `claim` | executor | `id`, `digest`, `executor` | `request` (with its calls), `digest` |
+| `claim` | executor | `id`, `digest` (or `calls` and `preview`), `executor` | `request` (with its calls), `digest` |
 | `result` | the claimer | `id`, `ok`, `exit`, `detail`, `snapshots` | `id` |
 | `stop` | anyone | `reason` | |
 | `resume` | decider | | |
@@ -139,9 +139,26 @@ withdrew it). Replies carry `by`: `rule:<id>@<hash>`, `person:<surface>`,
 | `rules.simulate` | not agents | `rules` (a rule file's text), `scope`, `since`, `records` | `simulation` |
 | `rules.apply` | decider | `rule`: `{op, scope, rule or id}`, tightening only | |
 | `rules.unpause` | decider | `id` (the rule key) | |
+| `observe` | not agents | as `propose`, plus `outcome` and `decided_by` | `id`, `decision` (what the gate would have decided), `class`, `reason`, `by` |
+| `confirm` | root outside agent domains | `id`, `code`, `mode` (`code` or `terminal`) | `id`, `decision`, `by` |
 | `unlock` | | | refused in this version |
 
-A request view (`request`, `requests`) holds: `id`, `group`, `decision`,
+`enforce` (in the hello reply) lists the migration paths where Basalt's
+own components let the gate decide: `apply` (the system assistant's
+proposals), `shell` (the desktop shell's proposals), `skills`, `models`,
+`consent`, `agent`. On the other paths they keep their own confirmation
+and only send `observe` (shadow mode): what their confirmation decided
+(`outcome`: approved, declined, expired, refused, failed or cancelled;
+`decided_by`: who), which the gate records with what it would have
+decided, queueing nothing. Third-party tools ignore it.
+
+`confirm` is the system assistant's compatibility path: root at a
+terminal confirms one of its proposals (`basalt apply ID`, a typed yes, or
+`--yes --confirm CODE`) with the short code; recorded as
+`person:tty-root`. `allow_code_confirm = no` in the gate's configuration
+refuses the `code` mode.
+
+A request view (`request`, `requests`) holds: `id`, `group`, `ref`, `decision`,
 `class`, `class_name`, `actions`, `who`, `requester`, `via`, `uid`,
 `taint`, `origin`, `calls`, `preview`, `resources`, `leaves`,
 `reversible`, `created`, `expires`, `deferrable`, `by`, `reason`,
@@ -175,6 +192,16 @@ An executor runs an action only with a claimed decision:
   A different digest voids the decision (the request is refused as
   stale, and must be planned and decided again).
 - A claim succeeds once.
+- Instead of `digest`, an executor may send `calls` (and `preview` when it
+  planned the preview): the gate validates them through the registry,
+  extracts the resources for the requester and computes the digest
+  exactly as for the request, then compares.
+- The executor of an action may read the requests addressed to it
+  (`status`), so it can find what to run before claiming.
+- An executor whose registry entry names a `unit` (a systemd template,
+  `basalt-gate-exec@.service`) is started by the gate with the request id
+  as the instance once the request is approved; a unit that cannot be
+  started is recorded as the request's result.
 
 Actions whose executor is the requester (`tool.exec`) are claimed for the
 requester when `propose` or `wait` returns `allowed`.
