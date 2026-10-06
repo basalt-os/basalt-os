@@ -189,3 +189,113 @@ msgstr "Enviar feedback ao projeto Basalt OS."
 #: internal/cli/feedback.go:95
 msgid "Nothing leaves this computer until you have seen exactly what will be sent and said yes."
 msgstr "Nada sai deste computador antes de você ver exatamente o que será enviado e dizer sim."
+
+#: internal/cli/drivers.go:103
+msgid "Graphics hardware"
+msgstr "Placas de vídeo"
+
+#: internal/cli/drivers.go:105
+msgid "No display controller was found."
+msgstr "Nenhuma placa de vídeo foi encontrada."
+
+#: internal/cli/drivers.go:113
+#, c-format
+msgid "driver now: %s"
+msgstr "driver atual: %s"
+
+#: internal/cli/drivers.go:115
+msgid "shows the boot screen"
+msgstr "mostra a tela de inicialização"
+
+#: internal/cli/drivers.go:123
+#, c-format
+msgid "Recommended: the NVIDIA driver %s (proprietary) for %s."
+msgstr "Recomendado: o driver NVIDIA %s (proprietário) para %s."
+
+#: internal/cli/drivers.go:124
+msgid "What changes if you install it:"
+msgstr "O que muda se você instalar:"
+
+#: internal/cli/drivers.go:128
+#, c-format
+msgid "Packages: %s"
+msgstr "Pacotes: %s"
+
+#: internal/cli/drivers.go:130
+#, c-format
+msgid "The NVIDIA driver %s is installed (%s)."
+msgstr "O driver NVIDIA %s está instalado (%s)."
+
+#: internal/cli/drivers.go:132
+#, c-format
+msgid "The NVIDIA driver %s is installed but switched off since %s: %s. nouveau is used."
+msgstr "O driver NVIDIA %s está instalado, mas desligado desde %s: %s. O nouveau está em uso."
+
+#: internal/cli/drivers.go:134
+msgid "No NVIDIA GPU: the drivers already installed are the right ones."
+msgstr "Nenhuma GPU NVIDIA: os drivers já instalados são os certos."
+
+#: internal/cli/drivers.go:140
+msgid "Before installing:"
+msgstr "Antes de instalar:"
+
+#: internal/cli/drivers.go:143
+msgid "in use"
+msgstr "em uso"
+
+#: internal/cli/drivers.go:143
+msgid "waiting for the first start to check it"
+msgstr "aguardando a primeira inicialização para verificá-lo"
+
+#: internal/cli/drivers.go:144
+msgid "not set up"
+msgstr "não configurado"
+
+#: internal/cli/drivers.go:144
+msgid "off, nouveau is used"
+msgstr "desligado, o nouveau está em uso"
+
+#: internal/cli/drivers.go:145
+#, c-format
+msgid "State: %s."
+msgstr "Estado: %s."
+
+#: internal/cli/drivers.go:147
+#, c-format
+msgid "This start uses: %s %s"
+msgstr "Esta inicialização usa: %s %s"
+
+#: internal/cli/drivers.go:150
+#, c-format
+msgid "Kernel %s waits for its NVIDIA module; the computer keeps starting an older kernel."
+msgstr "O kernel %s aguarda o seu módulo NVIDIA; o computador continua iniciando um kernel anterior."
+
+#: internal/cli/drivers.go:153
+#, c-format
+msgid "Secure Boot: %s."
+msgstr "Secure Boot: %s."
+
+#: internal/cli/drivers.go:161
+msgid "Read the license: basalt drivers license nvidia"
+msgstr "Leia a licença: basalt drivers license nvidia"
+
+#: internal/cli/drivers.go:162
+msgid "Install it: sudo basalt drivers install nvidia --apply"
+msgstr "Instale: sudo basalt drivers install nvidia --apply"
+
+#: internal/cli/drivers.go:165
+msgid "Return to the snapshot taken before the install: sudo basalt drivers rollback --apply"
+msgstr "Volte ao snapshot de antes da instalação: sudo basalt drivers rollback --apply"
+
+#: internal/cli/drivers.go:166
+msgid "Try the NVIDIA driver again at the next start: sudo basalt-nvidia retry"
+msgstr "Tente o driver NVIDIA de novo na próxima inicialização: sudo basalt-nvidia retry"
+
+#: internal/cli/drivers.go:168
+#, c-format
+msgid "More: %s"
+msgstr "Mais: %s"
+
+#: internal/cli/drivers.go:74
+msgid "No snapshot from before the NVIDIA driver install is known on this system."
+msgstr "Nenhum snapshot de antes da instalação do driver NVIDIA é conhecido neste sistema."

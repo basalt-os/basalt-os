@@ -82,8 +82,20 @@ make lab-mok-test         # MOK mode: module CA enrolled through MokManager, mod
 make lab-sb-custom-test   # custom db mode: own PK/KEK/db, re-signed shim, TPM suspend and reenroll
 make lab-tang-test        # Tang and TPM2+Tang unlock: server down, back, recovery key, PCR 7 change
 make lab-kernels-test     # orphaned kernels after a rollback: detection and cleanup
+make lab-nvidia-test      # NVIDIA driver of basalt-nonfree: install, signatures, kernel guard, fallback, rollback
 scripts/lab/upgrade-test.sh 45 && scripts/lab/upgrade-rollback-test.sh   # release upgrade, then back and forth
 ```
+
+`nvidia-test.sh` needs the basalt-nonfree packages in the lab repository:
+`nvidia-test.sh keys` issues a throwaway basalt-nonfree module signing
+certificate from the lab module CA, `scripts/release/build-nonfree.sh
+modules`, `sign-modules.sh --key-file` with that key and `build-nonfree.sh
+packages` (with `NONFREE_LAB=1` and `NONFREE_MODULE_CA` set to the lab CA)
+build them, and `nvidia-test.sh repo DIR` signs them into `REPO_DIR/nonfree`
+for a `basalt-nonfree-release` built with `BASALT_DEFAULT_NONFREE_URL`
+pointing there. `nvidia-test.sh mok` enrolls the lab module CA. A lab VM has
+no NVIDIA GPU: the module is accepted by the kernel and then finds no
+device, which is the failure the trial start falls back from.
 
 `mok-test.sh --sb-off` also boots once with Secure Boot disabled to check
 the command line enforcement. Each test logs PCR values where they matter

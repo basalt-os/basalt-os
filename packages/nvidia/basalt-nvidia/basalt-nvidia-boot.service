@@ -1,0 +1,19 @@
+[Unit]
+Description=Basalt OS: choose the NVIDIA driver or nouveau for this boot
+Documentation=man:modprobe.d(5)
+DefaultDependencies=no
+# The module signing certificates must be in the kernel's keyring, and the
+# root file system writable (a trial boot is recorded before the module
+# loads); udev must not have loaded a GPU driver yet.
+After=basalt-module-keys.service systemd-remount-fs.service
+Before=systemd-udevd.service systemd-udev-trigger.service systemd-modules-load.service sysinit.target
+ConditionPathExists=/usr/bin/basalt-nvidia
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/basalt-nvidia boot
+TimeoutStartSec=180
+
+[Install]
+WantedBy=sysinit.target

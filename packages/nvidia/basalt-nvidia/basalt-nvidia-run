@@ -1,0 +1,7 @@
+#!/bin/sh
+# Run a program on the NVIDIA GPU of a laptop with two GPUs (PRIME render
+# offload): the integrated GPU keeps the display, this program renders on
+# the NVIDIA GPU. Same as basalt-nvidia run.
+#   basalt-nvidia-run glxinfo -B
+#   basalt-nvidia-run vkcube
+exec /usr/bin/basalt-nvidia run "$@"

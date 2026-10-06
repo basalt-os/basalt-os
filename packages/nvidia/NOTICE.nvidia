@@ -1,0 +1,20 @@
+NVIDIA driver userspace, packaged for Basalt OS (basalt-nonfree repository)
+
+These files come unmodified from NVIDIA's official Linux driver package:
+
+  NVIDIA-Linux-x86_64-@VERSION@.run
+  https://download.nvidia.com/XFree86/Linux-x86_64/@VERSION@/
+  SHA-256 @RUN_SHA256@
+
+Every NVIDIA file is byte-identical to the same file in that package: no
+stripping, patching, relinking or compression. Repackaging into RPMs only
+puts them in the places NVIDIA's own installer uses. They are distributed
+under the NVIDIA Driver License Agreement in LICENSE next to this file;
+using them means accepting it. GeForce and Titan software is not licensed
+for datacenter deployment (section 2.8 of the Agreement).
+
+Packaged by OpenBasalt for Basalt OS, not supported by NVIDIA. Report
+problems with this packaging to the Basalt OS project, not to NVIDIA:
+https://github.com/basalt-os/basalt-os/issues
+
+NVIDIA, GeForce and CUDA are trademarks of NVIDIA Corporation.

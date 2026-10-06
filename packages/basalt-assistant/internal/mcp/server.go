@@ -20,6 +20,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/audit"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/decide"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/drivers"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 )
@@ -99,6 +100,8 @@ func (s *Server) Tools() []Tool {
 			InputSchema: obj(map[string]any{"status": str("pending (default), applied, failed, ignored, or all")}), Annotations: ro, handler: s.pending},
 		{Name: "basalt_proposal", Title: "Show a proposal", Description: "One proposal: report, evidence, decision, exact commands.",
 			InputSchema: obj(map[string]any{"id": str("proposal id")}, "id"), Annotations: ro, handler: s.show},
+		{Name: "basalt_drivers", Title: "Additional drivers", Description: "The graphics hardware (PCI ids, kernel driver in use), the driver that fits it (the NVIDIA driver of the opt-in basalt-nonfree repository for Turing and newer GPUs), what installing it changes, the Secure Boot state and the driver's state after install (trial, in use, fell back to nouveau, and why).",
+			InputSchema: obj(map[string]any{}), Annotations: ro, handler: s.drivers},
 		{Name: "basalt_audit_tail", Title: "Audit log", Description: "The last records of the assistant's hash-chained audit log and whether the chain verifies.",
 			InputSchema: obj(map[string]any{"n": num("records (default 20)")}), Annotations: ro, handler: s.auditTail},
 
@@ -114,6 +117,10 @@ func (s *Server) Tools() []Tool {
 		{Name: "basalt_propose_disk_cleanup", Title: "Propose disk cleanup", write: true,
 			Description: "Store the disk report's proposed cleanup (journal vacuum, package cache, a snapshot) as a proposal. Nothing is executed.",
 			InputSchema: obj(map[string]any{}), Annotations: prop, handler: s.proposeDisk},
+		{Name: "basalt_propose_driver_install", Title: "Propose the NVIDIA driver", write: true,
+			Description: "Store a proposal to install the recommended NVIDIA driver from basalt-nonfree (driver.install: repository on, packages, nouveau off, a trial start that falls back to nouveau on failure). Nothing is executed: the person reads the NVIDIA license and confirms with `sudo basalt apply <id>` or in Settings, Additional drivers.",
+			InputSchema: obj(map[string]any{"variant": map[string]any{"type": "string", "enum": []string{"display", "compute"},
+				"description": "display (desktop, the default on a graphical system) or compute (servers: CUDA only)"}}), Annotations: prop, handler: s.proposeDriver},
 		{Name: "basalt_propose_action", Title: "Propose a typed action", write: true,
 			Description: "Store a proposal for one action of the closed set (" + strings.Join(kinds(), ", ") + ") with validated parameters. Nothing is executed.",
 			InputSchema: obj(map[string]any{
@@ -126,7 +133,8 @@ func (s *Server) Tools() []Tool {
 
 func kinds() []string {
 	return []string{action.SELinuxFcontext, action.SELinuxRestorecon, action.SELinuxPort, action.SELinuxBoolean,
-		action.UnitRestart, action.FileRestore, action.SnapshotRollback, action.SnapshotDelete, action.JournalVacuum, action.DnfClean}
+		action.UnitRestart, action.FileRestore, action.SnapshotRollback, action.SnapshotDelete, action.JournalVacuum, action.DnfClean,
+		action.DriverInstall}
 }
 
 // Serve handles requests until EOF.
@@ -277,6 +285,30 @@ func (s *Server) disk(ctx context.Context, _ map[string]any) (string, any, error
 	p := report.FromDisk("mcp", rep)
 	p.ID = "preview"
 	return mcpText(p), wrap(rep), nil
+}
+
+func (s *Server) drivers(ctx context.Context, _ map[string]any) (string, any, error) {
+	r := drivers.Build(ctx, drivers.Real(s.Env.R), false)
+	var b strings.Builder
+	for _, g := range r.GPUs {
+		fmt.Fprintf(&b, "%s %s (%s:%s), driver %s\n", g.Slot, g.Name, g.VendorID, g.DeviceID, g.Driver)
+	}
+	rec := r.Recommendation
+	fmt.Fprintf(&b, "recommendation: %s %s %s %s\n", rec.Action, rec.Driver, rec.Version, rec.Variant)
+	for _, l := range append(append(rec.Changes, rec.Notes...), rec.Blockers...) {
+		b.WriteString("- " + l + "\n")
+	}
+	fmt.Fprintf(&b, "state: %s %s\n", r.State.Mode, r.State.Reason)
+	return b.String(), r, nil
+}
+
+func (s *Server) proposeDriver(ctx context.Context, args map[string]any) (string, any, error) {
+	r := drivers.Build(ctx, drivers.Real(s.Env.R), false)
+	p, err := drivers.InstallProposal(r, "mcp", strArg(args, "variant"))
+	if err != nil {
+		return err.Error() + "\nNothing was stored.\n", map[string]any{"stored": false}, nil
+	}
+	return s.store(ctx, p)
 }
 
 func (s *Server) snapshots(ctx context.Context, _ map[string]any) (string, any, error) {

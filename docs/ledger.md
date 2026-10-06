@@ -30,6 +30,7 @@ basalt ledger summary --since today         the same through the basalt command
 | login | `login.session`, `auth.failure` | journal (systemd-logind, audit) |
 | basalt-agent-grant | `agent.grant.helper` | journal (the root helper behind `basalt-agent grant`) |
 | snapper | `snapshot.create`, `snapshot.rollback` | snapshot descriptions in `/.snapshots` |
+| basalt-nvidia | `driver.install`, `driver.check`, `driver.fallback`, `driver.retry`, `driver.boot`, `driver.kernel_hold`, `driver.kernel_release` (docs/nvidia.md) | socket, from root |
 | basalt-ledger | `ledger.start` (with the export key in use), `ledger.seal`, `ledger.continue`, `ledger.retention`, `ledger.refused`, `ledger.chain_error` | itself |
 
 ## Records

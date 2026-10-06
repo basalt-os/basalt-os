@@ -21,6 +21,7 @@ document is the procedure for release keys and for using them afterwards.
 | Secure Boot db | RSA 2048 | shim (custom db mode) | offline; or a release signer, see below | each shim release |
 | Kernel module CA | RSA 4096, CA, keyCertSign only | module signing certificates | offline only | when a signing certificate is issued |
 | Module signing certificate | RSA 4096, digitalSignature, code signing | kernel modules (.ko) | release signer | every module build |
+| basalt-nonfree module signing certificate | RSA 4096, digitalSignature, code signing, issued by the module CA | the NVIDIA open kernel modules of basalt-nonfree (docs/nvidia.md) | release signer | every NVIDIA module build |
 
 RSA 2048 for the UEFI keys because every firmware supports it; some
 reject larger keys. The module CA carries no `digitalSignature` usage:
@@ -51,7 +52,9 @@ certificates 2 years, rotated by a package update.
    `gpg --full-generate-key` for the repository key), directly on the
    token when it supports key generation, otherwise in a RAM-only
    directory.
-3. Issue the first module signing certificate from the module CA.
+3. Issue the first module signing certificate from the module CA, and
+   the basalt-nonfree module signing certificate (a key of its own, so the
+   NVIDIA modules can be revoked without touching Basalt's other modules).
 4. Export the public parts: certificates in PEM and DER, the OpenPGP public
    key, fingerprints. These go into the repository (`basalt-security`,
    `basalt-release`) and onto the website.
@@ -77,13 +80,18 @@ certificates 2 years, rotated by a package update.
 - A new shim release (Fedora's) is signed with the db key in a short
   ceremony with the token, then shipped in a Basalt package.
 - A new module signing certificate is issued by the module CA in a short
-  ceremony, then shipped in `basalt-security`.
+  ceremony, then shipped in `basalt-security`. The basalt-nonfree one is
+  committed as `packages/nvidia/basalt-nonfree-module-signing.der` and
+  shipped by `basalt-nvidia`; its private key signs with
+  `scripts/release/sign-modules.sh` (PEM, optionally encrypted, from
+  1Password or a 0600 file on a tmpfs).
 
 ## Compromise and revocation
 
 | Compromised | Do |
 |---|---|
 | Module signing certificate | ship a new certificate in `basalt-security` (old one no longer loaded at boot); rebuild modules; optionally add its hash to the MOK revocation list (MokListX) |
+| basalt-nonfree module signing certificate | the same, with `basalt-nvidia` and a rebuild and new signature of every NVIDIA module |
 | Module CA | new CA; every machine enrolls it at the console (MokManager) and removes the old one (`basalt-secureboot unenroll-mok`) |
 | db key | new db key: update db with a KEK-signed file, add the old certificate to dbx, re-sign and ship shim |
 | KEK or PK | new keys; every custom db machine goes through setup mode again |

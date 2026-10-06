@@ -36,7 +36,11 @@ the [Basalt shell](https://github.com/basalt-os/basalt-shell) in a Sway
 session, on SwayFX 0.6 from the Basalt repository (rounded corners,
 shadows, blur and dimming, turned off on machines without a GPU), with the
 greetd login screen, portals, PipeWire and a few applications. niri is an
-optional session (`basalt-shell-niri`), not installed by default. A live
+optional session (`basalt-shell-niri`), not installed by default. Settings,
+Additional drivers (and `basalt drivers`) installs the NVIDIA driver for
+Turing and newer GPUs from the opt-in `basalt-nonfree` repository, with
+kernel modules built and signed for every Basalt OS kernel, so Secure Boot
+stays on ([docs/nvidia.md](docs/nvidia.md)). A live
 image lets you try it without installing (see "The live desktop image" in
 [docs/installer.md](docs/installer.md)).
 
@@ -85,6 +89,8 @@ packages/basalt-llm/         optional local model service: llama.cpp server for 
 packages/swayfx/              SwayFX (sway with rounded corners, shadows, blur, dimming) for the desktop session, on Fedora's wlroots and scenefx
 packages/basalt-shell/       desktop shell build, from github.com/basalt-os/basalt-shell at a pinned commit (basalt-testing)
 packages/basalt-voice/       push to talk speech to text (whisper.cpp for the CPU) and the pinned speech model manifest (basalt-testing)
+packages/basalt-nonfree-release/  the basalt-nonfree repository definition, off by default
+packages/nvidia/             the NVIDIA driver for basalt-nonfree: specs, the file list, check-identical.sh, basalt-nvidia (docs/nvidia.md)
 eval/                        shared evaluation suite: labeled decision cases, translator test set, generators
 packages/lab/                test fixtures for the lab (never published)
 kickstart/basalt-server.ks   the installer profile

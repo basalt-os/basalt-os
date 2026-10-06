@@ -15,7 +15,8 @@
 #   <repo>/<releasever>/<arch>/    binary RPMs + repodata (repomd.xml.asc)
 #   <repo>/<releasever>/source/    source RPMs + repodata (repomd.xml.asc),
 #                                  only when IN_DIR has source RPMs
-# <repo> is OB_REPO: basalt (default), basalt-tools or basalt-testing. This
+# <repo> is OB_REPO: basalt (default), basalt-tools, basalt-testing or
+# basalt-nonfree. This
 # is what basalt-release's repository files expect
 # ($basalt_repo_url/$releasever/$basearch/ with basalt_repo_url =
 # https://obpkg.org/basalt, likewise basalt_tools_url and basalt_testing_url).
@@ -55,7 +56,7 @@ source "$(dirname "$0")/../lib.sh"
 : "${SIGN_PODMAN:=podman}"
 SIGNER_IMAGE="localhost/basalt-signer:$FEDORA_RELEASE"
 : "${OB_REPO:=basalt}"
-case "$OB_REPO" in basalt | basalt-tools | basalt-testing) ;; *) die "OB_REPO must be basalt, basalt-tools or basalt-testing" ;; esac
+case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing or basalt-nonfree" ;; esac
 export OP_ACCOUNT
 
 mode="${1:-}"

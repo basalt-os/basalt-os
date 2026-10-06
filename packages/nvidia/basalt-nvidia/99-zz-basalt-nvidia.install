@@ -1,0 +1,17 @@
+#!/bin/bash
+# kernel-install plugin (package basalt-nvidia): a kernel installed without
+# its NVIDIA module must not become the default boot entry. The name makes
+# it run last, after the plugins that make a new kernel the default
+# (20-grub.install, 95-set-boot-entry.install, 99-grub-mkconfig.install):
+# basalt-nvidia select-default puts the default back on the newest kernel that has a
+# matching module and records the hold. When the module arrives (its
+# kmod-nvidia-open-<kernel> package), the same command makes that kernel
+# the default again.
+COMMAND="${1:-}"
+case "$COMMAND" in
+  add | remove)
+    [ -x /usr/bin/basalt-nvidia ] || exit 0
+    /usr/bin/basalt-nvidia select-default || :
+    ;;
+esac
+exit 0

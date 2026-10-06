@@ -1,0 +1,8 @@
+# NVIDIA driver (basalt-nonfree): save and restore video memory around
+# suspend, hibernation and suspend-then-hibernate, as NVIDIA recommends.
+# nvidia-powerd (Dynamic Boost) stays off; enable it on laptops that
+# support it: systemctl enable --now nvidia-powerd
+enable nvidia-suspend.service
+enable nvidia-resume.service
+enable nvidia-hibernate.service
+enable nvidia-suspend-then-hibernate.service

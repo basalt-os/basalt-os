@@ -10,8 +10,8 @@
 #         https://obpkg.org/basalt or https://obpkg.org/basalt-tools
 # KEY     the armored public key (a file, or an https URL)
 # PACKAGE default: basalt-release basalt-logos (required for other repositories)
-# OB_REPO the repository in a local tree: basalt (default), basalt-tools or
-#         basalt-testing. Other repositories are enabled too (Fedora's), so
+# OB_REPO the repository in a local tree: basalt (default), basalt-tools,
+#         basalt-testing or basalt-nonfree. Other repositories are enabled too (Fedora's), so
 #         dependencies resolve as on an installed system.
 #
 # CLIENT_TEST_DEPS_URL, optional: a second signed repository enabled next
@@ -32,7 +32,7 @@ key="${2:?KEY}"
 shift 2
 pkgs=("$@")
 : "${OB_REPO:=basalt}"
-case "$OB_REPO" in basalt | basalt-tools | basalt-testing) ;; *) die "OB_REPO must be basalt, basalt-tools or basalt-testing" ;; esac
+case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing or basalt-nonfree" ;; esac
 if [[ ${#pkgs[@]} -eq 0 ]]; then
   [[ "$OB_REPO" == basalt ]] || die "name the packages to install from $OB_REPO"
   pkgs=(basalt-release basalt-logos)

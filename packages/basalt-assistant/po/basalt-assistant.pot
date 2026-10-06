@@ -9,6 +9,116 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: internal/cli/drivers.go:103
+msgid "Graphics hardware"
+msgstr ""
+
+#: internal/cli/drivers.go:105
+msgid "No display controller was found."
+msgstr ""
+
+#: internal/cli/drivers.go:113
+#, c-format
+msgid "driver now: %s"
+msgstr ""
+
+#: internal/cli/drivers.go:115
+msgid "shows the boot screen"
+msgstr ""
+
+#: internal/cli/drivers.go:123
+#, c-format
+msgid "Recommended: the NVIDIA driver %s (proprietary) for %s."
+msgstr ""
+
+#: internal/cli/drivers.go:124
+msgid "What changes if you install it:"
+msgstr ""
+
+#: internal/cli/drivers.go:128
+#, c-format
+msgid "Packages: %s"
+msgstr ""
+
+#: internal/cli/drivers.go:130
+#, c-format
+msgid "The NVIDIA driver %s is installed (%s)."
+msgstr ""
+
+#: internal/cli/drivers.go:132
+#, c-format
+msgid "The NVIDIA driver %s is installed but switched off since %s: %s. nouveau is used."
+msgstr ""
+
+#: internal/cli/drivers.go:134
+msgid "No NVIDIA GPU: the drivers already installed are the right ones."
+msgstr ""
+
+#: internal/cli/drivers.go:140
+msgid "Before installing:"
+msgstr ""
+
+#: internal/cli/drivers.go:146
+msgid "waiting for the first start to check it"
+msgstr ""
+
+#: internal/cli/drivers.go:148
+msgid "in use"
+msgstr ""
+
+#: internal/cli/drivers.go:150
+msgid "off, nouveau is used"
+msgstr ""
+
+#: internal/cli/drivers.go:152
+msgid "not set up"
+msgstr ""
+
+#: internal/cli/drivers.go:154
+#, c-format
+msgid "State: %s."
+msgstr ""
+
+#: internal/cli/drivers.go:156
+#, c-format
+msgid "This start uses: %s %s"
+msgstr ""
+
+#: internal/cli/drivers.go:159
+#, c-format
+msgid "Kernel %s waits for its NVIDIA module; the computer keeps starting an older kernel."
+msgstr ""
+
+#: internal/cli/drivers.go:162
+#, c-format
+msgid "Secure Boot: %s."
+msgstr ""
+
+#: internal/cli/drivers.go:170
+msgid "Read the license: basalt drivers license nvidia"
+msgstr ""
+
+#: internal/cli/drivers.go:171
+msgid "Install it: sudo basalt drivers install nvidia --apply"
+msgstr ""
+
+#: internal/cli/drivers.go:174
+msgid "Return to the snapshot taken before the install: sudo basalt drivers rollback --apply"
+msgstr ""
+
+#: internal/cli/drivers.go:175
+msgid "Try the NVIDIA driver again at the next start: sudo basalt-nvidia retry"
+msgstr ""
+
+#: internal/cli/drivers.go:177
+#, c-format
+msgid "More: %s"
+msgstr ""
+
+#: internal/cli/drivers.go:74
+msgid "No snapshot from before the NVIDIA driver install is known on this system."
+msgstr ""
+
 #: internal/cli/feedback.go:103
 msgid "Write your message. End it with an empty line."
 msgstr ""

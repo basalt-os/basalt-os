@@ -1,0 +1,122 @@
+# NVIDIA userspace files taken from the official .run, and where they go.
+#
+# This list is the single source of truth for nvidia-driver.spec (what each
+# binary package installs) and for check-identical.sh (every installed
+# NVIDIA file must be byte-identical to the same file in the .run). Files
+# are copied as they are: never stripped, patched, compressed or relinked.
+#
+#   file SUBPACKAGE MODE SOURCE DESTINATION   a file from the extracted .run
+#   link SUBPACKAGE DESTINATION TARGET        a symbolic link we create (as
+#                                             NVIDIA's installer does)
+#
+# @V@ is the driver version, @LIB@ the 64-bit library directory (/usr/lib64).
+# Not taken from the .run: the glvnd dispatch libraries, the OpenCL loader
+# and the EGL external platform libraries (Fedora's libglvnd, ocl-icd,
+# egl-wayland, egl-wayland2, egl-gbm and egl-x11, built from source), the
+# X.Org driver and GLX server module (no X server in Basalt OS), the
+# installer, nvidia-settings and nvidia-xconfig (X11 tools), nvidia-modprobe
+# and nvidia-persistenced (built from their GitHub sources instead), the
+# DLSS updater (it downloads code), Vulkan SC, nvidia-pcc, the PKCS #11
+# library built for OpenSSL 1.1 (the OpenSSL 3 one is shipped) and the
+# 32-bit compatibility libraries.
+
+# --- libs: OpenGL, EGL, GLES, Vulkan, GBM, VDPAU, ray tracing ---------------
+file libs 0755 libGLX_nvidia.so.@V@ @LIB@/libGLX_nvidia.so.@V@
+link libs @LIB@/libGLX_nvidia.so.0 libGLX_nvidia.so.@V@
+file libs 0755 libEGL_nvidia.so.@V@ @LIB@/libEGL_nvidia.so.@V@
+link libs @LIB@/libEGL_nvidia.so.0 libEGL_nvidia.so.@V@
+file libs 0755 libGLESv2_nvidia.so.@V@ @LIB@/libGLESv2_nvidia.so.@V@
+link libs @LIB@/libGLESv2_nvidia.so.2 libGLESv2_nvidia.so.@V@
+file libs 0755 libGLESv1_CM_nvidia.so.@V@ @LIB@/libGLESv1_CM_nvidia.so.@V@
+link libs @LIB@/libGLESv1_CM_nvidia.so.1 libGLESv1_CM_nvidia.so.@V@
+file libs 0755 libnvidia-glcore.so.@V@ @LIB@/libnvidia-glcore.so.@V@
+file libs 0755 libnvidia-eglcore.so.@V@ @LIB@/libnvidia-eglcore.so.@V@
+file libs 0755 libnvidia-glsi.so.@V@ @LIB@/libnvidia-glsi.so.@V@
+file libs 0755 libnvidia-tls.so.@V@ @LIB@/libnvidia-tls.so.@V@
+file libs 0755 libnvidia-glvkspirv.so.@V@ @LIB@/libnvidia-glvkspirv.so.@V@
+file libs 0755 libnvidia-allocator.so.@V@ @LIB@/libnvidia-allocator.so.@V@
+link libs @LIB@/libnvidia-allocator.so.1 libnvidia-allocator.so.@V@
+link libs @LIB@/gbm/nvidia-drm_gbm.so ../libnvidia-allocator.so.1
+file libs 0755 libnvidia-rtcore.so.@V@ @LIB@/libnvidia-rtcore.so.@V@
+file libs 0755 libnvoptix.so.@V@ @LIB@/libnvoptix.so.@V@
+link libs @LIB@/libnvoptix.so.1 libnvoptix.so.@V@
+file libs 0644 nvoptix.bin /usr/share/nvidia/nvoptix.bin
+file libs 0755 libnvidia-ngx.so.@V@ @LIB@/libnvidia-ngx.so.@V@
+file libs 0755 libnvidia-present.so.@V@ @LIB@/libnvidia-present.so.@V@
+file libs 0755 libnvidia-api.so.1 @LIB@/libnvidia-api.so.1
+file libs 0755 libnvidia-fbc.so.@V@ @LIB@/libnvidia-fbc.so.@V@
+link libs @LIB@/libnvidia-fbc.so.1 libnvidia-fbc.so.@V@
+file libs 0755 libvdpau_nvidia.so.@V@ @LIB@/vdpau/libvdpau_nvidia.so.@V@
+link libs @LIB@/vdpau/libvdpau_nvidia.so.1 libvdpau_nvidia.so.@V@
+file libs 0755 nvngx.dll @LIB@/nvidia/wine/nvngx.dll
+file libs 0755 _nvngx.dll @LIB@/nvidia/wine/_nvngx.dll
+file libs 0755 nvngx_dlssg.dll @LIB@/nvidia/wine/nvngx_dlssg.dll
+file libs 0644 10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+file libs 0644 nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json
+file libs 0644 nvidia_layers.json /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+file libs 0644 nvidia-application-profiles-@V@-rc /usr/share/nvidia/nvidia-application-profiles-@V@-rc
+file libs 0644 nvidia-application-profiles-@V@-key-documentation /usr/share/nvidia/nvidia-application-profiles-@V@-key-documentation
+
+# --- cuda-libs: CUDA, NVML, OpenCL, video encode and decode ----------------
+file cuda-libs 0755 libcuda.so.@V@ @LIB@/libcuda.so.@V@
+link cuda-libs @LIB@/libcuda.so.1 libcuda.so.@V@
+link cuda-libs @LIB@/libcuda.so libcuda.so.1
+file cuda-libs 0755 libnvidia-ml.so.@V@ @LIB@/libnvidia-ml.so.@V@
+link cuda-libs @LIB@/libnvidia-ml.so.1 libnvidia-ml.so.@V@
+link cuda-libs @LIB@/libnvidia-ml.so libnvidia-ml.so.1
+file cuda-libs 0755 libnvidia-ptxjitcompiler.so.@V@ @LIB@/libnvidia-ptxjitcompiler.so.@V@
+link cuda-libs @LIB@/libnvidia-ptxjitcompiler.so.1 libnvidia-ptxjitcompiler.so.@V@
+link cuda-libs @LIB@/libnvidia-ptxjitcompiler.so libnvidia-ptxjitcompiler.so.1
+file cuda-libs 0755 libnvidia-nvvm.so.@V@ @LIB@/libnvidia-nvvm.so.@V@
+link cuda-libs @LIB@/libnvidia-nvvm.so.4 libnvidia-nvvm.so.@V@
+link cuda-libs @LIB@/libnvidia-nvvm.so libnvidia-nvvm.so.4
+file cuda-libs 0755 libnvidia-nvvm70.so.4 @LIB@/libnvidia-nvvm70.so.4
+file cuda-libs 0755 libnvidia-gpucomp.so.@V@ @LIB@/libnvidia-gpucomp.so.@V@
+file cuda-libs 0755 libcudadebugger.so.@V@ @LIB@/libcudadebugger.so.@V@
+link cuda-libs @LIB@/libcudadebugger.so.1 libcudadebugger.so.@V@
+file cuda-libs 0755 libnvidia-opencl.so.@V@ @LIB@/libnvidia-opencl.so.@V@
+link cuda-libs @LIB@/libnvidia-opencl.so.1 libnvidia-opencl.so.@V@
+file cuda-libs 0644 nvidia.icd /etc/OpenCL/vendors/nvidia.icd
+file cuda-libs 0755 libnvcuvid.so.@V@ @LIB@/libnvcuvid.so.@V@
+link cuda-libs @LIB@/libnvcuvid.so.1 libnvcuvid.so.@V@
+link cuda-libs @LIB@/libnvcuvid.so libnvcuvid.so.1
+file cuda-libs 0755 libnvidia-encode.so.@V@ @LIB@/libnvidia-encode.so.@V@
+link cuda-libs @LIB@/libnvidia-encode.so.1 libnvidia-encode.so.@V@
+link cuda-libs @LIB@/libnvidia-encode.so libnvidia-encode.so.1
+file cuda-libs 0755 libnvidia-opticalflow.so.@V@ @LIB@/libnvidia-opticalflow.so.@V@
+link cuda-libs @LIB@/libnvidia-opticalflow.so.1 libnvidia-opticalflow.so.@V@
+file cuda-libs 0755 libnvidia-cfg.so.@V@ @LIB@/libnvidia-cfg.so.@V@
+link cuda-libs @LIB@/libnvidia-cfg.so.1 libnvidia-cfg.so.@V@
+file cuda-libs 0755 libnvidia-sandboxutils.so.@V@ @LIB@/libnvidia-sandboxutils.so.@V@
+link cuda-libs @LIB@/libnvidia-sandboxutils.so.1 libnvidia-sandboxutils.so.@V@
+file cuda-libs 0644 sandboxutils-filelist.json /usr/share/nvidia/files.d/sandboxutils-filelist.json
+file cuda-libs 0755 libnvidia-tileiras.so.@V@ @LIB@/libnvidia-tileiras.so.@V@
+file cuda-libs 0755 libnvidia-pkcs11-openssl3.so.@V@ @LIB@/libnvidia-pkcs11-openssl3.so.@V@
+
+# --- cuda: tools (nvidia-smi and friends) -----------------------------------
+file cuda 0755 nvidia-smi /usr/bin/nvidia-smi
+file cuda 0644 nvidia-smi.1.gz /usr/share/man/man1/nvidia-smi.1.gz
+file cuda 0755 nvidia-debugdump /usr/bin/nvidia-debugdump
+file cuda 0755 nvidia-cuda-mps-control /usr/bin/nvidia-cuda-mps-control
+file cuda 0755 nvidia-cuda-mps-server /usr/bin/nvidia-cuda-mps-server
+file cuda 0644 nvidia-cuda-mps-control.1.gz /usr/share/man/man1/nvidia-cuda-mps-control.1.gz
+file cuda 0755 nvidia-bug-report.sh /usr/bin/nvidia-bug-report.sh
+
+# --- firmware: GSP firmware the open kernel modules load --------------------
+file firmware 0644 firmware/gsp_ga10x.bin /usr/lib/firmware/nvidia/@V@/gsp_ga10x.bin
+file firmware 0644 firmware/gsp_tu10x.bin /usr/lib/firmware/nvidia/@V@/gsp_tu10x.bin
+
+# --- power: suspend, resume, hibernate, Dynamic Boost -----------------------
+file power 0644 systemd/system/nvidia-suspend.service /usr/lib/systemd/system/nvidia-suspend.service
+file power 0644 systemd/system/nvidia-resume.service /usr/lib/systemd/system/nvidia-resume.service
+file power 0644 systemd/system/nvidia-hibernate.service /usr/lib/systemd/system/nvidia-hibernate.service
+file power 0644 systemd/system/nvidia-suspend-then-hibernate.service /usr/lib/systemd/system/nvidia-suspend-then-hibernate.service
+file power 0644 systemd/system/systemd-suspend.service.d/nvidia-suspend-nofreeze.conf /usr/lib/systemd/system/systemd-suspend.service.d/nvidia-suspend-nofreeze.conf
+file power 0644 systemd/system/systemd-hibernate.service.d/nvidia-suspend-nofreeze.conf /usr/lib/systemd/system/systemd-hibernate.service.d/nvidia-suspend-nofreeze.conf
+file power 0644 systemd/system/systemd-suspend-then-hibernate.service.d/nvidia-suspend-nofreeze.conf /usr/lib/systemd/system/systemd-suspend-then-hibernate.service.d/nvidia-suspend-nofreeze.conf
+file power 0644 systemd/system/systemd-hybrid-sleep.service.d/nvidia-suspend-nofreeze.conf /usr/lib/systemd/system/systemd-hybrid-sleep.service.d/nvidia-suspend-nofreeze.conf
+file power 0755 systemd/system-sleep/nvidia /usr/lib/systemd/system-sleep/nvidia
+file power 0755 systemd/nvidia-sleep.sh /usr/bin/nvidia-sleep.sh
+file power 0755 nvidia-powerd /usr/bin/nvidia-powerd
+file power 0644 systemd/system/nvidia-powerd.service /usr/lib/systemd/system/nvidia-powerd.service
+file power 0644 nvidia-dbus.conf /usr/share/dbus-1/system.d/nvidia-dbus.conf

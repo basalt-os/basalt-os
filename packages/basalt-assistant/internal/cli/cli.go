@@ -40,6 +40,8 @@ Look (no changes, no confirmation):
   basalt pending [--all]              proposals waiting for your decision
   basalt show ID                      one proposal in full
   basalt audit [N] | audit verify     the audit log (tamper-evident, checked across rotated files)
+  basalt drivers                      the graphics hardware and the driver that fits (Additional drivers)
+  basalt drivers license nvidia       the NVIDIA Driver License Agreement
 
 Change (as root; you see the exact commands first and confirm them):
   basalt apply ID [--yes --confirm CODE]
@@ -47,6 +49,9 @@ Change (as root; you see the exact commands first and confirm them):
   basalt confirm ID                   check, as root, a hint of the background service (a file
                                       restore, a rollback) and turn it into a proposal
   basalt snapshots rollback N | --before ID
+  basalt drivers install nvidia [display|compute]
+                                      the NVIDIA driver from basalt-nonfree (Turing and newer GPUs)
+  basalt drivers rollback             back to the snapshot taken before the NVIDIA driver install
   basalt audit rotate [--force]       seal the audit log and continue in a new file
   basalt why UNIT --apply, basalt fix selinux --apply, basalt disk --apply
                                       store the proposal and go straight to the confirmation
@@ -250,6 +255,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.ask(ctx)
 	case "feedback":
 		return a.feedback(ctx)
+	case "drivers":
+		return a.drivers(ctx)
 	}
 	return fmt.Errorf("unknown command %q (basalt help)", a.o.args[0])
 }

@@ -1,0 +1,50 @@
+# rpmlint configuration for the basalt-nonfree packages
+# (scripts/release/build-nonfree.sh). The basalt filters apply too; each
+# extra filter is a known, accepted finding of NVIDIA's binaries, which
+# must stay exactly as NVIDIA ships them (docs/nvidia.md), with the reason.
+Filters = [
+    # As in rpmlint.toml: technical words in summaries and descriptions.
+    'spelling-error',
+    # NVIDIA's license has no SPDX identifier.
+    'invalid-license LicenseRef-NVIDIA-Driver-License',
+    # The meta packages (nvidia-driver, nvidia-driver-compute,
+    # kmod-nvidia-open) only pull in other packages.
+    'no-binary',
+    'no-documentation',
+    # NVIDIA's binaries are shipped unmodified: as NVIDIA built and stripped
+    # them, with their own sonames and link flags.
+    'unstripped-binary-or-object',
+    'shared-library-without-dependency-information',
+    'shared-library-not-executable',
+    'library-not-linked-against-libc',
+    'missing-call-to-setgroups-before-setuid',
+    'missing-call-to-chdir-with-chroot',
+    'binary-or-shlib-calls-gethostbyname',
+    'lto-no-text-in-archive',
+    'invalid-soname',
+    'no-soname',
+    'devel-file-in-non-devel-package',
+    'arch-dependent-file-in-usr-share /usr/share/nvidia/nvoptix.bin',
+    # The DLSS libraries are Windows PE files used by Wine and Proton.
+    'binary-in-etc',
+    'arch-independent-package-contains-binary-or-object',
+    # nvidia-modprobe is setuid root by design (it creates the device files
+    # and loads nvidia-uvm for programs that are not root).
+    'setuid-binary /usr/bin/nvidia-modprobe',
+    'non-standard-executable-perm /usr/bin/nvidia-modprobe',
+    # Kernel modules live under /usr/lib/modules/<kernel>/extra, and the
+    # kmod package name carries the kernel release.
+    'kernel-module-not-in-kernel-dir',
+    # The scriptlets run depmod -a KERNEL for the kernel the module is
+    # for; rpmlint looks for another form of the same command.
+    'postin-with-wrong-depmod',
+    'postun-with-wrong-depmod',
+    # nvidia-open-kmod.spec builds kmod-nvidia-open-<kernel>: one spec, a
+    # package name per kernel.
+    'invalid-spec-name',
+    'incoherent-version-in-changelog',
+    # Our files under /etc/nvidia and the basalt-nvidia state directory.
+    'non-conffile-in-etc /etc/OpenCL/vendors/nvidia.icd',
+    # NVIDIA's units and our own run as oneshot helpers.
+    'systemd-service-without-service_add_pre',
+]

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build the Basalt OS RPMs in a Fedora container.
 #
-#   scripts/build-rpms.sh            basalt-release, basalt-logos, basalt-snapshots, basalt-security,
-#                                    basalt-prompt, basalt-assistant (Go, own script: packages/basalt-assistant/build.sh)
+#   scripts/build-rpms.sh            basalt-release, basalt-nonfree-release, basalt-logos, basalt-snapshots,
+#                                    basalt-security, basalt-prompt, basalt-assistant (Go, own script:
+#                                    packages/basalt-assistant/build.sh)
 #   scripts/build-rpms.sh --lab      also the lab canary package (versions 1, 2, 3)
 #
 # Output: $BUILD_DIR/rpms/<fedora>/ (binary and source RPMs); lab fixtures in
@@ -11,7 +12,9 @@
 # (otherwise basalt-release ships the OpenBasalt release key from packages/basalt-release).
 # BASALT_DEFAULT_REPO_URL, BASALT_DEFAULT_TOOLS_URL and BASALT_DEFAULT_TESTING_URL,
 # when set, replace the default repository URLs basalt-release ships
-# (https://obpkg.org/basalt, /basalt-tools, /basalt-testing), for a lab or a mirror.
+# (https://obpkg.org/basalt, /basalt-tools, /basalt-testing), for a lab or a mirror;
+# BASALT_DEFAULT_NONFREE_URL likewise for basalt-nonfree-release
+# (https://obpkg.org/basalt-nonfree).
 # BASALT_MODULE_CA_CERT and BASALT_MODULE_SIGNING_CERT (DER or PEM), when set,
 # replace the kernel module CA (the MOK) and signing certificate shipped in
 # basalt-security (a lab override; otherwise the OpenBasalt certificates in
@@ -26,7 +29,7 @@ trap 'sudo rm -rf "$work"' EXIT
 mkdir -p "$work/SOURCES" "$work/SPECS" "$work/lab"
 
 # Sources: every file next to each spec (subdirectories such as tests/ stay out).
-for pkg in basalt-release basalt-snapshots basalt-security basalt-prompt; do
+for pkg in basalt-release basalt-nonfree-release basalt-snapshots basalt-security basalt-prompt; do
   find "$REPO_ROOT/packages/$pkg" -maxdepth 1 -type f -exec cp -p {} "$work/SOURCES/" \;
   mv "$work/SOURCES/$pkg.spec" "$work/SPECS/"
 done
@@ -42,13 +45,13 @@ fi
 # Default repository URLs in basalt-release (/etc/dnf/vars): https://obpkg.org
 # unless a lab or a mirror build overrides them.
 for pair in "BASALT_DEFAULT_REPO_URL:basalt_repo_url" "BASALT_DEFAULT_TOOLS_URL:basalt_tools_url" \
-  "BASALT_DEFAULT_TESTING_URL:basalt_testing_url"; do
+  "BASALT_DEFAULT_TESTING_URL:basalt_testing_url" "BASALT_DEFAULT_NONFREE_URL:basalt_nonfree_url"; do
   var="${pair%%:*}" dst="${pair#*:}"
   url="${!var:-}"
   [[ -n "$url" ]] || continue
   [[ "$url" =~ ^(https?|file)://[^[:space:]]+$ ]] || die "$var=$url is not an http(s) or file URL"
   printf '%s\n' "${url%/}" >"$work/SOURCES/$dst"
-  log "basalt-release: $dst = ${url%/} (override of $(cat "$REPO_ROOT/packages/basalt-release/$dst"))"
+  log "release package: $dst = ${url%/} (override of the obpkg.org default)"
 done
 
 # Module certificates for basalt-security, converted to DER.

@@ -144,6 +144,10 @@ func Severity(event, outcome string) string {
 		return "warning"
 	case outcome == "denied" || outcome == "error":
 		return "warning"
+	case event == "driver.fallback", event == "driver.kernel_hold":
+		return "warning"
+	case strings.HasPrefix(event, "driver."):
+		return "notice"
 	case strings.HasPrefix(event, "snapshot.rollback"), strings.HasPrefix(event, "polkit."),
 		strings.HasPrefix(event, "escalation."), strings.HasSuffix(event, ".grant"), event == "grant.apply",
 		event == "agent.grant.helper", event == "assistant.apply", event == "assistant.confirm",

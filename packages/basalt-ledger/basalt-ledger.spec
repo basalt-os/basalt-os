@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-ledger
-Version:        0.2.2
+Version:        0.2.3
 Release:        1%{?dist}
 Summary:        Append-only, hash-chained system audit service
 License:        Apache-2.0
@@ -122,6 +122,11 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_ledger.if
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.3-1
+- Sentences and severities for the NVIDIA driver records of basalt-nvidia
+  (driver.install, driver.check, driver.fallback, driver.retry,
+  driver.boot, driver.kernel_hold, driver.kernel_release).
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.2-1
 - Records from Basalt desktop app domains (basalt_app_*_t) are refused:
   apps read the ledger (Security and Activity), they never write it.

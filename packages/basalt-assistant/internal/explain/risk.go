@@ -61,6 +61,8 @@ func riskOf(a action.Action) (int, string) {
 		return RiskHigh, "the whole system, but not your data, goes back to an earlier state at the next boot"
 	case action.SnapshotDelete:
 		return RiskHigh, "snapshot " + a.Params["snapshot"] + " is gone for good and can no longer be rolled back to"
+	case action.DriverInstall:
+		return RiskHigh, "the graphics driver changes at the next start; if it does not work there, the start after it uses nouveau again"
 	}
 	return RiskHigh, "unknown change"
 }

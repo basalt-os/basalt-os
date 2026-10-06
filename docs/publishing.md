@@ -79,10 +79,48 @@ scripts/release/upload.sh /tmp/testing-out
 `CLIENT_TEST_DEPS_URL` adds the published basalt repository to the test
 container, because `basalt-shell-selinux` needs `basalt-agent-selinux`.
 
+### basalt-nonfree
+
+Non-free drivers that may be redistributed, today the NVIDIA driver
+(docs/nvidia.md), go to `basalt-nonfree`, which `basalt-nonfree-release`
+(in the basalt repository) defines off by default. Its kernel modules need
+one more step, on the release signer, between two builds:
+
+```sh
+scripts/release/build-nonfree.sh modules /tmp/nvidia-modules
+scripts/release/sign-modules.sh --op /tmp/nvidia-modules /tmp/nvidia-sigs
+scripts/release/build-nonfree.sh packages /tmp/nvidia-sigs /tmp/nonfree-in
+OB_REPO=basalt-nonfree scripts/release/merge-published.sh /tmp/nonfree-in
+OB_REPO=basalt-nonfree scripts/release/sign.sh --op /tmp/nonfree-in /tmp/nonfree-out
+OB_REPO=basalt-nonfree CLIENT_TEST_DEPS_URL=https://obpkg.org/basalt scripts/release/client-test.sh /tmp/nonfree-out packages/basalt-release/RPM-GPG-KEY-basalt nvidia-driver-compute
+scripts/release/upload.sh /tmp/nonfree-out
+```
+
+- `build-nonfree.sh modules` builds the open kernel modules for every
+  kernel of the release, unsigned, without network, in a build image made
+  for the driver version; `sign-modules.sh` (modes `--op`, `--key-file`,
+  `--test-key`, like `sign.sh`) signs them with the basalt-nonfree module
+  signing key in a container without network and returns signatures
+  only; `build-nonfree.sh packages` builds every package, checks that each
+  module it builds is byte-identical to the one signed before it appends
+  the signature, runs `packages/nvidia/check-identical.sh` (NVIDIA files
+  byte-identical to the `.run`, the Agreement in every NVIDIA package,
+  signed modules) and rpmlint.
+- The source packages carry the corresponding source: the `.run`, the open
+  module archive with the signatures, the open tools' archives. They are
+  published in `basalt-nonfree/<releasever>/source/` next to the binaries.
+- `merge-published.sh` keeps the modules of older kernels that are still
+  published; a newer `kmod-nvidia-open` (the package that follows the
+  newest kernel) is published together with the module of a new kernel.
+- A new Fedora kernel needs a new build of the module stages, a signing
+  and a publish; until then dnf holds the kernel back on machines with the
+  NVIDIA driver (docs/nvidia.md, Kernel updates).
+
 ## Build
 
 `build.sh` builds every package from a clean checkout of a commit:
-`scripts/build-rpms.sh`, `basalt-llm`, `swayfx` (the desktop session's
+`scripts/build-rpms.sh` (with `basalt-nonfree-release`, whose
+repository must point at https://obpkg.org/basalt-nonfree and be off), `basalt-llm`, `swayfx` (the desktop session's
 compositor: SwayFX from its pinned release archive, Provides and
 Conflicts with Fedora's sway, no Obsoletes, so switching stays explicit
 with `dnf swap`), and the data packages

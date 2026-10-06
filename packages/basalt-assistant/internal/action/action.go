@@ -32,7 +32,19 @@ const (
 	SnapshotDelete    = "snapshot.delete"    // snapper delete N
 	JournalVacuum     = "journal.vacuum"     // journalctl --vacuum-size
 	DnfClean          = "dnf.clean"          // dnf clean packages
+	DriverInstall     = "driver.install"     // basalt-nonfree on, NVIDIA driver installed, trial boot armed
 )
+
+// NvidiaLicenseSHA256 is the SHA-256 of the NVIDIA Driver License Agreement
+// that basalt-nonfree's driver ships (packages/nvidia/source.conf) and that
+// the assistant shows before an install (internal/drivers). A
+// driver.install carries it as the "license" parameter: the person was
+// shown exactly this text.
+const NvidiaLicenseSHA256 = "c692fb14ad4f499c6aee1b9e144e6905148c420e6225b17cb2937366c1e507ad"
+
+// Driver variants of driver.install: the display stack and compute, or
+// compute only (servers).
+var driverPackages = map[string]string{"display": "nvidia-driver", "compute": "nvidia-driver-compute"}
 
 // Action is one typed change.
 type Action struct {
@@ -76,6 +88,7 @@ var (
 	reBoolean = regexp.MustCompile(`^[a-z][a-z0-9_]{0,120}$`)
 	reSize    = regexp.MustCompile(`^[0-9]{1,6}[KMG]$`)
 	rePathOK  = regexp.MustCompile(`^/[A-Za-z0-9._@+,:/ -]{1,1000}$`)
+	reKernel  = regexp.MustCompile(`^[0-9][0-9A-Za-z._+-]{0,100}\.x86_64$`)
 )
 
 func cleanPath(p string) (string, error) {
@@ -166,6 +179,19 @@ func (a Action) Validate() error {
 			return fmt.Errorf("size %q (use e.g. 200M)", p["size"])
 		}
 	case DnfClean:
+	case DriverInstall:
+		if p["driver"] != "nvidia" {
+			return fmt.Errorf("driver %q (only nvidia)", p["driver"])
+		}
+		if _, ok := driverPackages[p["variant"]]; !ok {
+			return fmt.Errorf("variant %q (display or compute)", p["variant"])
+		}
+		if !reKernel.MatchString(p["kernel"]) {
+			return fmt.Errorf("kernel %q is not a kernel release", p["kernel"])
+		}
+		if p["license"] != NvidiaLicenseSHA256 {
+			return fmt.Errorf("license %q is not the NVIDIA Driver License Agreement the assistant shows", p["license"])
+		}
 	default:
 		return fmt.Errorf("unknown action kind %q", a.Kind)
 	}
@@ -221,6 +247,18 @@ func (a Action) Commands() ([]runner.Command, error) {
 			Description: "shrink archived journal files to " + p["size"]}}, nil
 	case DnfClean:
 		return []runner.Command{{Argv: []string{"dnf", "clean", "packages"}, Description: "remove cached package files"}}, nil
+	case DriverInstall:
+		pkg := driverPackages[p["variant"]]
+		return []runner.Command{
+			{Argv: []string{"dnf", "-y", "install", "basalt-nonfree-release"},
+				Description: "install the definition of the basalt-nonfree repository (it comes off)"},
+			{Argv: []string{"dnf", "config-manager", "setopt", "basalt-nonfree.enabled=1"},
+				Description: "turn the basalt-nonfree repository on"},
+			{Argv: []string{"dnf", "-y", "install", "--skip-unavailable", pkg, "kmod-nvidia-open-" + p["kernel"]},
+				Description: "install " + pkg + " (NVIDIA's userspace, unmodified, and the signed open kernel modules; nouveau goes off) and the module for the running kernel " + p["kernel"]},
+			{Argv: []string{"basalt-nvidia", "arm"},
+				Description: "make the next start a trial: it checks the driver and goes back to nouveau if it fails"},
+		}, nil
 	}
 	return nil, fmt.Errorf("unknown action kind %q", a.Kind)
 }
@@ -339,6 +377,15 @@ func (a Action) Verify(since time.Time) []Check {
 		return []Check{{Description: "journal disk usage", Argv: []string{"journalctl", "--disk-usage"}}}
 	case DnfClean:
 		return []Check{{Description: "dnf cache cleaned", Argv: []string{"true"}}}
+	case DriverInstall:
+		pkg := driverPackages[p["variant"]]
+		return []Check{
+			{Description: "the basalt-nonfree repository is on", Argv: []string{"dnf", "repo", "list", "--enabled"}, Want: []string{"basalt-nonfree"}},
+			{Description: pkg + " is installed", Argv: []string{"rpm", "-q", pkg}},
+			{Description: "nouveau is off from the next start", Argv: []string{"modprobe", "-c"}, Want: []string{"blacklist nouveau"}},
+			{Description: "an installed kernel has the signed NVIDIA module", Argv: []string{"basalt-nvidia", "status", "--json"}, Absent: []string{`"kernels_with_module":""`}},
+			{Description: "the next start is a trial of the NVIDIA driver", Argv: []string{"basalt-nvidia", "status", "--json"}, Want: []string{`"mode":"trial"`}},
+		}
 	}
 	return nil
 }

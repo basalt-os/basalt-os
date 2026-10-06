@@ -65,6 +65,8 @@ func write(f *Facts, changes []action.Action, p phraser) Text {
 		t = dnfText(f, p)
 	case "snapshot":
 		t = snapshotText(f, p)
+	case "driver":
+		t = driverText(f, p)
 	default:
 		t.Headline = f.V("report")
 	}
@@ -418,6 +420,33 @@ func snapshotText(f *Facts, p phraser) Text {
 	return t
 }
 
+// --- third-party drivers -----------------------------------------------------------
+
+func driverText(f *Facts, p phraser) Text {
+	var t Text
+	gpu, ver := f.V("gpu"), f.V("version")
+	switch f.Cause {
+	case "install":
+		t.Headline = p.pick(gpu+" can use the NVIDIA driver "+ver+" instead of nouveau.",
+			"The NVIDIA driver "+ver+" can replace nouveau for "+gpu+".")
+		switch {
+		case f.V("variant") == "compute":
+			t.Why = "Only the compute part is installed (CUDA, NVML, OpenCL and nvidia-smi), no display packages."
+		case f.Has("primary"):
+			t.Why = f.V("primary") + " stays the display GPU; programs run on " + gpu +
+				" when they ask for it (PRIME offload, basalt-nvidia-run), and CUDA works on it."
+		default:
+			t.Why = "The NVIDIA driver then drives the display."
+		}
+		t.Next = "Restart the computer after applying it. The first start checks the driver and goes back to nouveau if it fails, " +
+			"and the snapshot taken before the change brings the system back. The driver is proprietary: applying it means you accept " +
+			"the NVIDIA Driver License Agreement (basalt drivers license nvidia)."
+	default:
+		t.Headline = f.V("report")
+	}
+	return t
+}
+
 // --- planned changes -----------------------------------------------------------------
 
 // Effect describes what one action does, in words.
@@ -444,6 +473,9 @@ func Effect(a action.Action) string {
 		return "shrink the archived journal files to " + p["size"]
 	case action.DnfClean:
 		return "remove the cached package files"
+	case action.DriverInstall:
+		return "turn on the basalt-nonfree repository, install the NVIDIA driver with the signed kernel module for kernel " +
+			p["kernel"] + " and turn nouveau off from the next start"
 	}
 	return a.Kind
 }

@@ -7,6 +7,7 @@
 #                                   has the tools (what CI does)
 #
 # Checks: `make lint` (shell and Python syntax, ShellCheck, ksvalidator),
+# the basalt-nvidia tests,
 # ShellCheck on the CI scripts, the basalt-llm model selection tests, rpmlint on every package spec (filters in
 # scripts/ci/rpmlint.toml), ksvalidator on the kickstart for this Fedora
 # release, actionlint on the workflows.
@@ -70,6 +71,12 @@ packages/basalt-llm/tests/select-test.sh || fail=1
 step "basalt-voice: ShellCheck, speech model manifest (pinned, checksummed, public-domain Piper voices only)"
 shellcheck -x -S warning packages/basalt-voice/build.sh packages/basalt-voice/basalt-voice-fetch packages/basalt-voice/tests/manifest-test.sh || fail=1
 packages/basalt-voice/tests/manifest-test.sh || fail=1
+
+step "NVIDIA driver (basalt-nonfree): ShellCheck, basalt-nvidia tests (trial, check, fallback, kernel guard)"
+shellcheck -x -S warning packages/nvidia/check-identical.sh packages/nvidia/basalt-nvidia/basalt-nvidia \
+  packages/nvidia/basalt-nvidia/99-zz-basalt-nvidia.install packages/nvidia/basalt-nvidia/basalt-nvidia-run \
+  packages/nvidia/tests/basalt-nvidia-test.sh scripts/lab/nvidia-test.sh || fail=1
+packages/nvidia/tests/basalt-nvidia-test.sh || fail=1
 
 step "Python syntax: evaluation suite tools, ledger lab fixtures"
 python3 -m py_compile eval/tools/*.py && rm -rf eval/tools/__pycache__ || fail=1

@@ -19,7 +19,7 @@
 source "$(dirname "$0")/../lib.sh"
 
 : "${OB_REPO:=basalt}"
-case "$OB_REPO" in basalt | basalt-tools | basalt-testing) ;; *) die "OB_REPO must be basalt, basalt-tools or basalt-testing" ;; esac
+case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing or basalt-nonfree" ;; esac
 : "${OB_PUBLIC_URL:=https://obpkg.org}"
 : "${OB_SIGNING_SUBKEY:=302461D26520E077D07FFCA9AA27C62C36CCFC4B}"
 : "${OB_RELEASE_PUBKEY:=$REPO_ROOT/packages/basalt-release/RPM-GPG-KEY-basalt}"

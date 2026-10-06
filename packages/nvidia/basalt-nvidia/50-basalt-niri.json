@@ -1,0 +1,12 @@
+# NVIDIA application profile (package basalt-nvidia): niri allocates and
+# frees buffers often; without this the driver keeps a large pool of freed
+# video memory. NVIDIA's own profiles already cover wlroots compositors
+# (sway, SwayFX), KWin, Mutter and others, but not niri (Smithay).
+{
+    "rules": [
+        { "pattern": { "feature": "procname", "matches": "niri" }, "profile": "Basalt niri: no video memory reuse" }
+    ],
+    "profiles": [
+        { "name": "Basalt niri: no video memory reuse", "settings": [ { "key": "GLVidHeapReuseRatio", "value": 0 } ] }
+    ]
+}

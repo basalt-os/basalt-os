@@ -88,3 +88,26 @@ func TestHashStableAcrossRoundTrip(t *testing.T) {
 		t.Fatal("hash changes after a JSON round trip")
 	}
 }
+
+// Records of basalt-nvidia (the NVIDIA driver of basalt-nonfree).
+func TestDriverRecords(t *testing.T) {
+	for _, c := range []struct{ ev, out, sev, want string }{
+		{"driver.install", "ok", "notice", "The NVIDIA driver was installed; the next start is a trial (snapshot 42 holds the system from before)"},
+		{"driver.check", "ok", "notice", "The NVIDIA driver passed its check after the start (GPU 0: NVIDIA GeForce RTX 4060 Laptop GPU)"},
+		{"driver.check", "error", "warning", "The NVIDIA driver failed its check after the start: nvidia-smi does not answer"},
+		{"driver.fallback", "error", "warning", "The NVIDIA driver was switched off and nouveau is used from the next start: nvidia-smi does not answer"},
+		{"driver.kernel_hold", "ok", "warning", "Kernel 7.2.9-200.fc44.x86_64 has no NVIDIA module yet; the computer keeps starting kernel 7.2.8-200.fc44.x86_64"},
+		{"driver.kernel_release", "ok", "notice", "Kernel 7.2.9-200.fc44.x86_64 now has its NVIDIA module and is the default again"},
+	} {
+		r := Record{Producer: "basalt-nvidia", Event: c.ev, Outcome: c.out, Severity: Severity(c.ev, c.out)}
+		r.Data, _ = json.Marshal(map[string]any{"snapshot": "42", "gpu": "GPU 0: NVIDIA GeForce RTX 4060 Laptop GPU",
+			"reason": "nvidia-smi does not answer", "kernel": "7.2.9-200.fc44.x86_64",
+			"default": "7.2.8-200.fc44.x86_64"})
+		if r.Severity != c.sev {
+			t.Errorf("%s/%s: severity %s, want %s", c.ev, c.out, r.Severity, c.sev)
+		}
+		if got := Describe(r); got != c.want {
+			t.Errorf("got  %q\nwant %q", got, c.want)
+		}
+	}
+}

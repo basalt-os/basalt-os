@@ -1,0 +1,21 @@
+basalt-nonfree: the Basalt OS repository for non-free drivers
+
+Off by default. It holds drivers that are not free software but may be
+redistributed, packaged by OpenBasalt for Basalt OS:
+
+- the NVIDIA driver for GPUs of the Turing generation and newer
+  (nvidia-driver, nvidia-driver-compute for servers): NVIDIA's open GPU
+  kernel modules, built and signed for every Basalt OS kernel, and
+  NVIDIA's userspace, unmodified, under the NVIDIA Driver License
+  Agreement.
+
+Install it from Settings, Additional drivers, or with the assistant:
+basalt drivers. Both show the license and what changes before anything
+is installed, take a snapshot first, and check the driver after the next
+start. Details: https://github.com/basalt-os/basalt-os/blob/main/docs/nvidia.md
+
+Source code: the source RPMs are in the same repository
+(basalt-nonfree-source, https://obpkg.org/basalt-nonfree/<release>/source/).
+
+Packaged by OpenBasalt, not supported by NVIDIA. NVIDIA, GeForce and CUDA
+are trademarks of NVIDIA Corporation.

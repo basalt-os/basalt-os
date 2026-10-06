@@ -1,0 +1,13 @@
+[Unit]
+Description=Basalt OS: check the NVIDIA driver after boot (falls back to nouveau on failure)
+After=basalt-nvidia-boot.service display-manager.service multi-user.target
+Wants=basalt-nvidia-boot.service
+ConditionPathExists=/usr/bin/basalt-nvidia
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/basalt-nvidia check
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

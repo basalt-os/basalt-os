@@ -11,7 +11,8 @@ L := scripts/lab
 .PHONY: help rpms rpms-lab repo repo-verify iso-fetch iso all lint prompt-test clean \
         lab-tools lab-keys lab-net lab-repo lab-repo-down lab-install lab-start lab-stop \
         lab-ssh lab-console lab-measure lab-sb-test lab-snapshot-test lab-rollback-test \
-        lab-destroy lab-sb-keys lab-tang lab-mok-test lab-sb-custom-test lab-tang-test lab-kernels-test
+        lab-destroy lab-sb-keys lab-tang lab-mok-test lab-sb-custom-test lab-tang-test lab-kernels-test \
+        lab-nvidia-test nvidia-test
 
 help: ## Show targets
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -116,6 +117,12 @@ lab-tang-test: ## Tang or TPM2+Tang unlock on a VM installed with basalt.unlock=
 
 lab-kernels-test: ## Orphaned kernels after a rollback: detection and cleanup
 	$(L)/kernels-test.sh
+
+lab-nvidia-test: ## NVIDIA driver (basalt-nonfree) on a lab VM: install, signatures, kernel guard, trial and fallback, rollback
+	$(L)/nvidia-test.sh all
+
+nvidia-test: ## Tests of basalt-nvidia (trial, check, fallback, kernel guard) with stub commands
+	packages/nvidia/tests/basalt-nvidia-test.sh
 
 lab-destroy: ## Remove the VM, its disk, NVRAM and TPM state
 	$(L)/vm.sh destroy

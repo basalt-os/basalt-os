@@ -107,11 +107,17 @@ unlocking without interaction. Measured in the lab.
 
 ### What Basalt signs
 
-Nothing yet: Basalt OS ships no out-of-tree kernel modules today. The
-pipeline exists and is tested in the lab (`scripts/lab/kmod-build.sh`
-builds a module against the target kernel's `kernel-devel` and signs it
-with `scripts/sign-file` from that kernel). Modules a user builds locally
-(DKMS, akmods) are signed with that user's own MOK, next section.
+The NVIDIA open GPU kernel modules of the opt-in basalt-nonfree
+repository, built for every kernel and signed with the basalt-nonfree
+module signing certificate, which the module CA issued and `basalt-nvidia`
+ships next to the others in `/usr/lib/basalt/module-keys/` (docs/nvidia.md).
+They load wherever the Basalt module CA is enrolled; `basalt drivers`
+refuses to install them on a machine with Secure Boot on and no CA (nor a
+pending enrollment). The test pipeline is in the lab too
+(`scripts/lab/kmod-build.sh` builds a module against the target kernel's
+`kernel-devel` and signs it with `scripts/sign-file` from that kernel).
+Modules a user builds locally (DKMS, akmods) are signed with that user's
+own MOK, next section.
 
 ## Your own modules: DKMS and akmods
 

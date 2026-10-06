@@ -5,7 +5,7 @@
 #   scripts/release/upload.sh [--dry-run] TREE_DIR
 #
 # TREE_DIR is sign.sh's OUT_DIR: SIGNED-OK and <repo>/<releasever>/{<arch>,source}/,
-# where <repo> (basalt, basalt-tools or basalt-testing) is the "repo:" line
+# where <repo> (basalt, basalt-tools, basalt-testing or basalt-nonfree) is the "repo:" line
 # of SIGNED-OK (basalt when the line is missing); or sign-apt.sh's OUT_DIR:
 # SIGNED-OK with "repo: apt" and apt/{pool,dists}/.
 # Every file is checked against SIGNED-OK before anything is sent, and a
@@ -50,7 +50,7 @@ if [[ "$mode" == test-key && "$OB_R2_BUCKET" == obpkg ]]; then
 fi
 repo="$(awk '/^repo: / {print $2}' "$tree/SIGNED-OK")"
 repo="${repo:-basalt}"
-case "$repo" in basalt | basalt-tools | basalt-testing | apt) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
+case "$repo" in basalt | basalt-tools | basalt-testing | basalt-nonfree | apt) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
 listed="$(grep -E "^[0-9a-f]{64}  $repo/" "$tree/SIGNED-OK")"
 (cd "$tree" && sha256sum -c --quiet <<<"$listed") || die "the tree changed after it was verified"
 [[ "$(awk '{print $2}' <<<"$listed" | sort)" == "$(cd "$tree" && find "$repo" -type f | sort)" ]] ||

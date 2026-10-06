@@ -10,11 +10,12 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.9.0
+Version:        0.10.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
-License:        Apache-2.0 AND MIT
+# The table of NVIDIA GPUs is derived from NVIDIA's supported-gpus.json (Zlib).
+License:        Apache-2.0 AND MIT AND Zlib
 URL:            https://github.com/basalt-os/basalt-os
 Source0:        %{name}-%{version}.tar.gz
 
@@ -123,7 +124,10 @@ install -dm 0700 %{buildroot}%{_localstatedir}/log/basalt-assistant
 install -dm 0700 %{buildroot}%{_localstatedir}/cache/basalt-assistant
 install -Dpm 0644 selinux/%{modulename}.pp.bz2 %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}/%{modulename}.pp.bz2
 install -Dpm 0644 selinux/%{modulename}.if %{buildroot}%{_datadir}/selinux/devel/include/distributed/%{modulename}.if
-install -d licenses && install -pm 0644 LICENSE third_party/tui-kit.LICENSE licenses/
+install -d licenses && install -pm 0644 LICENSE third_party/tui-kit.LICENSE internal/drivers/nvidia-gpus.LICENSE licenses/
+# The NVIDIA Driver License Agreement the assistant shows before an install
+# (embedded in the binary too: basalt drivers license nvidia).
+install -pm 0644 internal/drivers/nvidia-driver-license.txt licenses/NVIDIA-Driver-License-Agreement.txt
 for d in locale/*/LC_MESSAGES; do
     install -Dpm 0644 $d/%{name}.mo %{buildroot}%{_datadir}/$d/%{name}.mo
 done
@@ -155,7 +159,7 @@ fi
 %selinux_relabel_post -s %{selinuxtype}
 
 %files -f %{name}.lang
-%license licenses/LICENSE licenses/tui-kit.LICENSE
+%license licenses/LICENSE licenses/tui-kit.LICENSE licenses/nvidia-gpus.LICENSE licenses/NVIDIA-Driver-License-Agreement.txt
 %{_bindir}/basalt
 %{_bindir}/basalt-mcp
 %dir %{_libexecdir}/basalt
@@ -181,6 +185,15 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.10.0-1
+- Additional drivers: basalt drivers finds the graphics hardware and the
+  driver that fits (the NVIDIA driver of the opt-in basalt-nonfree
+  repository for Turing and newer GPUs), shows the NVIDIA Driver License
+  Agreement, and proposes driver.install, a new action of the closed set
+  (repository on, packages, nouveau off, a trial start that falls back to
+  nouveau); basalt drivers rollback returns to the snapshot taken before.
+  MCP tools basalt_drivers and basalt_propose_driver_install.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.9.0-1
 - basalt feedback: an opt-in report to the Basalt OS project. The person's
   own text plus, only for the parts they accept one by one, the OS

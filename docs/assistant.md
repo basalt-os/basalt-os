@@ -143,6 +143,7 @@ Read-only, no confirmation:
 | `basalt disk` | btrfs usage, the space each snapshot holds alone (`btrfs filesystem du`), journal and package cache size, a fullness forecast from stored samples |
 | `basalt pending [--all]`, `basalt show ID` | proposals |
 | `basalt audit [N]`, `basalt audit verify` | the audit log and its hash chain, checked across rotated files |
+| `basalt drivers` | the display controllers by PCI id and their kernel driver, the driver that fits (the NVIDIA driver of basalt-nonfree for Turing and newer GPUs, from NVIDIA's list of supported GPUs), what installing it changes, the Secure Boot state, and the state of an installed NVIDIA driver (waiting for its first start, in use, fell back to nouveau and why, a kernel held back); `basalt drivers license nvidia` prints the NVIDIA Driver License Agreement (docs/nvidia.md) |
 | `basalt ask "REQUEST"` | (optional, needs the local model) the request translated into one of the commands above, which then runs; a change (apply, rollback) is only printed, see [local-model.md](local-model.md) |
 
 Options: `--json` (machine-readable output), `--verbose` (all evidence and
@@ -158,6 +159,8 @@ Changes (root):
 | `basalt confirm ID` | checks, as root, the snapshot a hint of the daemon or the MCP server rests on (see Hints) and stores it as a proposal |
 | `basalt snapshots rollback N` or `--before ID` | proposes and runs `basalt-rollback N`; `--before` uses the snapshot `basalt apply` took before proposal ID |
 | `basalt why UNIT --apply`, `basalt fix selinux --apply`, `basalt disk --apply` | store the proposal and go straight to the confirmation |
+| `basalt drivers install nvidia [display\|compute] [--apply]` | the `driver.install` proposal for the recommended driver (refused without a supported GPU, when it is installed already, or with Secure Boot on and the Basalt module CA not enrolled) |
+| `basalt drivers rollback [--apply]` | the rollback to the snapshot `basalt apply` took before the NVIDIA driver install |
 
 Other Basalt tools through `basalt`: a first word that is not one of the
 commands above runs the program `basalt-<word>` with the rest of the
@@ -194,11 +197,20 @@ changes, with parameters that pass strict validators:
 | `snapshot.delete` | `snapper -c root delete N` |
 | `journal.vacuum` | `journalctl --vacuum-size=SIZE` |
 | `dnf.clean` | `dnf clean packages` |
+| `driver.install` | `dnf -y install basalt-nonfree-release`, `dnf config-manager setopt basalt-nonfree.enabled=1`, `dnf -y install --skip-unavailable nvidia-driver` (or `nvidia-driver-compute`) `kmod-nvidia-open-KERNEL`, `basalt-nvidia arm` (docs/nvidia.md) |
 
 Each action also carries its verification: the label is the policy
 default (`matchpathcon -V`), the port or boolean has the new value, the
 unit is active and no new denial appeared since the change, the restored
-file matches the snapshot, a rollback is pending, the snapshot is gone.
+file matches the snapshot, a rollback is pending, the snapshot is gone,
+the driver's repository is on, its packages are installed, nouveau is off
+and the next start is a trial.
+
+`driver.install` also carries the SHA-256 of the NVIDIA Driver License
+Agreement the person was shown (`license`); any other value is refused.
+Its risk is high (the graphics driver changes at the next start); the
+first start checks the driver and falls back to nouveau when it fails
+(docs/nvidia.md).
 
 There is no free-form command action and no `audit2allow`: a denial
 without a known fix is reported for review, never turned into policy.
@@ -604,7 +616,8 @@ backend = rules
 | Tool | Kind |
 |---|---|
 | `basalt_status`, `basalt_why_unit`, `basalt_selinux_denials`, `basalt_disk`, `basalt_snapshots`, `basalt_snapshot_diff`, `basalt_pending`, `basalt_proposal`, `basalt_audit_tail` | read (annotated read-only) |
-| `basalt_propose_unit_fix`, `basalt_propose_selinux_fix`, `basalt_propose_rollback`, `basalt_propose_disk_cleanup`, `basalt_propose_action` | store a proposal and return its id and commands |
+| `basalt_drivers` | read (annotated read-only): the Additional drivers report |
+| `basalt_propose_unit_fix`, `basalt_propose_selinux_fix`, `basalt_propose_rollback`, `basalt_propose_disk_cleanup`, `basalt_propose_driver_install`, `basalt_propose_action` | store a proposal and return its id and commands |
 
 No tool executes a change. The confirmation code is never returned to the
 client, by any tool (`basalt_proposal` included): the person reads it from

@@ -1,0 +1,468 @@
+#!/bin/bash
+# basalt-nvidia: the Basalt OS side of the NVIDIA driver (basalt-nonfree).
+#
+#   basalt-nvidia status [--json]   driver state, this boot's choice, kernels with the module
+#   basalt-nvidia arm               (root) the next boot is a trial of the NVIDIA driver; run
+#                                   by the assistant's driver.install after the packages
+#   basalt-nvidia boot              (root, basalt-nvidia-boot.service, before udev) choose the
+#                                   NVIDIA driver or nouveau for this boot
+#   basalt-nvidia check             (root, basalt-nvidia-check.service) after the display
+#                                   manager: module loaded, nvidia-smi answers, display up;
+#                                   confirms a trial or falls back to nouveau
+#   basalt-nvidia fallback REASON   (root) use nouveau from the next boot on
+#   basalt-nvidia retry             (root) undo a fallback: the next boot tries NVIDIA again
+#   basalt-nvidia select-default    (root) keep the default boot entry on the newest kernel
+#                                   that has its NVIDIA module (kernel-install, kmod scriptlets)
+#   basalt-nvidia run CMD [ARGS]    run CMD on the NVIDIA GPU (PRIME render offload)
+#
+# How it fits together (docs/nvidia.md): the packages turn nouveau off
+# (modprobe.d, dracut). The assistant's driver.install takes a snapshot,
+# installs the packages and arms a trial. The first boot loads the NVIDIA
+# module before udev and records that a trial is running; the check after
+# the display manager confirms it. If a trial boot fails, or never gets to
+# its check (a hang, a forced power off), the next boot uses nouveau: a
+# file with the same name in /etc/modprobe.d (or /run/modprobe.d for one
+# boot) overrides the packaged one. The person is told why (basalt drivers,
+# the desktop's Additional drivers page) and can roll back to the snapshot
+# taken before the install. Every step is recorded in the audit ledger.
+set -euo pipefail
+# The BASALT_NVIDIA_* variables below exist for the tests
+# (packages/nvidia/tests/basalt-nvidia-test.sh); systemd starts this with
+# a clean environment.
+export PATH=${BASALT_NVIDIA_PATH:-/usr/sbin:/usr/bin}
+
+STATE_DIR=${BASALT_NVIDIA_STATE_DIR:-/var/lib/basalt-nvidia}
+RUN_DIR=${BASALT_NVIDIA_RUN_DIR:-/run/basalt-nvidia}
+ETC_MODPROBE=${BASALT_NVIDIA_ETC_MODPROBE:-/etc/modprobe.d/basalt-nvidia.conf}
+RUN_MODPROBE=${BASALT_NVIDIA_RUN_MODPROBE:-/run/modprobe.d/basalt-nvidia.conf}
+MODULES=${BASALT_NVIDIA_MODULES:-/usr/lib/modules}
+FIRMWARE=${BASALT_NVIDIA_FIRMWARE:-/usr/lib/firmware/nvidia}
+SNAPSHOTS=${BASALT_NVIDIA_SNAPSHOTS:-/.snapshots}
+BOOT_ID_FILE=${BASALT_NVIDIA_BOOT_ID:-/proc/sys/kernel/random/boot_id}
+LEDGER_SOCK=${BASALT_NVIDIA_LEDGER_SOCK:-/run/basalt-ledger/ledger.sock}
+DM_WAIT=${BASALT_NVIDIA_DM_WAIT:-120}
+SYS=${BASALT_NVIDIA_SYS:-/sys}
+EGL_VENDOR=${BASALT_NVIDIA_EGL_VENDOR:-/usr/share/glvnd/egl_vendor.d/10_nvidia.json}
+MODDIR=extra/nvidia-open
+STATE="$STATE_DIR/state"
+OVERRIDE_MARK="# basalt-nvidia fallback"
+
+die() { printf 'basalt-nvidia: %s\n' "$*" >&2; exit 1; }
+say() { printf '%s\n' "$*"; }
+# Journal line (stderr goes to the journal under systemd).
+note() { printf 'basalt-nvidia: %s\n' "$*" >&2; }
+need_root() { [[ $EUID -eq 0 || "${BASALT_NVIDIA_TEST_ROOT:-}" == 1 ]] || die "run as root"; }
+boot_id() { tr -d '-' <"$BOOT_ID_FILE" 2>/dev/null || echo unknown; }
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# --- state: key=value lines, written atomically ------------------------------
+declare -A S=()
+load_state() {
+  S=()
+  [[ -r "$STATE" ]] || return 1
+  local k v
+  while IFS='=' read -r k v; do
+    if [[ "$k" =~ ^[a-z_]+$ ]]; then S[$k]=$v; fi
+  done <"$STATE"
+  return 0
+}
+save_state() {
+  local tmp k
+  install -d -m 0755 "$STATE_DIR"
+  tmp="$(mktemp "$STATE_DIR/.state.XXXXXX")"
+  for k in mode since reason snapshot proposal trial_boot held_kernel; do
+    if [[ -n "${S[$k]:-}" ]]; then printf '%s=%s\n' "$k" "${S[$k]//$'\n'/ }"; fi
+  done >"$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$STATE"
+}
+
+# --- audit ledger (best effort: the journal always has the same line) -------
+json_str() {
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/ }; s=${s//$'\t'/ }; s=${s//$'\r'/ }
+  printf '"%s"' "$s"
+}
+# ledger EVENT OUTCOME key value [key value ...]
+ledger() {
+  local event=$1 outcome=$2; shift 2
+  local data="" sep=""
+  while [[ $# -ge 2 ]]; do
+    data+="$sep$(json_str "$1"):$(json_str "$2")"; sep=","; shift 2
+  done
+  note "$event ($outcome): ${data//\"/}"
+  command -v basalt-ledger >/dev/null || return 0
+  local req
+  req=$(printf '{"op":"append","record":{"v":1,"time":%s,"producer":"basalt-nvidia","event":%s,"outcome":%s,"data":{%s}}}' \
+    "$(json_str "$(now)")" "$(json_str "$event")" "$(json_str "$outcome")" "$data")
+  # Early in boot (basalt-nvidia-boot.service runs before the ledger
+  # service) the record waits in a queue; the check after boot sends it,
+  # with its original time.
+  if [[ ! -S "$LEDGER_SOCK" ]]; then
+    if [[ -d "$STATE_DIR" ]] && printf '%s\n' "$req" >>"$STATE_DIR/ledger-queue" 2>/dev/null; then return 0; fi
+    return 0
+  fi
+  ledger_flush
+  printf '%s\n' "$req" | timeout 10 basalt-ledger api >/dev/null 2>&1 || note "the ledger did not take the record"
+}
+# Send the records queued while the ledger was not running yet.
+ledger_flush() {
+  local q="$STATE_DIR/ledger-queue"
+  [[ -s "$q" && -S "$LEDGER_SOCK" ]] || return 0
+  if timeout 20 basalt-ledger api <"$q" >/dev/null 2>&1; then rm -f "$q"; else note "the ledger did not take the queued records"; fi
+}
+
+# --- facts about the installed driver ----------------------------------------
+module_file() { echo "$MODULES/$1/$MODDIR/nvidia.ko"; }
+has_module() { [[ -f "$(module_file "$1")" ]]; }
+# Version of the module built for a kernel (from its .modinfo section).
+module_version() {
+  local f; f="$(module_file "$1")"
+  [[ -f "$f" ]] || return 1
+  modinfo -F version "$f" 2>/dev/null | head -1
+}
+# The userspace version: the firmware directory the driver package ships.
+userspace_versions() { find "$FIRMWARE" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V; }
+module_matches() {
+  local mv; mv="$(module_version "$1")" || return 1
+  [[ -n "$mv" && -d "$FIRMWARE/$mv" ]]
+}
+installed_kernels() {
+  local d
+  for d in "$MODULES"/*/; do
+    d=${d%/}
+    if [[ -f "$d/vmlinuz" ]]; then basename "$d"; fi
+  done | sort -V
+  return 0
+}
+# Newest installed kernel with a module that matches the userspace.
+newest_with_module() {
+  local k best=""
+  for k in $(installed_kernels); do
+    if module_matches "$k"; then best=$k; fi
+  done
+  [[ -n "$best" ]] || return 1
+  echo "$best"
+}
+display_variant() { [[ -e "$EGL_VENDOR" ]]; }
+graphical_default() { [[ "$(systemctl get-default 2>/dev/null)" == graphical.target ]]; }
+
+# --- nouveau or NVIDIA ----------------------------------------------------------
+override_text() {
+  cat <<EOF
+$OVERRIDE_MARK ($(now)): $1
+# The NVIDIA driver is off and nouveau is used. This file replaces
+# /usr/lib/modprobe.d/basalt-nvidia.conf (same name). Remove it with
+# basalt-nvidia retry (the next boot tries the NVIDIA driver again).
+blacklist nvidia
+blacklist nvidia_drm
+blacklist nvidia_modeset
+blacklist nvidia_uvm
+blacklist nvidia_peermem
+install nvidia /bin/false
+install nvidia_drm /bin/false
+install nvidia_modeset /bin/false
+install nvidia_uvm /bin/false
+EOF
+}
+# nouveau for this boot only (/run is a tmpfs).
+nouveau_this_boot() {
+  install -d -m 0755 "$(dirname "$RUN_MODPROBE")"
+  override_text "$1" >"$RUN_MODPROBE"
+  modprobe -r nvidia_drm nvidia_modeset nvidia_uvm nvidia 2>/dev/null || true
+}
+record_boot() {
+  install -d -m 0755 "$RUN_DIR"
+  printf 'driver=%s\nreason=%s\nkernel=%s\n' "$1" "${2:-}" "$(uname -r)" >"$RUN_DIR/boot"
+}
+
+cmd_fallback() {
+  need_root
+  local reason=${1:-"fallback requested"}
+  load_state || true
+  install -d -m 0755 "$(dirname "$ETC_MODPROBE")"
+  override_text "$reason" >"$ETC_MODPROBE.tmp" && mv -f "$ETC_MODPROBE.tmp" "$ETC_MODPROBE"
+  S[mode]=fallback S[since]=$(now) S[reason]=$reason S[trial_boot]=""
+  save_state
+  ledger driver.fallback error driver nvidia reason "$reason" snapshot "${S[snapshot]:-}"
+  say "The NVIDIA driver is off from the next boot on; nouveau is used. Reason: $reason"
+  [[ -n "${S[snapshot]:-}" ]] && say "To return to the system as it was before the install: sudo basalt snapshots rollback ${S[snapshot]}"
+  return 0
+}
+
+cmd_retry() {
+  need_root
+  load_state || die "the NVIDIA driver was never set up here (no $STATE)"
+  if [[ -f "$ETC_MODPROBE" ]]; then
+    head -1 "$ETC_MODPROBE" | grep -qF "$OVERRIDE_MARK" || die "$ETC_MODPROBE was not written by basalt-nvidia; not touching it"
+    rm -f "$ETC_MODPROBE"
+  fi
+  S[mode]=trial S[since]=$(now) S[reason]="" S[trial_boot]=""
+  save_state
+  ledger driver.retry ok driver nvidia
+  say "The next boot tries the NVIDIA driver again and checks it."
+}
+
+# The snapshot `basalt apply` took just before the install: the newest pre
+# snapshot described "basalt apply p-xxxxxx".
+apply_snapshot() {
+  local f n best=0 prop=""
+  for f in "$SNAPSHOTS"/*/info.xml; do
+    [[ -r "$f" ]] || continue
+    grep -q '<type>pre</type>' "$f" || continue
+    grep -q '<description>basalt apply p-[0-9a-f]*</description>' "$f" || continue
+    n=$(sed -n 's:.*<num>\([0-9]*\)</num>.*:\1:p' "$f")
+    [[ -n "$n" && $n -gt $best ]] || continue
+    best=$n prop=$(sed -n 's:.*<description>basalt apply \(p-[0-9a-f]*\)</description>.*:\1:p' "$f")
+  done
+  [[ $best -gt 0 ]] && echo "$best $prop"
+}
+
+cmd_arm() {
+  need_root
+  load_state || true
+  local snap prop
+  read -r snap prop <<<"$(apply_snapshot || true)"
+  if [[ -f "$ETC_MODPROBE" ]] && head -1 "$ETC_MODPROBE" | grep -qF "$OVERRIDE_MARK"; then
+    rm -f "$ETC_MODPROBE"
+  fi
+  S[mode]=trial S[since]=$(now) S[reason]="" S[trial_boot]="" S[snapshot]=${snap:-} S[proposal]=${prop:-}
+  save_state
+  cmd_select_default >/dev/null || true
+  ledger driver.install ok driver nvidia snapshot "${snap:-}" proposal "${prop:-}" \
+    kernels "$(installed_kernels | while read -r k; do if has_module "$k"; then printf '%s ' "$k"; fi; done)"
+  say "The NVIDIA driver is installed. Restart the computer: the first start checks it, and falls back to nouveau if it does not work."
+  [[ -n "${snap:-}" ]] && say "Snapshot $snap holds the system as it was before."
+  return 0
+}
+
+cmd_boot() {
+  need_root
+  local kver id reason out rc
+  kver=$(uname -r) id=$(boot_id)
+  if ! load_state; then S[mode]=active; fi
+  if [[ "${S[mode]}" == fallback ]]; then
+    record_boot nouveau "${S[reason]:-fallback}"
+    return 0
+  fi
+  if ! has_module "$kver"; then
+    reason="no NVIDIA module for the running kernel $kver"
+    nouveau_this_boot "$reason"; record_boot nouveau "$reason"
+    ledger driver.boot error driver nvidia kernel "$kver" reason "$reason"
+    return 0
+  fi
+  if ! module_matches "$kver"; then
+    reason="the NVIDIA module for kernel $kver ($(module_version "$kver" || echo unknown)) does not match the installed driver ($(userspace_versions | paste -sd' '))"
+    nouveau_this_boot "$reason"; record_boot nouveau "$reason"
+    ledger driver.boot error driver nvidia kernel "$kver" reason "$reason"
+    return 0
+  fi
+  local writable=1
+  touch "$STATE_DIR/.w" 2>/dev/null && rm -f "$STATE_DIR/.w" || writable=0
+  if [[ "${S[mode]}" == trial ]]; then
+    if [[ $writable == 0 ]]; then
+      # A read-only root (a snapshot booted from the menu): no trial here.
+      reason="read-only system: the NVIDIA driver trial waits for a normal boot"
+      nouveau_this_boot "$reason"; record_boot nouveau "$reason"
+      return 0
+    fi
+    if [[ -n "${S[trial_boot]:-}" && "${S[trial_boot]}" != "$id" ]]; then
+      # The previous trial boot never reached its check: a hang or a forced
+      # power off. Fall back for good, starting with this boot.
+      reason="the previous start with the NVIDIA driver did not finish (it hung or was switched off)"
+      nouveau_this_boot "$reason"; record_boot nouveau "$reason"
+      cmd_fallback "$reason" >/dev/null
+      return 0
+    fi
+    # Record the trial before anything can hang.
+    S[trial_boot]=$id
+    save_state
+    sync -f "$STATE" 2>/dev/null || sync
+  fi
+  # Load it now, before udev, so a refusal still leaves time for nouveau.
+  out=$(timeout 120 modprobe nvidia 2>&1) && rc=0 || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    record_boot nvidia ""
+    return 0
+  fi
+  case "$out" in
+    *"Key was rejected"* | *"Required key not available"* | *"module verification failed"*)
+      reason="the kernel refused the signature of the NVIDIA module (is the Basalt module CA enrolled? basalt-secureboot status)" ;;
+    *"No such device"*) reason="no NVIDIA GPU that this driver supports was found" ;;
+    *) reason="the NVIDIA module did not load: $(head -c 300 <<<"$out")" ;;
+  esac
+  nouveau_this_boot "$reason"; record_boot nouveau "$reason"
+  if [[ "${S[mode]}" == trial ]]; then
+    cmd_fallback "$reason" >/dev/null
+  else
+    ledger driver.boot error driver nvidia kernel "$kver" reason "$reason"
+  fi
+  return 0
+}
+
+# Is the session up? The display manager is active and, when no other GPU
+# drives a display, a DRM device of the NVIDIA driver exists.
+display_ok() {
+  local i
+  for ((i = 0; i < DM_WAIT; i += 5)); do
+    systemctl is-active --quiet display-manager.service && break
+    sleep 5
+  done
+  systemctl is-active --quiet display-manager.service || { echo "the login screen did not start"; return 1; }
+  if [[ ! -e "$SYS/module/nvidia_drm" ]]; then echo "nvidia_drm is not loaded"; return 1; fi
+  if [[ "$(cat "$SYS/module/nvidia_drm/parameters/modeset" 2>/dev/null)" != Y ]]; then
+    echo "nvidia_drm runs without kernel mode setting"; return 1
+  fi
+  return 0
+}
+
+cmd_check() {
+  need_root
+  ledger_flush
+  load_state || { S[mode]=active; }
+  local decision="" breason="" problem=""
+  if [[ -r "$RUN_DIR/boot" ]]; then
+    decision=$(sed -n 's/^driver=//p' "$RUN_DIR/boot")
+    breason=$(sed -n 's/^reason=//p' "$RUN_DIR/boot")
+  fi
+  if [[ "$decision" != nvidia ]]; then
+    # boot already chose nouveau and, for a trial, already fell back.
+    say "This boot uses nouveau: ${breason:-basalt-nvidia-boot did not run}"
+    return 0
+  fi
+  if [[ ! -e "$SYS/module/nvidia" ]]; then
+    problem="the NVIDIA module is not loaded"
+  elif ! out=$(timeout 60 nvidia-smi -L 2>&1); then
+    problem="nvidia-smi does not answer: $(head -c 200 <<<"$out")"
+  elif display_variant && graphical_default; then
+    problem=$(display_ok) || true
+  fi
+  if [[ -z "$problem" ]]; then
+    if [[ "${S[mode]}" == trial ]]; then
+      S[mode]=active S[since]=$(now) S[trial_boot]=""
+      save_state
+      ledger driver.check ok driver nvidia gpu "$(head -1 <<<"$out")" kernel "$(uname -r)"
+    fi
+    say "The NVIDIA driver works: ${out%%$'\n'*}"
+    return 0
+  fi
+  if [[ "${S[mode]}" == trial ]]; then
+    ledger driver.check error driver nvidia reason "$problem" kernel "$(uname -r)"
+    cmd_fallback "$problem"
+    return 0
+  fi
+  # A driver that already worked: report, do not switch it off for a
+  # problem that may pass (nvidia-smi busy, a slow login screen).
+  ledger driver.check error driver nvidia reason "$problem" kernel "$(uname -r)"
+  say "Problem with the NVIDIA driver: $problem"
+  return 0
+}
+
+# Default boot entry: the newest kernel that has a matching NVIDIA module.
+# Called by 99-zz-basalt-nvidia.install after a kernel is installed, and by
+# the kmod packages after a module arrives. Only acts while the NVIDIA
+# driver is in use (not after a fallback) and grubby is there.
+cmd_select_default() {
+  need_root
+  load_state || return 0
+  [[ "${S[mode]}" != fallback ]] || return 0
+  command -v grubby >/dev/null || return 0
+  local newest target cur
+  newest=$(installed_kernels | tail -1)
+  target=$(newest_with_module) || { note "no installed kernel has the NVIDIA module"; return 0; }
+  cur=$(grubby --default-kernel 2>/dev/null) || return 0
+  cur=${cur#/boot/vmlinuz-}
+  if [[ "$cur" == "$target" ]]; then
+    if [[ -n "${S[held_kernel]:-}" && "$target" == "$newest" ]]; then
+      S[held_kernel]=""
+      save_state
+      ledger driver.kernel_release ok driver nvidia kernel "$target"
+    fi
+    return 0
+  fi
+  # A default kernel that has its module and was not held by us is the
+  # person's choice: leave it.
+  if module_matches "$cur" && [[ -z "${S[held_kernel]:-}" ]]; then
+    return 0
+  fi
+  grubby --set-default "/boot/vmlinuz-$target" >/dev/null
+  if [[ "$target" != "$newest" ]]; then
+    S[held_kernel]=$newest
+    save_state
+    ledger driver.kernel_hold ok driver nvidia kernel "$newest" default "$target"
+    say "Kernel $newest has no NVIDIA module yet; the computer keeps starting kernel $target."
+  else
+    S[held_kernel]=""
+    save_state
+    ledger driver.kernel_release ok driver nvidia kernel "$target"
+    say "Kernel $target now has its NVIDIA module and is the default again."
+  fi
+  return 0
+}
+
+cmd_status() {
+  local json=0; [[ "${1:-}" == --json ]] && json=1
+  load_state || true
+  local mode=${S[mode]:-none} decision="" breason="" kernels="" k
+  if [[ -r "$RUN_DIR/boot" ]]; then
+    decision=$(sed -n 's/^driver=//p' "$RUN_DIR/boot")
+    breason=$(sed -n 's/^reason=//p' "$RUN_DIR/boot")
+  fi
+  for k in $(installed_kernels); do
+    if module_matches "$k"; then kernels+="$k "; fi
+  done
+  local def=""
+  if command -v grubby >/dev/null; then def=$(grubby --default-kernel 2>/dev/null || true); fi
+  if [[ $json == 1 ]]; then
+    printf '{"mode":%s,"since":%s,"reason":%s,"snapshot":%s,"proposal":%s,"held_kernel":%s,"this_boot":%s,"this_boot_reason":%s,"running_kernel":%s,"kernels_with_module":%s,"default_kernel":%s,"userspace":%s,"loaded":%s}\n' \
+      "$(json_str "$mode")" "$(json_str "${S[since]:-}")" "$(json_str "${S[reason]:-}")" "$(json_str "${S[snapshot]:-}")" \
+      "$(json_str "${S[proposal]:-}")" "$(json_str "${S[held_kernel]:-}")" "$(json_str "$decision")" "$(json_str "$breason")" \
+      "$(json_str "$(uname -r)")" "$(json_str "${kernels% }")" "$(json_str "${def#/boot/vmlinuz-}")" \
+      "$(json_str "$(userspace_versions | paste -sd' ')")" "$([[ -e "$SYS/module/nvidia" ]] && echo true || echo false)"
+    return 0
+  fi
+  case "$mode" in
+    none) say "NVIDIA driver: not set up (no $STATE)" ;;
+    trial) say "NVIDIA driver: installed, waiting for its first check (restart the computer)" ;;
+    active) say "NVIDIA driver: in use" ;;
+    fallback) say "NVIDIA driver: OFF since ${S[since]:-?}, nouveau is used. Reason: ${S[reason]:-unknown}" ;;
+  esac
+  [[ -n "$decision" ]] && say "This boot: $decision${breason:+ ($breason)}"
+  say "Module loaded: $([[ -e "$SYS/module/nvidia" ]] && echo yes || echo no)"
+  say "Driver version: $(userspace_versions | paste -sd' ')"
+  kernels=${kernels% }
+  kernels=${kernels% }
+  say "Kernels with the NVIDIA module: ${kernels:-none}"
+  [[ -n "$def" ]] && say "Default boot entry: ${def#/boot/vmlinuz-}"
+  [[ -n "${S[held_kernel]:-}" ]] && say "Held back: kernel ${S[held_kernel]} until its NVIDIA module is published"
+  [[ -n "${S[snapshot]:-}" ]] && say "Snapshot before the install: ${S[snapshot]} (sudo basalt snapshots rollback ${S[snapshot]})"
+  if [[ "$mode" == fallback ]]; then
+    say "Try the NVIDIA driver again: sudo basalt-nvidia retry"
+  fi
+  return 0
+}
+
+# PRIME render offload: the integrated GPU keeps the display, this program
+# renders on the NVIDIA GPU (OpenGL through glvnd, Vulkan through the
+# Optimus layer, EGL through the vendor library).
+cmd_run() {
+  [[ $# -ge 1 ]] || die "usage: basalt-nvidia run COMMAND [ARGS]"
+  export __NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only __GLX_VENDOR_LIBRARY_NAME=nvidia
+  export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+  exec "$@"
+}
+
+cmd=${1:-status}
+[[ $# -gt 0 ]] && shift
+case "$cmd" in
+  status) cmd_status "$@" ;;
+  arm) cmd_arm ;;
+  boot) cmd_boot ;;
+  check) cmd_check ;;
+  fallback) cmd_fallback "${1:-}" ;;
+  retry) cmd_retry ;;
+  select-default) cmd_select_default ;;
+  run) cmd_run "$@" ;;
+  -h | --help | help) sed -n '2,19p' "$0" ;;
+  *) sed -n '2,19p' "$0" >&2; exit 2 ;;
+esac

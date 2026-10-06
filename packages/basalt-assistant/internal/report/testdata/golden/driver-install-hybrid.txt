@@ -1,0 +1,35 @@
+[p-1a2b3c] install the NVIDIA driver 595.104.02 for NVIDIA GeForce RTX 4060 Laptop GPU
+Waiting for your decision, found by basalt on 2026-10-04 10:15 UTC
+
+  NVIDIA GeForce RTX 4060 Laptop GPU can use the NVIDIA driver 595.104.02
+  instead of nouveau. Intel Corporation Raptor Lake-P [Iris Xe Graphics] stays
+  the display GPU; programs run on NVIDIA GeForce RTX 4060 Laptop GPU when
+  they ask for it (PRIME offload, basalt-nvidia-run), and CUDA works on it. If
+  you apply it, the assistant will turn on the basalt-nonfree repository,
+  install the NVIDIA driver with the signed kernel module for kernel
+  7.2.8-200.fc44.x86_64 and turn nouveau off from the next start.
+
+What will run (exactly these commands, as root, in this order)
+  $ dnf -y install basalt-nonfree-release
+  $ dnf config-manager setopt basalt-nonfree.enabled=1
+  $ dnf -y install --skip-unavailable nvidia-driver kmod-nvidia-open-7.2.8-200.fc44.x86_64
+  $ basalt-nvidia arm
+
+Risk: high (the graphics driver changes at the next start; if it does not work
+there, the start after it uses nouveau again).
+Undo: a snapshot is taken before and after, so you can go back to the state
+before the change; a rollback takes effect at the next boot.
+  $ sudo basalt snapshots rollback --before p-1a2b3c
+
+Next step
+  Restart the computer after applying it. The first start checks the driver
+  and goes back to nouveau if it fails, and the snapshot taken before the
+  change brings the system back. The driver is proprietary: applying it means
+  you accept the NVIDIA Driver License Agreement (basalt drivers license
+  nvidia).
+  Apply it:   sudo basalt apply p-1a2b3c
+              (without a prompt: sudo basalt apply p-1a2b3c --yes --confirm a21028da)
+  Ignore it:  sudo basalt ignore p-1a2b3c
+
+Evidence
+  - GPU 0000:01:00.0: NVIDIA GeForce RTX 4060 Laptop GPU (10de:28a0, 3d), kernel driver now: nouveau

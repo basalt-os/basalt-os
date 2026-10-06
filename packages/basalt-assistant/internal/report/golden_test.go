@@ -204,6 +204,22 @@ func scenarios() map[string]*proposal.Proposal {
 	applied.Result = &proposal.Result{OK: true, PreSnapshot: 60, PostSnapshot: 61}
 	ps["applied"] = applied
 
+	// Additional drivers: the NVIDIA driver on a laptop with two GPUs, and
+	// compute only on a server.
+	for name, v := range map[string]string{"driver-install-hybrid": "display", "driver-install-compute": "compute"} {
+		f := explain.New("driver", "install", "nvidia")
+		f.Set("gpu", "NVIDIA GeForce RTX 4060 Laptop GPU").Set("version", "595.104.02").Set("variant", v).Set("kernel", "7.2.8-200.fc44.x86_64")
+		if v == "display" {
+			f.Set("primary", "Intel Corporation Raptor Lake-P [Iris Xe Graphics]")
+		}
+		dp := base("cli", "driver", "nvidia", "driver:nvidia:install:"+v)
+		dp.Title, dp.Facts, dp.Severity = "install the NVIDIA driver 595.104.02 for NVIDIA GeForce RTX 4060 Laptop GPU", f, 1
+		dp.Actions = []action.Action{act(action.DriverInstall, "driver", "nvidia", "variant", v, "kernel", "7.2.8-200.fc44.x86_64",
+			"license", action.NvidiaLicenseSHA256)}
+		dp.Evidence = []string{"GPU 0000:01:00.0: NVIDIA GeForce RTX 4060 Laptop GPU (10de:28a0, 3d), kernel driver now: nouveau"}
+		ps[name] = dp
+	}
+
 	t0 := time.Date(2026, 10, 4, 10, 15, 0, 0, time.UTC)
 	for _, p := range ps {
 		p.ID, p.Created = "p-1a2b3c", t0
