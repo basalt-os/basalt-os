@@ -1,4 +1,4 @@
-policy_module(basalt_agent, 0.3.0)
+policy_module(basalt_agent, 0.3.1)
 
 # basalt-agent: AI coding agent command lines (Claude Code, Codex CLI,
 # Gemini CLI, Aider, ...) confined by SELinux. Two domains:
@@ -108,6 +108,37 @@ optional_policy(`
 # Runtimes read vm.mmap_min_addr at start (Bun, which Claude Code is
 # built with); a read-only system setting.
 kernel_read_vm_sysctls(basalt_agent_t)
+
+# Local servers: an agent may listen on a TCP port 1024 and up and reach
+# such ports: a dev server or a test server it started (Go's httptest,
+# a web framework's dev server), a test database, and the local callback
+# of a command line login (Claude Code's OAuth login listens on
+# 127.0.0.1 for the browser's redirect; without this it failed with
+# "permission denied 127.0.0.1:0"). Ports below 1024 stay closed. SELinux
+# reasons about port types, not addresses: which addresses a session may
+# reach is decided by basalt-resolver's kernel filter (loopback with the
+# profile's loopback = yes, the default, and the allowlisted names on
+# their ports; docs/network.md), and inbound connections from other hosts
+# are refused by the firewall's default zone.
+allow basalt_agent_t self:tcp_socket { listen accept };
+corenet_tcp_bind_generic_node(basalt_agent_t)
+corenet_tcp_bind_all_unreserved_ports(basalt_agent_t)
+corenet_tcp_bind_all_ephemeral_ports(basalt_agent_t)
+corenet_tcp_connect_all_unreserved_ports(basalt_agent_t)
+corenet_tcp_connect_all_ephemeral_ports(basalt_agent_t)
+
+# Probes that agents make and do not need, quietly refused: Claude Code
+# (Bun) enumerates /dev, stats /proc/kcore, looks at /proc/sys/fs and the
+# devpts root, and tries syslog's /dev/log.
+dev_dontaudit_getattr_all_chr_files(basalt_agent_t)
+dev_dontaudit_getattr_all_blk_files(basalt_agent_t)
+kernel_dontaudit_getattr_core_if(basalt_agent_t)
+kernel_dontaudit_search_fs_sysctl(basalt_agent_t)
+term_dontaudit_search_ptys(basalt_agent_t)
+gen_require(`
+	type devlog_t;
+')
+dontaudit basalt_agent_t devlog_t:lnk_file read_lnk_file_perms;
 
 # The helper checks its own context before running the agent.
 allow basalt_agent_t self:process { getattr setexec };

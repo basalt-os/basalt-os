@@ -82,8 +82,10 @@ agent cannot plant a hook that later runs with your rights); the agent's home
 to `basalt_agent_home_t`; its installed tools to `basalt_agent_tool_t`
 (read and execute only). SELinux then allows the agent to read and change
 the project, run system and installed tools, use its terminal (without
-`TIOCSTI`, so it cannot inject keystrokes) and connect only to the session
-proxy port; it denies the rest of the home, other users, other sessions, the
+`TIOCSTI`, so it cannot inject keystrokes), connect to the session proxy
+port, and listen on and reach TCP ports 1024 and up (a dev or test server
+it started, a test database, the local callback of a command line login;
+which addresses it may reach is the kernel filter's decision, see below); it denies the rest of the home, other users, other sessions, the
 assistant's state, signalling or tracing the launcher, and privilege
 escalation.
 
@@ -176,7 +178,14 @@ read from `~/.config/basalt-agent/secrets/PROFILE.env` (a regular file,
 mode 0600, owned by you) or, if absent there, from the desktop keyring via
 `secret-tool` (`service basalt-agent profile PROFILE name KEY`). You can
 also skip keys and log in inside a session; the login is stored in the
-profile's own home.
+profile's own home. A session does not open your browser: the agent
+prints the sign-in address instead (Claude Code: "Browser didn't open?
+Use the url below", `c` copies it to the clipboard). Open it in your
+browser, sign in, and paste the code the page shows back into the
+session. Claude Code's sign-in page is on claude.com and claude.ai (your
+browser reaches them, not the session); the session itself only needs
+`platform.claude.com` and `api.anthropic.com`, both in the `claude`
+profile.
 
 Keys never enter the agent session. The launcher reads them and hands them
 to the session proxy on a private pipe; the agent gets a placeholder in the
