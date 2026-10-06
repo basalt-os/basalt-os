@@ -108,3 +108,7 @@ between releases.
   in gate.conf, shadow mode elsewhere); BSC-GATE-003 is also enforced by the
   gate for the system assistant's proposals (the short code is the
   fingerprint, root's confirmation is recorded as the person's decision).
+- Version 3 (2026-10-06): where the approval gate decides the desktop shell's
+  proposals, BSC-GATE-001 holds at the gate too (only the shell UI's domain
+  decides there; the shell daemon refuses to decide those itself) and
+  BSC-GATE-005 is also enforced by the gate's registry.

@@ -33,7 +33,7 @@
 # partial = enforced for some of the scope or without the full verification;
 # planned = decided or proposed, not built yet (nothing to rely on today).
 
-version: 2
+version: 3
 updated: 2026-10-06
 
 areas:
@@ -568,8 +568,12 @@ controls:
     implemented_in:
       - {repo: basalt-shell, path: internal/shell/peer.go}
       - {repo: basalt-shell, path: selinux/basalt_shell.te}
+      - {repo: basalt-shell, path: internal/shell/gate.go}
+      - packages/basalt-gate/internal/server/decide.go
     verification:
       - {type: test, repo: basalt-shell, file: internal/shell/peer_test.go, match: "func TestUICheck("}
+      - {type: test, repo: basalt-shell, file: internal/shell/gate_test.go, match: "func TestGateDecidesAnAgentsRequest("}
+      - {type: test, file: packages/basalt-gate/internal/server/server_test.go, match: "func TestOnlyDecidersDecide("}
       - {type: lab, repo: basalt-shell, file: lab/demo/security-test.sh, match: "ui"}
       - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "shell-socket-confirm"}
       - {type: suite, repo: ai-audit-suite, file: cases/04-confirmation-boundary/probe.sh, match: "confirm.shell-socket"}
@@ -647,8 +651,11 @@ controls:
     adr: ["0012", "0020"]
     implemented_in:
       - {repo: basalt-shell, path: internal/shell/acting.go}
+      - packages/basalt-gate/actions.d/shell.json
     verification:
       - {type: test, repo: basalt-shell, file: internal/shell/acting_test.go, match: "func TestPersonActionsRefuseAgents("}
+      - {type: test, file: packages/basalt-gate/internal/server/server_test.go, match: "func TestPersonOnlyAndRelays("}
+      - {type: test, file: packages/basalt-gate/internal/server/migrate_test.go, match: "func TestPersonOwnPowerInTheSession("}
       - {type: manual, guide: BSC-GATE-005}
 
   - id: BSC-GATE-006

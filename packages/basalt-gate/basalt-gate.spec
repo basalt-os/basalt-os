@@ -159,6 +159,9 @@ fi
   approved (exec_units). SELinux: the executor domain basalt_gate_exec_t
   (entered only by systemd from basalt-gate-exec@.service), the daemon's
   program type is now basalt_gated_exec_t, the gate may start that unit.
+- The person's own request of a person-only action (power from the
+  command bar) is decided by the same user without an administrator, as
+  in the shell before; agents still cannot ask for it at all.
 
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version (ADR 0020 phase 1): the gate alone, no existing approval

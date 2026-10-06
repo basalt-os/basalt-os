@@ -249,3 +249,38 @@ func TestReferenceIsTheSystemAssistants(t *testing.T) {
 		t.Errorf("the system assistant: %+v", r)
 	}
 }
+
+// The person's own power request from the command bar: the shell UI
+// decides it in the session (no administrator), as today; an agent
+// cannot ask for it at all.
+func TestPersonOwnPowerInTheSession(t *testing.T) {
+	e := newEnv(t)
+	power := []gate.Call{{Action: "session.power", Args: map[string]any{"op": "poweroff"}}}
+	if r := e.propose(pAgent, power); r.Decision != gate.Refused {
+		t.Fatalf("agent: %+v", r)
+	}
+	r := e.do(pShell, gate.Request{Op: "propose", Calls: power, OnBehalf: &gate.OnBehalf{Kind: "person"}})
+	if !r.OK || r.Decision != gate.Asked || r.Class != "C4" {
+		t.Fatalf("%+v", r)
+	}
+	n := len(e.pk.calls)
+	if d := e.approve(pShellUI, r.ID); !d.OK || d.Decision != gate.Allowed {
+		t.Fatalf("%+v", d)
+	}
+	if len(e.pk.calls) != n {
+		t.Errorf("polkit asked: %v", e.pk.calls[n:])
+	}
+	// The same from the terminal decider: the person's own password.
+	r2 := e.do(pShell, gate.Request{Op: "propose", Calls: []gate.Call{{Action: "session.power", Args: map[string]any{"op": "lock"}}},
+		OnBehalf: &gate.OnBehalf{Kind: "person"}})
+	if d := e.approve(pTTY, r2.ID); !d.OK || e.pk.last() != "org.basalt-os.gate.decide" {
+		t.Fatalf("%+v %s", d, e.pk.last())
+	}
+	// A shell request of an agent's critical action still needs an
+	// administrator.
+	ctl := e.do(pShell, gate.Request{Op: "propose", Calls: []gate.Call{{Action: "agent.control", Args: map[string]any{"reason": "fix the layout", "minutes": 5}}},
+		OnBehalf: &gate.OnBehalf{Kind: "agent", Name: "claude"}})
+	if d := e.approve(pShellUI, ctl.ID); !d.OK || e.pk.last() != "org.basalt-os.gate.decide-admin" {
+		t.Fatalf("%+v %s", d, e.pk.last())
+	}
+}

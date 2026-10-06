@@ -2,7 +2,7 @@
 
 <!-- Generated from controls.yaml by scripts/ci/security-controls-check.sh --render. Do not edit by hand. -->
 
-Version 2, updated 2026-10-06. Each control has a
+Version 3, updated 2026-10-06. Each control has a
 stable ID, a requirement, the reason for it, where it is enforced, how it
 is verified and its status. Implemented means enforced in the shipped
 packages and checked; partial means enforced for part of the scope or
@@ -500,11 +500,13 @@ Requirement: A confirmation of a desktop proposal MUST be accepted only from the
 
 Rationale: A prompt-injected agent cannot approve its own request.
 
-Implemented in: `internal/shell/peer.go` in basalt-shell, `selinux/basalt_shell.te` in basalt-shell.
+Implemented in: `internal/shell/peer.go` in basalt-shell, `selinux/basalt_shell.te` in basalt-shell, `internal/shell/gate.go` in basalt-shell, `packages/basalt-gate/internal/server/decide.go`.
 
 Verified by:
 
 - Test: `internal/shell/peer_test.go` in basalt-shell, `func TestUICheck(`
+- Test: `internal/shell/gate_test.go` in basalt-shell, `func TestGateDecidesAnAgentsRequest(`
+- Test: `packages/basalt-gate/internal/server/server_test.go`, `func TestOnlyDecidersDecide(`
 - Lab: `lab/demo/security-test.sh` in basalt-shell, `ui`
 - Lab: `packages/basalt-agent/tests/attacks.sh`, `shell-socket-confirm`
 - Audit suite: `cases/04-confirmation-boundary/probe.sh` in ai-audit-suite, `confirm.shell-socket`
@@ -579,11 +581,13 @@ Requirement: Actions that act in the person's name (inserting text, sending mail
 
 Rationale: Content and agents cannot make the machine speak or act for the person.
 
-Implemented in: `internal/shell/acting.go` in basalt-shell.
+Implemented in: `internal/shell/acting.go` in basalt-shell, `packages/basalt-gate/actions.d/shell.json`.
 
 Verified by:
 
 - Test: `internal/shell/acting_test.go` in basalt-shell, `func TestPersonActionsRefuseAgents(`
+- Test: `packages/basalt-gate/internal/server/server_test.go`, `func TestPersonOnlyAndRelays(`
+- Test: `packages/basalt-gate/internal/server/migrate_test.go`, `func TestPersonOwnPowerInTheSession(`
 - Manual: audit guide, [BSC-GATE-005](audit-guide.md#bsc-gate-005)
 
 ### BSC-GATE-006

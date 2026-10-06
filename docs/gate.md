@@ -239,6 +239,7 @@ asks which paths are enforced in `hello`.
 | Path | `enforce` name | Default | With the gate deciding |
 |---|---|---|---|
 | The system assistant's proposals (`basalt apply`) | `apply` | shadow | see below |
+| The desktop shell's proposals, the person's own actions | `shell` | shadow | the shell asks for the person or the agent; the shell UI decides at the gate |
 
 The system assistant's proposals (`apply`). `basalt apply ID` queues the
 proposal in the gate (calls: its typed actions; reference: its id;
@@ -259,6 +260,21 @@ what it did. `basalt submit ID` queues a proposal without applying it
 (the desktop shell uses it before the person decides on its sheet). In
 shadow mode `basalt apply` asks at the terminal exactly as before and
 records the outcome with `observe`.
+
+The desktop shell's proposals (`shell`). The shell daemon
+(`basalt_shell_t`, a trusted relay) asks on behalf of the person (the
+command bar, push to talk) or of the agent (MCP and IPC clients), with
+its own plan as the preview. A rule may decide at once; otherwise the
+shell shows the request on its sheet, command bar or voice card, and the
+person's decision goes from the shell UI (`basalt_shell_ui_t`, the
+desktop decider) straight to the gate. The daemon then claims with
+exactly the calls it is about to run and reports the result. Actions only
+the person's own words may ask for (typing dictated text, sending mail,
+moving files, spoken answers, power from the command bar) stay that way:
+the registry refuses them from anyone else before any rule; the person's
+own request of them is decided in the session without an administrator,
+as before. Agent control sessions and screenshots stay with the shell in
+this version (it only reports them).
 
 ## Ledger records
 

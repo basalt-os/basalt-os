@@ -182,10 +182,10 @@ func isUserRuleChange(e *entry, uid int) bool {
 // none): administrator authentication for system and critical changes
 // and for another user's requests; a terminal decider authenticates every
 // time.
-func polkitFor(c *conn, es []*entry) string {
+func (s *Server) polkitFor(c *conn, es []*entry) string {
 	admin := false
 	for _, e := range es {
-		if e.NeedsAdmin && !isUserRuleChange(e, c.p.UID) {
+		if e.NeedsAdmin && !isUserRuleChange(e, c.p.UID) && !s.personOwn(c, e) {
 			admin = true
 		}
 		if e.P.Requester.UID != c.p.UID && c.p.UID != 0 {
@@ -199,6 +199,26 @@ func polkitFor(c *conn, es []*entry) string {
 		return polkit.Decide
 	}
 	return ""
+}
+
+// personOwn: the person's own request of actions only the
+// person's words may ask for (locking the screen, powering off, from the
+// command bar), decided by the same user. The
+// registry already refused anyone else asking for them, so the session
+// is enough, as it is for those actions today; the terminal decider still
+// asks polkit (the person's own password).
+func (s *Server) personOwn(c *conn, e *entry) bool {
+	r := e.P.Requester
+	if r.Kind != proposal.KindPerson || r.UID != c.p.UID || len(r.Via) > 0 {
+		return false
+	}
+	for _, call := range e.P.Calls {
+		a := s.o.Reg.Actions[call.Action]
+		if a == nil || !a.PersonOnly || a.System {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) decide(ctx context.Context, c *conn, req gate.Request) gate.Reply {
@@ -296,7 +316,7 @@ func (s *Server) decide(ctx context.Context, c *conn, req gate.Request) gate.Rep
 	}
 	action := ""
 	if approve {
-		action = polkitFor(c, es)
+		action = s.polkitFor(c, es)
 	}
 	s.mu.Unlock()
 
