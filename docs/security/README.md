@@ -1,5 +1,10 @@
 # How Basalt OS protects you
 
+Security model 0.1, draft (catalog version 1, 2026-10-06). This model is
+in development and is published as it evolves: each release is a tagged
+version on GitHub, until a final 1.0 that matches the first stable Basalt OS
+release. See [change-policy.md](change-policy.md#releases-of-the-security-model).
+
 Basalt OS is built so that AI can help on your computer without being able
 to harm it or you. This page explains, in plain words, the layers of
 protection, what each one stops, and what it does not stop. Basalt OS is

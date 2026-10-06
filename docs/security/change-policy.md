@@ -82,7 +82,24 @@ A way around any control in this catalog is a security problem. Report it
 privately as described in [SECURITY.md](../../SECURITY.md); do not open a
 public issue.
 
+## Releases of the security model
+
+The security model (these documents and the catalog) is released on its
+own, with versions that say how mature it is:
+
+- 0.x drafts while Basalt OS is pre-alpha and alpha: requirements may still
+  change, and planned controls are expected.
+- release candidates (1.0-rc.N) once every control needed for the first
+  stable release is implemented or has a recorded exception.
+- 1.0, published together with the first stable Basalt OS release, then
+  1.x and 2.0 following the same rules.
+
+Each release is a Git tag `security-model-vX.Y[-stage]` with a GitHub
+release whose notes summarize the changelog below and the audit report it
+relies on. The catalog's integer `version` keeps counting every change in
+between releases.
+
 ## Changelog of the security model
 
-- Version 1 (2026-10-06): first catalog, 97 controls in 13 areas, with the
+- Version 1 (2026-10-06, released as security model 0.1, draft): first catalog, 97 controls in 13 areas, with the
   threat model, the audit guide and this policy.
