@@ -16,7 +16,7 @@
 %global __requires_exclude ^lib(llama|ggml|mtmd).*$
 
 Name:           basalt-llm
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Local language model service for the Basalt OS assistant (no network)
 # basalt-llm files: Apache-2.0. llama.cpp and ggml: MIT; bundled
@@ -160,6 +160,16 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
+- basalt-llm-fetch recommended: the model MODEL=auto selects here, or its
+  published stand-in (qwen3-0.6b-q8_0, qwen3-1.7b-q8_0) while the
+  fine-tuned translator is not published; the desktop downloads it after
+  the person's consent (basalt-models). MODEL=auto runs the first
+  downloaded model among the choice and its fallbacks.
+- basalt-llm-fetch --plan, --list --porcelain, --status FILE, --remove and
+  exit codes for an unreachable server (3), a checksum mismatch (4) and an
+  unwritable model directory (5).
+
 * Sat Oct 03 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.0-1
 - MODEL=auto (new default): the fine-tuned translator that fits the
   machine, chosen and logged at each start: 1.7B Q8_0 with 4 or more CPU

@@ -1,0 +1,47 @@
+[Unit]
+Description=Basalt OS model download (%i), after the person's consent
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/models.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Download and verify in the sandbox below; only after a verified download
+# of the assistant's model, the privileged step turns the model service on.
+ExecStart=/usr/libexec/basalt-models/run fetch %i
+ExecStartPost=+/usr/libexec/basalt-models/run after %i
+TimeoutStartSec=6h
+
+# Confinement: the download needs the network and two model directories,
+# nothing else. Root without any capability (it owns those directories),
+# no home folders, a read-only system, private /tmp and devices.
+ReadWritePaths=-/var/lib/basalt-voice/models -/var/lib/basalt-llm/models /run/basalt-models
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+UMask=0022
+# A background job: the person keeps working.
+Nice=10
+CPUWeight=20
+IOSchedulingClass=idle

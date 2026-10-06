@@ -59,7 +59,7 @@ has one.
 
 | Field | Default | Notes |
 |---|---|---|
-| `edition` | `server` | `desktop` is accepted and marked experimental: the server system plus `packages.extra` |
+| `edition` | `server` | `desktop` is accepted and marked experimental: the server system plus the desktop package set (`basalt-desktop`, `basalt-shell-selinux`, `basalt-voice`, `basalt-models`, `basalt-llm`, `basalt-llm-selinux`; no model: the desktop asks the person before it downloads one, see [models.md](models.md)) and `packages.extra` |
 | `target.disk` | | the disk Basalt OS goes on |
 | `target.wipe` | `false` | `true` erases the whole disk; `false` keeps every partition on it and installs into its largest free region (dual boot, GPT only); a plan for an empty disk must say `true` |
 | `target.esp` | none | with `wipe: false`, an existing EFI system partition to share (for example Windows'); by default Basalt OS gets its own in the free space |
@@ -347,9 +347,10 @@ the files in `packages/basalt-installer/live/desktop/`.
   owners back before anyone logs in. Only those few files are copied up
   into the overlay, which lives in memory.
 - A plan at `basalt/plans/default.yaml` (from `live/desktop/plans/`, or
-  `LIVE_PLANS`) with `edition: desktop`, `repos.testing: true` and
-  `packages.extra: [basalt-desktop, ...]` makes the installer install the
-  desktop edition.
+  `LIVE_PLANS`) with `edition: desktop` and `repos.testing: true` makes
+  the installer install the desktop edition: its package set comes with
+  the edition (voice, the consented model downloads and the local model
+  service included), `packages.extra` adds to it.
 
 ## Building
 
@@ -459,7 +460,6 @@ Basalt parts (encryption enrollment, snapshots setup, services) are in its
   installer opens `nmtui`).
 - Resizing another system's partition; using a chosen region other than
   the largest free one; BIOS boot.
-- A desktop package set for `edition: desktop`.
 - The tui-tools repository file moves into `basalt-third-party` once it
   exists (`basalt-tools` is already in `basalt-release`); the installer
   then only enables or disables it.

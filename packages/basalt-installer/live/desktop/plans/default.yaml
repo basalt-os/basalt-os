@@ -16,9 +16,7 @@ repos:
   # The desktop shell is pre-release: basalt-testing at install time (from
   # the media) and on the installed system.
   testing: true
-packages:
-  extra:
-    - basalt-desktop
-    - basalt-shell-selinux
-    - basalt-voice
+# The desktop package set (the session, voice, the consented model
+# downloads, the local model service) comes with edition: desktop; list
+# more packages under packages.extra.
 finish: reboot

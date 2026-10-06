@@ -121,7 +121,14 @@ start() { # start MODEL: output of basalt-llm-start (stdout and stderr), never f
 }
 out="$(start auto)"
 has "start auto, nothing downloaded" "is missing (auto:" "$out"
-has "start auto points to fetch" "run: basalt-llm-fetch auto" "$out"
+has "start auto points to fetch" "run: basalt-llm-fetch recommended" "$out"
+# The published stand-in alone (what the desktop downloads while the
+# translators are unpublished): auto runs it (it is a candidate on every
+# machine).
+: >"$models/qwen3-0.6b-q8_0.gguf"
+out="$(start auto)"
+has "start auto uses the stand-in when no translator is downloaded" "--model $models/qwen3-0.6b-q8_0.gguf" "$out"
+has "start auto says why it runs the stand-in" "is not downloaded, qwen3-0.6b-q8_0 is" "$out"
 : >"$models/basalt-translator-0.6b-q8_0.gguf"
 out="$(start auto)"
 has "start auto uses the 0.6B when it is the only one" "--model $models/basalt-translator-0.6b-q8_0.gguf" "$out"
@@ -142,6 +149,15 @@ has "start absolute path" "--model $tmp/mine.gguf --alias mine" "$out"
 out="$(start 'bad name')"
 has "start invalid name" "invalid model name" "$out"
 
+# --- stand-ins and the candidates of auto -----------------------------------------
+eq "stand-in of the 0.6B" qwen3-0.6b-q8_0 "$(basalt_llm_standin basalt-translator-0.6b-q8_0)"
+eq "stand-in of the 1.7B" qwen3-1.7b-q8_0 "$(basalt_llm_standin basalt-translator-1.7b-q8_0)"
+eq "stand-in passthrough" qwen3-4b-q4_k_m "$(basalt_llm_standin qwen3-4b-q4_k_m)"
+eq "candidates of the 1.7B" "basalt-translator-1.7b-q8_0 basalt-translator-0.6b-q8_0 qwen3-1.7b-q8_0 qwen3-0.6b-q8_0" \
+  "$(basalt_llm_candidates basalt-translator-1.7b-q8_0)"
+eq "candidates of the 0.6B never include a 1.7B" "basalt-translator-0.6b-q8_0 qwen3-0.6b-q8_0" \
+  "$(basalt_llm_candidates basalt-translator-0.6b-q8_0)"
+
 # --- basalt-llm-fetch: unpublished entries fail closed ----------------------------
 fetch() { # fetch ARGS...: output and exit status of basalt-llm-fetch
   local rc=0
@@ -160,6 +176,15 @@ out="$(fetch --list)"
 has "list shows unpublished" "basalt-translator-1.7b-q8_0" "$out"
 has "list marks unpublished" "absent, not yet published" "$out"
 has "list shows the auto choice" "MODEL=auto selects basalt-translator-" "$out"
+# recommended: the auto choice, or its published stand-in (the plan says
+# which and how big, without root and without downloading).
+out="$(fetch --plan recommended)"
+has "plan recommended is a published stand-in" "rc=0 qwen3-" "$out"
+has "plan recommended names the host" "huggingface.co absent" "$out"
+out="$(fetch --plan nosuchmodel)"
+has "plan unknown model" "rc=2" "$out"
+out="$(fetch --list --porcelain)"
+has "porcelain list marks unpublished" "basalt-translator-0.6b-q8_0 0 Apache-2.0,unpublished - absent" "$out"
 out="$(fetch nosuchmodel)"
 has "fetch unknown model" "unknown model nosuchmodel" "$out"
 # Every published entry has a real checksum and an https URL; every

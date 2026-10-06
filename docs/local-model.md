@@ -1,6 +1,7 @@
 # The optional local language model
 
-Status: pre-alpha, milestone 2c, off by default. Measurements and the
+Status: pre-alpha, milestone 2c. Off by default on servers; on the
+desktop edition installed and offered to the person when a skill needs it. Measurements and the
 reasoning behind the defaults: [milestone-2b-report.md](milestone-2b-report.md)
 (translator, decision backend) and [milestone-2c-report.md](milestone-2c-report.md)
 (humanize).
@@ -27,9 +28,9 @@ record.
 
 | Piece | What it is |
 |---|---|
-| `basalt-llm` (package, optional) | llama.cpp's `llama-server` 0.5.0 built for the CPU only (all x86-64 variants, the best one is picked at run time), in `/usr/lib64/basalt-llm`; `basalt-llm.service`; `basalt-llm-fetch`; `/etc/basalt/llm.conf`. About 9 MiB as an RPM, no model inside. |
+| `basalt-llm` (package; part of the desktop edition, optional on servers) | llama.cpp's `llama-server` 0.5.0 built for the CPU only (all x86-64 variants, the best one is picked at run time), in `/usr/lib64/basalt-llm`; `basalt-llm.service`; `basalt-llm-fetch`; `/etc/basalt/llm.conf`. About 9 MiB as an RPM, no model inside. |
 | `basalt-llm-selinux` | SELinux module `basalt_llm`: domain `basalt_llm_t` |
-| models | GGUF files in `/var/lib/basalt-llm/models`, downloaded by an administrator with `basalt-llm-fetch` and checked against the SHA-256 in `/usr/share/basalt-llm/models.manifest` |
+| models | GGUF files in `/var/lib/basalt-llm/models`, downloaded by the desktop's confined download service after the person's consent ([models.md](models.md)) or by an administrator, with `basalt-llm-fetch`, and checked against the SHA-256 in `/usr/share/basalt-llm/models.manifest` |
 | model selection | `/usr/libexec/basalt-llm/basalt-llm-select`, used by the service at each start (`MODEL=auto`) and by `basalt-llm-fetch auto` |
 | `basalt ask` | part of `basalt-assistant` (`internal/translate`) |
 | model backend | part of `basalt-assistant` (`internal/decide/model.go`) |
@@ -37,25 +38,54 @@ record.
 Fedora's own `llama-cpp` package was not used: it is built with ROCm and
 pulls in about 6 GiB of GPU libraries, against a light server image.
 
-## Install and enable
+## On the desktop: nothing to set up
+
+The desktop edition installs `basalt-llm` without a model. When a skill
+needs the model (a summary of a mailbox or a page) and none is
+downloaded, a card offers it: "Download the assistant's local model (1.8
+GB) from huggingface.co? It runs on this computer.", with Download and
+Not now. Settings, Voice and assistant, has the same Download (and
+Remove). After Download the confined download service of
+[basalt-models](models.md) fetches `basalt-llm-fetch recommended`,
+verifies it, turns `[translator]` on in `/etc/basalt/assistant.conf`,
+and enables and starts `basalt-llm.service`; the desktop's command bar
+and skills use the model at once, and a notification says it is ready.
+Nothing is downloaded without the person's consent.
+
+`recommended` is the model `MODEL=auto` selects on the machine (below)
+when its weights are published, else its published stand-in: the
+publisher's Qwen3 checkpoint of the same size (`qwen3-0.6b-q8_0`,
+`qwen3-1.7b-q8_0`). `MODEL=auto` runs the stand-in when it is the
+downloaded one, so nothing in `llm.conf` changes.
+
+## On a server (administrators)
 
 ```sh
 sudo dnf install basalt-llm               # also basalt-llm-selinux
 basalt-llm-fetch --list                   # also says what MODEL=auto picks here
-sudo basalt-llm-fetch auto                # downloads it, verifies the SHA-256
+sudo basalt-llm-fetch recommended         # downloads it, verifies the SHA-256
 sudo systemctl enable --now basalt-llm
 sudoedit /etc/basalt/assistant.conf       # [translator] enabled = yes
 basalt ask "why did nginx stop?"
 ```
 
-Until the fine-tuned translators are published (below), `basalt-llm-fetch
-auto` stops with a message that says so; use a published model instead:
+`basalt-llm-fetch auto` asks for the fine-tuned translator itself, and
+until the translators are published (below) it stops with a message
+that says so; `recommended` downloads the published stand-in instead.
+Other published models work too:
 
 ```sh
 sudo basalt-llm-fetch qwen3-1.7b-q8_0
 sudoedit /etc/basalt/llm.conf             # MODEL=qwen3-1.7b-q8_0
 sudo systemctl enable --now basalt-llm
 ```
+
+`basalt-llm-fetch` also has `--plan NAME` (what a download would fetch,
+machine readable, no root), `--list --porcelain`, `--remove NAME`,
+`--status FILE` (progress for the desktop) and exit status 3 when the
+server cannot be reached (the partial file is resumed by the next run),
+4 for a checksum mismatch (the file is deleted) and 5 when the model
+directory is not writable.
 
 ## Which model runs
 
@@ -87,9 +117,12 @@ basalt-llm: model basalt-translator-1.7b-q8_0 (auto: 8 CPU cores, 12034 MiB avai
 
 A running server never switches models: a machine that gains or loses
 memory gets a different model at the next start, never in the middle of
-a run. If `auto` allows the 1.7B but only the 0.6B is downloaded, the
-0.6B runs (the log says so); the 1.7B is never used where `auto` chose
-the 0.6B unless `MODEL=1.7b` asks for it. `basalt-llm-fetch auto` downloads
+a run. `auto` runs the first downloaded model among its choice and the
+fallbacks: for the 1.7B, the 1.7B translator, the 0.6B translator, then
+the stand-ins `qwen3-1.7b-q8_0` and `qwen3-0.6b-q8_0`; for the 0.6B, the
+0.6B translator, then `qwen3-0.6b-q8_0` (the log says which and why).
+The 1.7B is never used where `auto` chose the 0.6B unless `MODEL=1.7b`
+asks for it. `basalt-llm-fetch auto` downloads
 the model `auto` selects on the machine it runs on.
 
 The assistant picks its prompt to match: with `[translator] prompt = auto`
@@ -343,9 +376,10 @@ namespace gets `failed to open socket: Permission denied` and an AVC for
 reaches the server; 0 denials of `basalt_llm_t` and `basalt_assistant_t`
 while serving the assistant.
 
-The only network access needed is the model download, done by an
-administrator with `basalt-llm-fetch` (HTTPS only, checksum verified,
-partial downloads resumed, a mismatching file deleted).
+The only network access needed is the model download, done by
+`basalt-llm-fetch` (HTTPS only, checksum verified, partial downloads
+resumed, a mismatching file deleted), run by the desktop's confined
+download service after the person's consent or by an administrator.
 
 ## Resources
 

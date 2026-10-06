@@ -111,3 +111,32 @@ func TestDriverRecords(t *testing.T) {
 		}
 	}
 }
+
+// The desktop's model downloads (basalt-models): who agreed, what, how
+// much, and that the checksum was checked.
+func TestDescribeModels(t *testing.T) {
+	rec := func(ev, out, data string) Record {
+		return Record{Producer: "basalt-models", UID: 1000, Event: ev, Outcome: out, Data: json.RawMessage(data)}
+	}
+	cases := map[string]Record{
+		"basalt agreed to download english (ggml-base.en,ggml-silero-v5.1.2, 148849309 bytes) from the desktop": rec("model.download.request", "allowed",
+			`{"kind":"voice","what":"english","models":"ggml-base.en,ggml-silero-v5.1.2","size":"148849309","user":"basalt"}`),
+		"english was downloaded and verified against its pinned checksum (ggml-base.en,ggml-silero-v5.1.2, 148849309 bytes), as basalt agreed": rec("model.download", "ok",
+			`{"kind":"voice","what":"english","models":"ggml-base.en,ggml-silero-v5.1.2","size":"148849309","user":"basalt"}`),
+		"The download of recommended that basalt agreed to failed (network)": rec("model.download", "error",
+			`{"kind":"llm","what":"recommended","reason":"network","user":"basalt"}`),
+		"uid 1000 asked to download english from the desktop and was refused: model download is turned off (downloads = nobody)": rec("model.download.request", "denied",
+			`{"what":"english","reason":"model download is turned off (downloads = nobody)"}`),
+	}
+	for want, r := range cases {
+		if got := Describe(r); got != want {
+			t.Errorf("got  %q\nwant %q", got, want)
+		}
+	}
+	if s := Severity("model.download", "ok"); s != "notice" {
+		t.Errorf("model.download severity %s", s)
+	}
+	if s := Severity("model.download", "error"); s != "warning" {
+		t.Errorf("failed model.download severity %s", s)
+	}
+}

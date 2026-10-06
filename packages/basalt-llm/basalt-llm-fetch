@@ -5,25 +5,40 @@
 #   basalt-llm-fetch --list                 models in the manifest, and which are present
 #   basalt-llm-fetch NAME                   download NAME into the model directory
 #   basalt-llm-fetch auto                   download the model MODEL=auto selects here
+#   basalt-llm-fetch recommended            the same, or its published stand-in while the
+#                                           fine-tuned translator is not published (the desktop's choice)
 #   basalt-llm-fetch 0.6b | 1.7b            download that fine-tuned translator
 #   basalt-llm-fetch --verify [NAME]        re-check the checksum of downloaded models
+#   basalt-llm-fetch --plan NAME            what a download would fetch (machine readable, no root)
+#   basalt-llm-fetch --remove NAME          delete a downloaded model
 #
 # Options: --dir DIR (default /var/lib/basalt-llm/models),
-#          --manifest FILE (default /usr/share/basalt-llm/models.manifest).
+#          --manifest FILE (default /usr/share/basalt-llm/models.manifest),
+#          --porcelain (--list: the machine-readable lines of --plan),
+#          --status FILE (progress for the desktop, written while downloading).
 #
 # The download is the only network access the model needs, and it happens
-# here, run by an administrator, never in the model service (which has no
-# network at all). A file whose checksum does not match is deleted. An
-# entry whose weights are not published yet is refused (fail closed).
+# here, run by an administrator or by the desktop's confined download
+# service after the person said yes (basalt-models), never in the model
+# service (which has no network at all). A file whose checksum does not
+# match is deleted. An entry whose weights are not published yet is
+# refused (fail closed).
+#
+# Exit status: 0 done, 1 usage or other error, 3 the network or the
+# server could not be reached (the partial file is kept and resumed),
+# 4 checksum mismatch (the file was deleted), 5 the model directory is
+# not writable.
 set -euo pipefail
 
 DIR="${BASALT_LLM_MODEL_DIR:-/var/lib/basalt-llm/models}"
 MANIFEST="${BASALT_LLM_MANIFEST:-/usr/share/basalt-llm/models.manifest}"
 mode=fetch
 name=""
+porcelain=0
+STATUS=""
 
 die() { printf 'basalt-llm-fetch: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,17s/^# \{0,1\}//p' "$0"; exit "${1:-0}"; }
+usage() { sed -n '2,31s/^# \{0,1\}//p' "$0"; exit "${1:-0}"; }
 
 LIB=/usr/libexec/basalt-llm/basalt-llm-select
 [[ -r "$LIB" ]] || LIB="$(dirname "$0")/basalt-llm-select"
@@ -34,6 +49,10 @@ while (($#)); do
   case "$1" in
     --list) mode=list ;;
     --verify) mode=verify ;;
+    --plan) mode=plan ;;
+    --remove) mode=remove ;;
+    --porcelain) porcelain=1 ;;
+    --status) STATUS="${2:?--status needs a file}"; shift ;;
     --dir) DIR="${2:?--dir needs a directory}"; shift ;;
     --manifest) MANIFEST="${2:?--manifest needs a file}"; shift ;;
     -h | --help) usage 0 ;;
@@ -56,17 +75,55 @@ names() { awk '!/^#/ && NF >= 5 {print $1}' "$MANIFEST"; }
 # A placeholder checksum (all zeros) can never verify a download.
 placeholder() { [[ ! "$1" =~ ^[0-9a-f]{64}$ || "$1" =~ ^0+$ ]]; }
 
+# published NAME: the manifest has real weights for NAME.
+published() {
+  local sha _size _lic url status
+  read -r sha _size _lic url status < <(entry "$1") || return 1
+  [[ "$status" == published ]] && ! placeholder "$sha" && [[ "$url" == https://* ]]
+}
+
+host_of() { local u=${1#*://}; echo "${u%%/*}"; }
+
+# Progress for the desktop: key=value lines, replaced atomically, readable
+# by everyone (sizes and names only).
+status() {
+  [[ -n "$STATUS" ]] || return 0
+  local t="$STATUS.tmp.$$"
+  printf '%s\n' "time=$(date +%s)" "$@" >"$t" && chmod 0644 "$t" && mv -f "$t" "$STATUS"
+}
+
+# resolve NAME: sets RESOLVED, the manifest name a fetch of NAME
+# downloads (auto and recommended are decided here, on this machine), and
+# RESOLVED_WHY (empty for a name given as is).
+resolve() {
+  RESOLVED_WHY=""
+  case "$1" in
+    auto | recommended)
+      basalt_llm_auto "$(basalt_llm_cores)" "$(basalt_llm_avail_mib)" "$(basalt_llm_unit_limit_mib)"
+      RESOLVED="$BASALT_LLM_CHOICE"
+      RESOLVED_WHY="$BASALT_LLM_REASON"
+      if [[ "$1" == recommended ]] && ! published "$RESOLVED"; then
+        RESOLVED="$(basalt_llm_standin "$RESOLVED")"
+        RESOLVED_WHY+="; $BASALT_LLM_CHOICE is not published yet, its stand-in is"
+      fi ;;
+    *) RESOLVED="$(basalt_llm_alias "$1")" ;;
+  esac
+}
+
 unpublished() { # unpublished NAME
   cat >&2 <<MSG
 basalt-llm-fetch: $1 is not yet published: its weights need a signed release
 (the project's key ceremony, docs/key-ceremony.md), which has not happened yet,
 so there is no file or checksum to download and verify.
 Until then:
-  - use a published model: basalt-llm-fetch --list, then e.g.
+  - basalt-llm-fetch recommended downloads its published stand-in
+    ($(basalt_llm_standin "$1")), which MODEL=auto runs when the translator is missing;
+  - or use another published model: basalt-llm-fetch --list, then e.g.
     basalt-llm-fetch qwen3-1.7b-q8_0 and MODEL=qwen3-1.7b-q8_0 in /etc/basalt/llm.conf;
   - in a lab, with a GGUF you built yourself: install it as $DIR/$1.gguf
     (then restorecon -v that file); it is used as is, without a checksum.
 MSG
+  status state=failed error=unpublished "model=$1"
   exit 1
 }
 
@@ -76,8 +133,22 @@ check() { # check NAME SHA FILE
   [[ "$got" == "$2" ]]
 }
 
+# plan_line NAME: "name size license host present|absent" for one model
+# (present: the file is there; its checksum is checked by --verify).
+plan_line() {
+  local n=$1 sha size lic url status st=absent
+  read -r sha size lic url status < <(entry "$n") || return 1
+  [[ -f "$DIR/$n.gguf" ]] && st=present
+  [[ "$status" == published ]] || lic="$lic,unpublished"
+  printf '%s %s %s %s %s\n' "$n" "$size" "$lic" "$(host_of "$url")" "$st"
+}
+
 case "$mode" in
   list)
+    if ((porcelain)); then
+      while read -r n; do plan_line "$n"; done < <(names)
+      exit 0
+    fi
     printf '%-28s %8s  %-10s %s\n' NAME MiB LICENSE STATE
     while read -r n; do
       read -r sha size lic _url status < <(entry "$n")
@@ -90,6 +161,13 @@ case "$mode" in
     done < <(names)
     basalt_llm_auto "$(basalt_llm_cores)" "$(basalt_llm_avail_mib)" "$(basalt_llm_unit_limit_mib)"
     echo "MODEL=auto selects $BASALT_LLM_CHOICE on this machine ($BASALT_LLM_REASON)"
+    published "$BASALT_LLM_CHOICE" || echo "recommended (the desktop's download) is its published stand-in, $(basalt_llm_standin "$BASALT_LLM_CHOICE")"
+    ;;
+  plan)
+    [[ -n "$name" ]] || usage 1
+    resolve "$name"
+    n="$RESOLVED"
+    plan_line "$n" || { echo "basalt-llm-fetch: unknown model $n" >&2; exit 2; }
     ;;
   verify)
     rc=0
@@ -105,42 +183,80 @@ case "$mode" in
     done
     exit "$rc"
     ;;
+  remove)
+    [[ -n "$name" ]] || usage 1
+    n="$(basalt_llm_alias "$name")"
+    entry "$n" >/dev/null || die "unknown model $n (see --list)"
+    [[ -w "$DIR" ]] || { echo "basalt-llm-fetch: $DIR is not writable (run as root)" >&2; exit 5; }
+    rm -f "$DIR/$n.gguf" "$DIR/$n.gguf.part"
+    echo "$n: removed"
+    ;;
   fetch)
     [[ -n "$name" ]] || usage 1
-    if [[ "$name" == auto ]]; then
-      basalt_llm_auto "$(basalt_llm_cores)" "$(basalt_llm_avail_mib)" "$(basalt_llm_unit_limit_mib)"
-      name="$BASALT_LLM_CHOICE"
-      echo "auto selects $name ($BASALT_LLM_REASON)"
-    else
-      name="$(basalt_llm_alias "$name")"
-    fi
-    read -r sha size lic url status < <(entry "$name") || die "unknown model $name (see --list)"
+    req="$name"
+    resolve "$req"
+    name="$RESOLVED"
+    [[ -z "$RESOLVED_WHY" ]] || echo "$req selects $name ($RESOLVED_WHY)"
+    read -r sha size lic url status < <(entry "$name") || { status state=failed error=unknown "model=$name"; die "unknown model $name (see --list)"; }
     # Fail closed: an unpublished entry has no real URL or checksum.
     if [[ "$status" != published ]] || placeholder "$sha" || [[ "$url" != https://* ]]; then
       unpublished "$name"
     fi
     command -v curl >/dev/null || die "curl is needed to download"
-    install -d -m 0755 "$DIR"
+    if ! install -d -m 0755 "$DIR" 2>/dev/null || [[ ! -w "$DIR" ]]; then
+      status state=failed error=storage "model=$name" "message=$DIR is not writable"
+      echo "basalt-llm-fetch: $DIR is not writable (run as root)" >&2
+      exit 5
+    fi
     dest="$DIR/$name.gguf"
     if [[ -f "$dest" ]] && check "$name" "$sha" "$dest"; then
       echo "$name: already present and verified ($dest)"
+      status state=done "model=$name" count=0 bytes=0 total=0
       exit 0
     fi
     echo "$name: $((size / 1048576)) MiB, license $lic"
     echo "  from $url"
     part="$dest.part"
-    progress=(--progress-bar)
-    [[ -t 2 ]] || progress=(--silent --show-error)
-    curl -fL "${progress[@]}" --proto '=https' --retry 3 -C - -o "$part" "$url" || die "download failed (partial file kept for resume: $part)"
+    status state=downloading "model=$name" index=1 count=1 bytes=0 "total=$size"
+    rc=0
+    if [[ -n "$STATUS" ]]; then
+      # In the background, so the progress can be written while it runs.
+      curl -fsSL --proto '=https' --connect-timeout 20 --retry 3 -C - -o "$part" "$url" &
+      pid=$!
+      while kill -0 "$pid" 2>/dev/null; do
+        status state=downloading "model=$name" index=1 count=1 "bytes=$(stat -c %s "$part" 2>/dev/null || echo 0)" "total=$size"
+        sleep 0.5
+      done
+      wait "$pid" || rc=$?
+    else
+      progress=(--progress-bar)
+      [[ -t 2 ]] || progress=(--silent --show-error)
+      curl -fL "${progress[@]}" --proto '=https' --connect-timeout 20 --retry 3 -C - -o "$part" "$url" || rc=$?
+    fi
+    if ((rc != 0)); then
+      case $rc in
+        5 | 6 | 7 | 28 | 35 | 52 | 55 | 56)
+          status state=failed error=network "model=$name" index=1 count=1 "bytes=$(stat -c %s "$part" 2>/dev/null || echo 0)" "total=$size" "message=curl exit $rc"
+          echo "basalt-llm-fetch: the server could not be reached (curl exit $rc); partial file kept for resume: $part" >&2
+          exit 3 ;;
+        *)
+          status state=failed error=download "model=$name" "message=curl exit $rc"
+          die "download failed (curl exit $rc; partial file kept for resume: $part)" ;;
+      esac
+    fi
+    status state=verifying "model=$name" index=1 count=1 "bytes=$size" "total=$size"
     if ! check "$name" "$sha" "$part"; then
       rm -f "$part"
-      die "$name: checksum mismatch, file removed"
+      status state=failed error=checksum "model=$name" "message=checksum mismatch, file removed"
+      echo "basalt-llm-fetch: $name: checksum mismatch, file removed" >&2
+      exit 4
     fi
     chmod 0644 "$part"
     mv -f "$part" "$dest"
-    command -v restorecon >/dev/null && restorecon "$dest" 2>/dev/null || true
+    if command -v restorecon >/dev/null; then restorecon "$dest" 2>/dev/null || true; fi
     echo "$name: verified, saved as $dest"
     echo "MODEL=auto (the default) uses it when it fits this machine; or set MODEL=$name in"
     echo "/etc/basalt/llm.conf. Then: systemctl restart basalt-llm"
+    status state=done "model=$name" count=1 "bytes=$size" "total=$size"
     ;;
 esac

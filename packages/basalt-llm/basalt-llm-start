@@ -24,11 +24,17 @@ case "$model" in
     basalt_llm_auto "$(basalt_llm_cores)" "$(basalt_llm_avail_mib)" "$(basalt_llm_cgroup_limit_mib)"
     model="$BASALT_LLM_CHOICE"
     reason="$BASALT_LLM_REASON"
-    # The machine allows the 1.7B but only the 0.6B is downloaded: use it.
-    if [[ "$model" == "$BASALT_LLM_LARGE" && ! -r "$MODELS/$model.gguf" && -r "$MODELS/$BASALT_LLM_SMALL.gguf" ]]; then
-      model="$BASALT_LLM_SMALL"
-      reason+="; $BASALT_LLM_LARGE is not downloaded"
-    fi
+    # The first downloaded model among the candidates: the machine allows
+    # the 1.7B but only the 0.6B is downloaded, or a translator is not
+    # published yet and its published stand-in (the desktop downloads it,
+    # basalt-llm-fetch recommended) is there.
+    for c in $(basalt_llm_candidates "$BASALT_LLM_CHOICE"); do
+      if [[ -r "$MODELS/$c.gguf" ]]; then
+        [[ "$c" == "$BASALT_LLM_CHOICE" ]] || reason+="; $BASALT_LLM_CHOICE is not downloaded, $c is"
+        model="$c"
+        break
+      fi
+    done
     ;;
   *) model="$(basalt_llm_alias "$model")" ;;
 esac
@@ -38,7 +44,9 @@ case "$model" in
   *) path="$MODELS/$model.gguf" ;;
 esac
 if [[ ! -r "$path" ]]; then
-  log "$path is missing ($reason); run: basalt-llm-fetch ${MODEL:-auto}"
+  hint="${MODEL:-auto}"
+  [[ "$hint" == auto ]] && hint=recommended
+  log "$path is missing ($reason); run: basalt-llm-fetch $hint"
   exit 1
 fi
 log "model $(basename "$path" .gguf) ($reason)"

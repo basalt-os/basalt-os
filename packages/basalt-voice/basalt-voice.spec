@@ -15,7 +15,7 @@
 %global __requires_exclude ^lib(whisper|ggml|parakeet).*$
 
 Name:           basalt-voice
-Version:        0.2.1
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Local speech to text for the Basalt OS desktop (no network)
 # basalt-voice files: Apache-2.0. whisper.cpp and ggml: MIT; bundled
@@ -34,6 +34,9 @@ BuildRequires:  make
 Requires:       curl
 Requires:       coreutils
 Requires:       pipewire-utils
+# One-click, consented downloads from the desktop (polkit, the confined
+# download service).
+Recommends:     basalt-models
 Provides:       bundled(whisper-cpp) = %{whisper_version}
 
 %description
@@ -84,6 +87,14 @@ LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basal
 %dir %{_sharedstatedir}/basalt-voice/models
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
+- basalt-voice-fetch for the desktop's consented downloads (basalt-models):
+  the english set (ggml-base.en and Silero VAD), --plan (what a download
+  would fetch, sizes and host, without root), --list --porcelain,
+  --status FILE (progress while downloading), --remove, and exit codes
+  for an unreachable server (3, the partial file is kept and resumed),
+  a checksum mismatch (4) and an unwritable model directory (5).
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
 - basalt-voice-fetch multilingual fetches ggml-base-q5_1 (with Silero
   VAD) instead of ggml-small-q5_1: about three times faster, and it

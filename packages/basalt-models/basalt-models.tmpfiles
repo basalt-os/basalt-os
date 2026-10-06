@@ -1,0 +1,3 @@
+# Progress of the desktop's model downloads (names and sizes only),
+# readable by the desktop shell of every person.
+d /run/basalt-models 0755 root root -

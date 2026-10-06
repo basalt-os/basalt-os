@@ -1,0 +1,117 @@
+#!/bin/bash
+# basalt-models-fetch@INSTANCE.service: the confined download the desktop
+# starts after the person consented (see request).
+#
+#   run fetch INSTANCE   ExecStart, in the sandbox: download and verify
+#                        with basalt-voice-fetch or basalt-llm-fetch
+#                        (pinned URLs, SHA-256, SELinux labels), progress
+#                        in /run/basalt-models/INSTANCE.state
+#   run after INSTANCE   ExecStartPost, privileged, only after a verified
+#                        download of the assistant's model: turn the local
+#                        model on ([translator] in /etc/basalt/assistant.conf,
+#                        basalt-llm.service enabled and started)
+#
+# INSTANCE is voice-english, voice-multilingual, voice-MODEL,
+# llm-recommended or llm-MODEL. Every download, good or failed, is
+# recorded in the audit ledger with the person who consented.
+set -eu
+PATH=/usr/sbin:/usr/bin
+umask 022
+
+RUN=${RUNTIME_DIRECTORY:-/run/basalt-models}
+[ -d "$RUN" ] || RUN=/run/basalt-models
+VOICE_FETCH=/usr/bin/basalt-voice-fetch
+LLM_FETCH=/usr/bin/basalt-llm-fetch
+ASSISTANT_CONF=/etc/basalt/assistant.conf
+LEDGER=basalt-ledger
+if [ "${BASALT_MODELS_TEST:-0}" = 1 ]; then
+  RUN=${BASALT_MODELS_RUN_DIR:?} VOICE_FETCH=${BASALT_MODELS_VOICE_FETCH:?} LLM_FETCH=${BASALT_MODELS_LLM_FETCH:?}
+  ASSISTANT_CONF=${BASALT_MODELS_ASSISTANT_CONF:-$ASSISTANT_CONF} LEDGER=${BASALT_MODELS_LEDGER:-$LEDGER}
+fi
+
+step=${1:?usage: run fetch|after INSTANCE}
+inst=${2:?usage: run fetch|after INSTANCE}
+case "$inst" in *[!a-z0-9._-]* | -* | "") echo "basalt-models: bad instance" >&2; exit 2 ;; esac
+kind=${inst%%-*}
+target=${inst#*-}
+state="$RUN/$inst.state"
+
+# The request: who consented (written by request, root only can write $RUN).
+req() { sed -n "s/^$1=//p" "$RUN/$inst.request" 2>/dev/null | head -1; }
+uid=$(req uid); uid=${uid:-0}
+case "$uid" in *[!0-9]*) uid=0 ;; esac
+
+json_str() {
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/ }; s=${s//$'\t'/ }; s=${s//$'\r'/ }
+  printf '"%s"' "$s"
+}
+ledger() {
+  local event=$1 outcome=$2 data="" sep=""
+  shift 2
+  while [ $# -ge 2 ]; do
+    data="$data$sep$(json_str "$1"):$(json_str "$2")"; sep=","; shift 2
+  done
+  echo "basalt-models: $event ($outcome): ${data//\"/}" >&2
+  command -v "$LEDGER" >/dev/null 2>&1 || return 0
+  printf '{"op":"append","record":{"v":1,"time":%s,"producer":"basalt-models","uid":%s,"event":%s,"outcome":%s,"subject":{"app":"Basalt OS model downloads"},"data":{%s}}}\n' \
+    "$(json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" "$uid" "$(json_str "$event")" "$(json_str "$outcome")" "$data" |
+    timeout 10 "$LEDGER" api >/dev/null 2>&1 || true
+}
+stateval() { sed -n "s/^$1=//p" "$state" 2>/dev/null | head -1; }
+
+case "$step" in
+  fetch)
+    rc=0
+    case "$kind" in
+      voice)
+        args=("$target")
+        case "$target" in
+          english | multilingual | ggml-silero*) ;;
+          ggml-*) args+=(ggml-silero-v5.1.2) ;; # a speech model needs the detector
+        esac
+        "$VOICE_FETCH" --status "$state" "${args[@]}" || rc=$? ;;
+      llm)
+        "$LLM_FETCH" --status "$state" "$target" || rc=$? ;;
+      *) echo "basalt-models: bad instance" >&2; exit 2 ;;
+    esac
+    user=$(req user)
+    if [ "$rc" = 0 ] && [ "$kind" = llm ]; then
+      # Done once the model service runs it (the after step).
+      sed -i 's/^state=done$/state=enabling/' "$state" 2>/dev/null || true
+    fi
+    if [ "$rc" = 0 ]; then
+      ledger model.download ok kind "$kind" what "$target" models "$(req models)" size "$(stateval total)" user "${user:-uid $uid}"
+    else
+      err=$(stateval error)
+      ledger model.download error kind "$kind" what "$target" models "$(req models)" reason "${err:-exit $rc}" user "${user:-uid $uid}"
+    fi
+    exit "$rc" ;;
+  after)
+    [ "$kind" = llm ] || exit 0
+    # The person asked for the assistant's local model: the model service
+    # runs it, and the assistant (and the desktop through it) uses it.
+    if [ -f "$ASSISTANT_CONF" ]; then
+      awk 'BEGIN {sec = ""; done = 0}
+        /^[[:space:]]*\[/ {
+          if (sec == "translator" && !done) { print "enabled = yes"; done = 1 }
+          sec = $0; gsub(/[][[:space:]]/, "", sec)
+        }
+        sec == "translator" && /^[[:space:]]*enabled[[:space:]]*=/ { if (!done) print "enabled = yes"; done = 1; next }
+        {print}
+        END {
+          if (sec == "translator" && !done) { print "enabled = yes"; done = 1 }
+          if (!done) { print ""; print "[translator]"; print "enabled = yes" }
+        }' "$ASSISTANT_CONF" >"$ASSISTANT_CONF.basalt-models.tmp"
+      cat "$ASSISTANT_CONF.basalt-models.tmp" >"$ASSISTANT_CONF"
+      rm -f "$ASSISTANT_CONF.basalt-models.tmp"
+    fi
+    if [ "${BASALT_MODELS_TEST:-0}" != 1 ]; then
+      systemctl enable basalt-llm.service >/dev/null 2>&1 || true
+      systemctl restart --no-block basalt-llm.service || true
+    fi
+    ledger model.enable ok kind llm what "$target" service basalt-llm translator enabled
+    sed -i 's/^state=enabling$/state=done/' "$state" 2>/dev/null || true
+    exit 0 ;;
+  *) echo "basalt-models: usage: run fetch|after INSTANCE" >&2; exit 2 ;;
+esac
