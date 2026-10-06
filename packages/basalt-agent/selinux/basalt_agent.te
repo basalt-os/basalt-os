@@ -10,8 +10,10 @@ policy_module(basalt_agent, 0.3.1)
 #     (builds, tests), at its own level only (mcs_constrained);
 #   - use its own home and temporary files; read and run system programs
 #     and its installed tools;
-#   - connect to the session proxy port, and nothing else on the network
-#     (no UDP, no DNS, no other TCP port; the proxy filters by name);
+#   - connect to the session proxy port (the proxy filters by name), and
+#     listen on and reach TCP ports 1024 and up for local servers (which
+#     addresses: basalt-resolver's kernel filter); no UDP, no DNS, no
+#     privileged port;
 #   - use its terminal (without TIOCSTI).
 # Everything else is denied and audited: the rest of the home (~/.ssh,
 # ~/.gnupg, keyrings, browser profiles, other projects), other users'
