@@ -3,48 +3,122 @@
   "source": "basalt-shell-skills",
   "executors": {},
   "groups": {
+    "skills.grant": [
+      "grant.folder",
+      "grant.mailbox",
+      "grant.site"
+    ],
     "skills.read": [
-      "grant.add",
+      "grant.folder",
+      "grant.mailbox",
+      "grant.site",
       "file.open"
     ]
   },
   "actions": [
     {
-      "id": "grant.add",
-      "class": "C0",
-      "description": "Let the assistant's skills read a folder, a mailbox or a host for a while (becomes a rule in phase 2).",
+      "id": "grant.folder",
+      "class": "C1",
+      "description": "Let the assistant's read-only skills read and search the files of a folder (and below) for a while. A person's approval is kept as a rule that ends with the grant (asking again for the same scope before then is allowed without a new question); the grant itself can be revoked at any time.",
       "args": {
-        "kind": {
-          "type": "string",
+        "targets": {
+          "type": "strings",
           "required": true,
-          "enum": [
-            "folder",
-            "mailbox",
-            "host"
-          ]
+          "max_items": 8
         },
-        "target": {
+        "duration": {
           "type": "string",
-          "required": true,
-          "max_len": 4096
-        },
-        "minutes": {
-          "type": "integer",
-          "min": 1,
-          "max": 10080
+          "pattern": "[0-9]{1,6}(s|m|h|d)"
         }
       },
+      "resources": [
+        {
+          "kind": "path",
+          "arg": "targets[]",
+          "beneath": true,
+          "expand_home": true
+        }
+      ],
       "executor": "basalt-shell",
       "requesters": [
         "person"
       ],
+      "grant_arg": "duration",
       "preview": {
         "show": [
-          "kind",
-          "target",
-          "minutes"
+          "targets",
+          "duration"
         ]
-      }
+      },
+      "reversible": "none"
+    },
+    {
+      "id": "grant.mailbox",
+      "class": "C1",
+      "description": "Let the assistant's read-only skills read and summarize a mailbox for a while (nothing is sent, deleted or marked as read). A person's approval is kept as a rule that ends with the grant (asking again for the same scope before then is allowed without a new question); the grant itself can be revoked at any time.",
+      "args": {
+        "targets": {
+          "type": "strings",
+          "required": true,
+          "max_items": 8
+        },
+        "duration": {
+          "type": "string",
+          "pattern": "[0-9]{1,6}(s|m|h|d)"
+        }
+      },
+      "resources": [
+        {
+          "kind": "mailbox",
+          "arg": "targets[]"
+        }
+      ],
+      "executor": "basalt-shell",
+      "requesters": [
+        "person"
+      ],
+      "grant_arg": "duration",
+      "preview": {
+        "show": [
+          "targets",
+          "duration"
+        ]
+      },
+      "reversible": "none"
+    },
+    {
+      "id": "grant.site",
+      "class": "C3",
+      "description": "Let the assistant's read-only skills read pages of a web site for a while (other sites stay blocked). A person's approval is kept as a rule that ends with the grant (asking again for the same scope before then is allowed without a new question); the grant itself can be revoked at any time.",
+      "args": {
+        "targets": {
+          "type": "strings",
+          "required": true,
+          "max_items": 8
+        },
+        "duration": {
+          "type": "string",
+          "pattern": "[0-9]{1,6}(s|m|h|d)"
+        }
+      },
+      "resources": [
+        {
+          "kind": "host",
+          "arg": "targets[]"
+        }
+      ],
+      "executor": "basalt-shell",
+      "requesters": [
+        "person"
+      ],
+      "grant_arg": "duration",
+      "preview": {
+        "show": [
+          "targets",
+          "duration"
+        ]
+      },
+      "leaves": true
     },
     {
       "id": "file.open",

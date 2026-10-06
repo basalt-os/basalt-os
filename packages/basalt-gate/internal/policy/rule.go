@@ -61,6 +61,7 @@ type Resources struct {
 	Hosts       []string `json:"hosts,omitempty"`
 	Recipients  []string `json:"recipients,omitempty"`
 	Booleans    []string `json:"booleans,omitempty"`
+	Mailboxes   []string `json:"mailboxes,omitempty"`
 }
 
 // Trigger lets the gate start the job itself (origin = schedule).
@@ -495,7 +496,7 @@ func (r Rule) Sentence() string {
 		for _, l := range []struct {
 			n string
 			v []string
-		}{{"units", rs.Units}, {"packages", rs.Packages}, {"hosts", rs.Hosts}, {"recipients", rs.Recipients}, {"booleans", rs.Booleans}} {
+		}{{"units", rs.Units}, {"packages", rs.Packages}, {"hosts", rs.Hosts}, {"recipients", rs.Recipients}, {"booleans", rs.Booleans}, {"mailboxes", rs.Mailboxes}} {
 			if len(l.v) > 0 {
 				parts = append(parts, "for the "+l.n+" "+strings.Join(l.v, ", "))
 			}

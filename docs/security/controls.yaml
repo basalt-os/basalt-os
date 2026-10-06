@@ -33,7 +33,7 @@
 # partial = enforced for some of the scope or without the full verification;
 # planned = decided or proposed, not built yet (nothing to rely on today).
 
-version: 3
+version: 4
 updated: 2026-10-06
 
 areas:
@@ -1369,8 +1369,10 @@ controls:
     adr: ["0011", "0012"]
     implemented_in:
       - packages/basalt-models
+      - packages/basalt-gate/actions.d/models.json
     verification:
       - {type: test, file: packages/basalt-models/tests/models-test.sh, match: "nobody"}
+      - {type: test, file: packages/basalt-gate/internal/server/migrate_test.go, match: "func TestModelDownloadConsent("}
       - {type: manual, guide: BSC-AI-003}
 
   - id: BSC-AI-004

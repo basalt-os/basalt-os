@@ -91,7 +91,20 @@ type Action struct {
 	HintDefault   string `json:"hint_default,omitempty"`
 	// DestructiveArg: when this boolean argument is true, the class is C5.
 	DestructiveArg string `json:"destructive_arg,omitempty"`
-	Source         string `json:"-"`
+	// GrantArg: an approval by a person is kept as a narrow user rule
+	// (the same action, requester and resources, allow-quiet) for the
+	// duration in this argument ("1h", "30m", "1d"; default 1h): a skill
+	// grant becomes a rule with an expiry, and asking again for the same
+	// scope within it is allowed without a new question (allow-quiet up
+	// to Undoable, allow-tell above). Never for Critical or Cannot be
+	// undone.
+	GrantArg string `json:"grant_arg,omitempty"`
+	// DecideAuth "session": a system action a session surface may approve
+	// without an administrator, because its executor applies the
+	// administrator's own policy and authentication (model downloads:
+	// models.conf and polkit in basalt-models-request).
+	DecideAuth string `json:"decide_auth,omitempty"`
+	Source     string `json:"-"`
 }
 
 // Executor is who may claim a decision to run it.
@@ -138,7 +151,7 @@ type Registry struct {
 
 var (
 	argNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,40}$`)
-	kindRe    = regexp.MustCompile(`^(path|unit|package|host|recipient|boolean|user|disk|rule|module|key|device|setting|window|app|session|model)$`)
+	kindRe    = regexp.MustCompile(`^(path|unit|package|host|recipient|boolean|user|disk|rule|module|key|device|setting|window|app|session|model|mailbox)$`)
 	execRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)
 	unitRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{1,60}@\.service$`)
 )
@@ -269,6 +282,14 @@ func (a *Action) compile() error {
 	}
 	if err := compileArgs(a.Args); err != nil {
 		return err
+	}
+	if a.GrantArg != "" && proposal.ClassRank(a.Class) > 3 {
+		return errors.New("grant_arg is not for Critical or Cannot be undone actions")
+	}
+	switch a.DecideAuth {
+	case "", "session":
+	default:
+		return fmt.Errorf("decide_auth %q", a.DecideAuth)
 	}
 	for _, e := range a.Resources {
 		if !kindRe.MatchString(e.Kind) {

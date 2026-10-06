@@ -340,9 +340,6 @@ func (s *Server) rulesApply(ctx context.Context, c *conn, req gate.Request) gate
 	if r := s.noAgents(c, "rules.apply"); r != nil {
 		return *r
 	}
-	if !c.roles.Decider {
-		return gate.Reply{Error: "refused: only a trusted surface changes rules directly; propose gate.rule.change instead"}
-	}
 	var args map[string]any
 	if err := json.Unmarshal(req.Rule, &args); err != nil {
 		return gate.Reply{Error: "rules.apply: rule holds {op, scope, rule | id}"}
@@ -351,6 +348,13 @@ func (s *Server) rulesApply(ctx context.Context, c *conn, req gate.Request) gate
 	if scope == "" {
 		scope = policy.ScopeUser
 		args["scope"] = scope
+	}
+	// Tightening is instant from any surface (ADR 0020): a user's own
+	// programs (not agents) may tighten that user's own rules too, e.g. the
+	// shell removing the rule of a grant the person revoked. Anything else
+	// needs a trusted surface.
+	if !c.roles.Decider && (scope != policy.ScopeUser || c.p.UID == 0) {
+		return gate.Reply{Error: "refused: only a trusted surface changes rules directly; propose gate.rule.change instead"}
 	}
 	now := s.now()
 	if err := s.checkRuleChange(args, c.p.UID, now); err != nil {

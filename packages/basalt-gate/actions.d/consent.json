@@ -1,0 +1,108 @@
+{
+  "registry": 1,
+  "source": "basalt-assistant-consent",
+  "executors": {},
+  "groups": {
+    "consent": [
+      "knowledge.fetch",
+      "remote.consent"
+    ]
+  },
+  "actions": [
+    {
+      "id": "knowledge.fetch",
+      "class": "C3",
+      "leaves": true,
+      "description": "Download a signed knowledge pack (ADR 0018) for a topic the assistant needs; the pack is data, checked before use.",
+      "args": {
+        "pack": {
+          "type": "string",
+          "required": true,
+          "pattern": "[a-z0-9][a-z0-9._-]{0,63}"
+        },
+        "topic": {
+          "type": "string",
+          "required": true,
+          "max_len": 200
+        },
+        "host": {
+          "type": "string",
+          "required": true,
+          "pattern": "[A-Za-z0-9.-]{1,253}"
+        },
+        "bytes": {
+          "type": "integer",
+          "min": 0,
+          "max": 17179869184
+        }
+      },
+      "resources": [
+        {
+          "kind": "host",
+          "arg": "host",
+          "bytes_arg": "bytes"
+        }
+      ],
+      "executor": "basalt-shell",
+      "requesters": [
+        "person",
+        "assistant"
+      ],
+      "preview": {
+        "show": [
+          "pack",
+          "topic",
+          "host",
+          "bytes"
+        ]
+      }
+    },
+    {
+      "id": "remote.consent",
+      "class": "C3",
+      "leaves": true,
+      "description": "Let the assistant send a web search query, fetch a page, or use a remote model for this conversation (ADR 0019); what it reads stays data.",
+      "args": {
+        "what": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "web.search",
+            "page.fetch",
+            "remote.model"
+          ]
+        },
+        "host": {
+          "type": "string",
+          "required": true,
+          "pattern": "[A-Za-z0-9.-]{1,253}"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "once",
+            "conversation"
+          ]
+        }
+      },
+      "resources": [
+        {
+          "kind": "host",
+          "arg": "host"
+        }
+      ],
+      "executor": "basalt-shell",
+      "requesters": [
+        "person",
+        "assistant"
+      ],
+      "preview": {
+        "show": [
+          "what",
+          "host",
+          "scope"
+        ]
+      }
+    }
+  ]
+}

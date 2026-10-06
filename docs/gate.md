@@ -66,8 +66,9 @@ registry files describe the actions that exist today without changing
 them: the system assistant's 11 actions, the shell's 16 desktop actions
 (plus agent control and screenshots, which only agents ask for, and the 5
 that only the person's own words ask for), basalt-agent grants and
-allowlist changes, model downloads, skill grants, rule changes, and
-`tool.exec` for terminal tools.
+allowlist changes, model downloads, skill grants (one action per kind:
+folder, mailbox, site), knowledge pack and remote content consents, rule
+changes, and `tool.exec` for terminal tools.
 
 | Class | Name | Examples |
 |---|---|---|
@@ -240,6 +241,9 @@ asks which paths are enforced in `hello`.
 |---|---|---|---|
 | The system assistant's proposals (`basalt apply`) | `apply` | shadow | see below |
 | The desktop shell's proposals, the person's own actions | `shell` | shadow | the shell asks for the person or the agent; the shell UI decides at the gate |
+| Skill grants (a folder, a mailbox, a web site for the read-only skills) | `skills` | gate decides | `grant.folder`, `grant.mailbox`, `grant.site`; a person's approval becomes a rule ending with the grant |
+| Model downloads | `models` | gate decides | the card's Download is the approval; the consent is the preview |
+| Knowledge packs, web search and remote content | `consent` | gate decides | `knowledge.fetch`, `remote.consent`, on behalf of the assistant or the person |
 
 The system assistant's proposals (`apply`). `basalt apply ID` queues the
 proposal in the gate (calls: its typed actions; reference: its id;
@@ -275,6 +279,33 @@ the registry refuses them from anyone else before any rule; the person's
 own request of them is decided in the session without an administrator,
 as before. Agent control sessions and screenshots stay with the shell in
 this version (it only reports them).
+
+Skill grants (`skills`). A grant lets the shell's read-only skills read a
+folder, a mailbox or a web site for a while. The shell asks for
+`grant.folder`, `grant.mailbox` or `grant.site` on behalf of the person
+(only the person asks for them), so a rule can name exactly that folder,
+mailbox or host ("let the skills read ~/Documents whenever I ask, for a
+week" pre-approves those grants). When a person approves one, the gate
+keeps the approval as a rule of their own (`r-grant-...`, allow quietly,
+the same action, requester and resources) that ends with the grant:
+asking again for the same scope before then is allowed without a new
+question. Revoking the grant removes the rule at once (the person's own
+programs may tighten that person's rules; agents may not).
+
+Model downloads (`models`). The card's Download asks the gate for
+`model.download` with the card's consent as the preview (what, how big,
+from where, why) and approves it from the shell UI; the shell then claims
+it and starts the download. The administrator's `models.conf` and polkit
+still apply in basalt-models-request, so this action is the person's to
+approve in the session (`decide_auth = session` in the registry), and an
+agent can never ask for it.
+
+Knowledge packs and remote content (`consent`). `knowledge.fetch` (a
+signed pack for a topic) and `remote.consent` (a web search, a page
+fetch, a remote model, for one question or a conversation) are requests
+on behalf of the assistant (tainted: it reads untrusted content, so a
+standing rule does not cover it unless the rule accepts that) or the
+person, with the consent text as the preview.
 
 ## Ledger records
 

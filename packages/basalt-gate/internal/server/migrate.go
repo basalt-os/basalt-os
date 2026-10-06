@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-gate/internal/ledger"
+	"github.com/basalt-os/basalt-os/packages/basalt-gate/internal/policy"
 	"github.com/basalt-os/basalt-os/packages/basalt-gate/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-gate/pkg/gate"
 )
@@ -278,4 +279,76 @@ func (s *Server) digestFromCalls(e *entry, calls []gate.Call, pv *gate.Preview) 
 		preview = got
 	}
 	return proposal.DigestOf(pcs, preview, res, e.P.Ref)
+}
+
+// GrantRuleID is the id of the rule a person's approval of a grant
+// becomes: "r-grant-" and the request id's digits (the requester can name
+// it to remove it).
+func GrantRuleID(requestID string) string { return "r-grant-" + strings.TrimPrefix(requestID, "g-") }
+
+// grantRuleLocked keeps a person's approval of a grant (an action with
+// grant_arg) as a narrow user rule (allow-quiet, or allow-tell above
+// Undoable), with the
+// grant's expiry: the same action, requester and resources. A skill grant
+// is then a rule like any other: listed with the person's rules, removed
+// at once from a trusted surface (rules.apply remove), and asking again
+// for the same scope before it ends is allowed without a new question.
+func (s *Server) grantRuleLocked(e *entry, c *conn, now time.Time) error {
+	var dur time.Duration
+	has := false
+	for _, call := range e.P.Calls {
+		a := s.o.Reg.Actions[call.Action]
+		if a == nil || a.GrantArg == "" {
+			return nil
+		}
+		has = true
+		d := time.Hour
+		if v, _ := call.Args[a.GrantArg].(string); v != "" {
+			p, err := policy.ParseDuration(v)
+			if err != nil || p <= 0 {
+				return fmt.Errorf("grant duration %q", v)
+			}
+			d = p
+		}
+		if d > 7*24*time.Hour {
+			d = 7 * 24 * time.Hour
+		}
+		if d > dur {
+			dur = d
+		}
+	}
+	if !has || e.P.Requester.Kind != proposal.KindPerson || e.P.Requester.UID == 0 {
+		return nil
+	}
+	src := policy.Rule{ID: "r-grant", Scope: policy.ScopeUser, UID: e.P.Requester.UID, Remember: dur.String()}
+	r, err := policy.NarrowRule(e.P, e.Facts, src, GrantRuleID(e.P.ID), now)
+	if err != nil {
+		return err
+	}
+	r.Effect = policy.AllowQuiet
+	if proposal.ClassRank(e.P.Class) > 1 {
+		r.Effect = policy.AllowTell
+	}
+	r.From = ""
+	r.Created = &policy.Created{By: "person", UID: e.P.Requester.UID, At: now.UTC().Format(time.RFC3339), Via: surface(c) + " (grant)"}
+	if err := policy.Validate(&r, s.o.Reg, policy.ScopeUser, now); err != nil {
+		return err
+	}
+	rules := s.eng.Rules()
+	kept := rules[:0:0]
+	for _, x := range rules {
+		if x.Key() != r.Key() {
+			kept = append(kept, x)
+		}
+	}
+	kept = append(kept, r)
+	if err := s.o.Store.SaveRules(kept, s.preset); err != nil {
+		return err
+	}
+	s.eng.SetRules(kept)
+	s.record(ledger.Record{UID: e.P.Requester.UID, Event: "gate.rule.add", Data: map[string]any{"rule": r.ID, "ref": r.Ref(),
+		"scope": r.Scope, "sentence": r.Sentence(), "by": "person:" + surface(c), "temporary": true, "grant": e.P.ID,
+		"expires": r.Expires}})
+	s.publishLocked(gate.Event{Type: "rules", Note: "added " + r.Key()}, nil)
+	return nil
 }

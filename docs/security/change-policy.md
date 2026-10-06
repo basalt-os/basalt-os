@@ -112,3 +112,6 @@ between releases.
   proposals, BSC-GATE-001 holds at the gate too (only the shell UI's domain
   decides there; the shell daemon refuses to decide those itself) and
   BSC-GATE-005 is also enforced by the gate's registry.
+- Version 4 (2026-10-06): BSC-AI-003 is also enforced by the approval gate
+  where it decides model downloads (the consent is a request only the person
+  may make, approved in the shell UI).

@@ -2,7 +2,7 @@
 
 <!-- Generated from controls.yaml by scripts/ci/security-controls-check.sh --render. Do not edit by hand. -->
 
-Version 3, updated 2026-10-06. Each control has a
+Version 4, updated 2026-10-06. Each control has a
 stable ID, a requirement, the reason for it, where it is enforced, how it
 is verified and its status. Implemented means enforced in the shipped
 packages and checked; partial means enforced for part of the scope or
@@ -1276,11 +1276,12 @@ Requirement: The desktop MUST download a model only after the person chooses Dow
 
 Rationale: Nothing large or new arrives without a person's choice; agents cannot start downloads.
 
-Implemented in: `packages/basalt-models`.
+Implemented in: `packages/basalt-models`, `packages/basalt-gate/actions.d/models.json`.
 
 Verified by:
 
 - Test: `packages/basalt-models/tests/models-test.sh`, `nobody`
+- Test: `packages/basalt-gate/internal/server/migrate_test.go`, `func TestModelDownloadConsent(`
 - Manual: audit guide, [BSC-AI-003](audit-guide.md#bsc-ai-003)
 
 ### BSC-AI-004

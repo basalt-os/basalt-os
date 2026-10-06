@@ -454,7 +454,7 @@ func (s *Server) propose(c *conn, req gate.Request, checkOnly bool) gate.Reply {
 	}
 	p.Expires = now.Add(exp).UTC()
 	e := &entry{P: p, Facts: facts, Status: gate.Asked, Decision: d, Owner: owner, Executor: executor,
-		NeedsAdmin: needsAdmin(facts), done: make(chan struct{})}
+		NeedsAdmin: s.needsAdmin(facts), done: make(chan struct{})}
 	s.addLocked(e)
 	s.recordRequest(e, env)
 	if d.Limit != nil {
@@ -487,10 +487,17 @@ func actionIDs(calls []gate.Call) []string {
 	return out
 }
 
-func needsAdmin(facts []policy.CallFacts) bool {
+func (s *Server) needsAdmin(facts []policy.CallFacts) bool {
 	for _, f := range facts {
-		if f.System || proposal.ClassRank(f.Class) >= 4 {
+		if proposal.ClassRank(f.Class) >= 4 {
 			return true
+		}
+		if f.System {
+			// A system action whose executor applies the administrator's own
+			// policy (decide_auth = session) is the person's to approve.
+			if a := s.o.Reg.Actions[f.Call.Action]; a == nil || a.DecideAuth != "session" {
+				return true
+			}
 		}
 	}
 	return false

@@ -162,6 +162,13 @@ fi
 - The person's own request of a person-only action (power from the
   command bar) is decided by the same user without an administrator, as
   in the shell before; agents still cannot ask for it at all.
+- Registry: skill grants are grant.folder, grant.mailbox and grant.site
+  (Undoable, Leaves the computer for sites); a person's approval of one
+  is kept as a rule ending with the grant (grant_arg); model downloads
+  are the person's to approve in the session (decide_auth = session; the
+  executor keeps models.conf and polkit) and the shell claims them;
+  knowledge.fetch and remote.consent (consent.json); mailbox resources.
+  A user's own programs (not agents) may tighten that user's rules.
 
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version (ADR 0020 phase 1): the gate alone, no existing approval

@@ -137,7 +137,7 @@ withdrew it). Replies carry `by`: `rule:<id>@<hash>`, `person:<surface>`,
 | `rules.list` | not agents | | `rules` (with sentences) |
 | `rules.draft` | not agents | `rule`, `scope`, `since` | `rules`, `simulation` |
 | `rules.simulate` | not agents | `rules` (a rule file's text), `scope`, `since`, `records` | `simulation` |
-| `rules.apply` | decider | `rule`: `{op, scope, rule or id}`, tightening only | |
+| `rules.apply` | decider; a user's own programs for that user's rules | `rule`: `{op, scope, rule or id}`, tightening only | |
 | `rules.unpause` | decider | `id` (the rule key) | |
 | `observe` | not agents | as `propose`, plus `outcome` and `decided_by` | `id`, `decision` (what the gate would have decided), `class`, `reason`, `by` |
 | `confirm` | root outside agent domains | `id`, `code`, `mode` (`code` or `terminal`) | `id`, `decision`, `by` |

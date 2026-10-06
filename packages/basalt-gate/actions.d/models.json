@@ -1,12 +1,7 @@
 {
   "registry": 1,
   "source": "basalt-models",
-  "executors": {
-    "basalt-models-request": {
-      "types": [],
-      "note": "basalt-models-request claims from phase 2; until then nothing claims"
-    }
-  },
+  "executors": {},
   "groups": {},
   "actions": [
     {
@@ -27,6 +22,10 @@
           "type": "string",
           "required": true,
           "pattern": "[a-z0-9][a-z0-9._-]{0,63}"
+        },
+        "purpose": {
+          "type": "string",
+          "max_len": 40
         }
       },
       "resources": [
@@ -35,17 +34,17 @@
           "arg": "what"
         }
       ],
-      "executor": "basalt-models-request",
+      "executor": "basalt-shell",
       "requesters": [
-        "person",
-        "app"
+        "person"
       ],
       "preview": {
         "show": [
           "kind",
           "what"
         ]
-      }
+      },
+      "decide_auth": "session"
     },
     {
       "id": "model.remove",
@@ -66,6 +65,10 @@
           "type": "string",
           "required": true,
           "pattern": "[a-z0-9][a-z0-9._-]{0,63}"
+        },
+        "purpose": {
+          "type": "string",
+          "max_len": 40
         }
       },
       "resources": [
@@ -74,17 +77,17 @@
           "arg": "what"
         }
       ],
-      "executor": "basalt-models-request",
+      "executor": "basalt-shell",
       "requesters": [
-        "person",
-        "app"
+        "person"
       ],
       "preview": {
         "show": [
           "kind",
           "what"
         ]
-      }
+      },
+      "decide_auth": "session"
     }
   ]
 }

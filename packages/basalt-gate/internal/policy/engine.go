@@ -420,6 +420,8 @@ func (e *Engine) resourceIn(rs *Resources, x proposal.Resource, uid int) bool {
 		return list(rs.Recipients, x.Value)
 	case "boolean":
 		return list(rs.Booleans, x.Value)
+	case "mailbox":
+		return list(rs.Mailboxes, x.Value)
 	}
 	return false
 }
@@ -524,6 +526,8 @@ func NarrowRule(p *proposal.Proposal, calls []CallFacts, src Rule, id string, no
 				res.Recipients = append(res.Recipients, x.Value)
 			case "boolean":
 				res.Booleans = append(res.Booleans, x.Value)
+			case "mailbox":
+				res.Mailboxes = append(res.Mailboxes, x.Value)
 			default:
 				return Rule{}, fmt.Errorf("a %s resource cannot be remembered", x.Kind)
 			}

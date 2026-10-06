@@ -346,6 +346,9 @@ func (s *Server) decide(ctx context.Context, c *conn, req gate.Request) gate.Rep
 		} else {
 			e.finish(gate.Allowed, by, now)
 			s.recordDecision(e, "approved", by, "", "")
+			if err := s.grantRuleLocked(e, c, now); err != nil {
+				s.o.Logf("grant rule: %v", err)
+			}
 			if s.o.Reg.Executors[e.Executor].Internal {
 				s.runInternalLocked(e, by, now)
 			}

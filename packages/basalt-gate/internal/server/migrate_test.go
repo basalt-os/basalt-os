@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -282,5 +283,116 @@ func TestPersonOwnPowerInTheSession(t *testing.T) {
 		OnBehalf: &gate.OnBehalf{Kind: "agent", Name: "claude"}})
 	if d := e.approve(pShellUI, ctl.ID); !d.OK || e.pk.last() != "org.basalt-os.gate.decide-admin" {
 		t.Fatalf("%+v %s", d, e.pk.last())
+	}
+}
+
+// A skill grant: asked (it is not a mere look); the person's approval is
+// kept as a rule ending with the grant, so asking again for the same
+// folder is allowed quietly; another folder still asks; the rule can be
+// removed at once from the shell UI.
+func TestGrantBecomesARule(t *testing.T) {
+	e := newEnv(t)
+	docs := []gate.Call{{Action: "grant.folder", Args: map[string]any{"targets": []any{"/home/ana/Documents"}, "duration": "1h"}}}
+	person := &gate.OnBehalf{Kind: "person"}
+	r := e.do(pShell, gate.Request{Op: "propose", Calls: docs, OnBehalf: person})
+	if !r.OK || r.Decision != gate.Asked || r.Class != "C1" {
+		t.Fatalf("%+v", r)
+	}
+	if d := e.approve(pShellUI, r.ID); !d.OK || d.Decision != gate.Allowed {
+		t.Fatalf("%+v", d)
+	}
+	rec := e.rec.find("gate.rule.add", "", func(d map[string]any) bool { return d["grant"] == r.ID })
+	if rec == nil || rec.Data["rule"] != GrantRuleID(r.ID) {
+		t.Fatalf("no grant rule: %+v", rec)
+	}
+	again := e.do(pShell, gate.Request{Op: "propose", Calls: docs, OnBehalf: person})
+	if again.Decision != gate.Allowed || !strings.HasPrefix(again.By, "rule:"+GrantRuleID(r.ID)) {
+		t.Fatalf("the same grant again: %+v", again)
+	}
+	other := []gate.Call{{Action: "grant.folder", Args: map[string]any{"targets": []any{"/home/ana/Private"}, "duration": "1h"}}}
+	if o := e.do(pShell, gate.Request{Op: "propose", Calls: other, OnBehalf: person}); o.Decision != gate.Asked {
+		t.Fatalf("another folder: %+v", o)
+	}
+	// An agent never gets it this way (person only).
+	if a := e.propose(pAgent, docs); a.Decision != gate.Refused {
+		t.Fatalf("agent: %+v", a)
+	}
+	// Revoked: the rule goes at once (tightening), the next ask asks.
+	rm, _ := json.Marshal(map[string]any{"op": "remove", "scope": "user", "id": GrantRuleID(r.ID)})
+	if x := e.do(pAgent, gate.Request{Op: "rules.apply", Rule: rm}); x.OK {
+		t.Fatal("an agent changed the person's rules")
+	}
+	if x := e.do(pOther, gate.Request{Op: "rules.apply", Rule: rm}); x.OK {
+		t.Fatal("another user removed the rule")
+	}
+	// The shell daemon (the person's own program) may take it away.
+	if x := e.do(pShell, gate.Request{Op: "rules.apply", Rule: rm}); !x.OK {
+		t.Fatalf("remove: %+v", x)
+	}
+	if x := e.do(pShell, gate.Request{Op: "propose", Calls: docs, OnBehalf: person}); x.Decision != gate.Asked {
+		t.Fatalf("after removal: %+v", x)
+	}
+}
+
+// A person's own rule pre-approves grants of a folder.
+func TestRuleApprovesAGrant(t *testing.T) {
+	e := newEnv(t)
+	e.addRule("user", `
+[[rule]]
+id = "r-docs"
+effect = "allow-tell"
+actions = ["grant.folder"]
+requesters = ["person"]
+resources = { path_beneath = ["~/Documents"] }
+expires = "7d"
+`)
+	docs := []gate.Call{{Action: "grant.folder", Args: map[string]any{"targets": []any{"/home/ana/Documents/taxes"}, "duration": "30m"}}}
+	r := e.do(pShell, gate.Request{Op: "propose", Calls: docs, OnBehalf: &gate.OnBehalf{Kind: "person"}})
+	if r.Decision != gate.Allowed || !strings.HasPrefix(r.By, "rule:r-docs@") {
+		t.Fatalf("%+v", r)
+	}
+}
+
+// Model downloads: the consent is the person's decision in the session
+// (the executor still applies models.conf and polkit); never an agent.
+func TestModelDownloadConsent(t *testing.T) {
+	e := newEnv(t)
+	dl := []gate.Call{{Action: "model.download", Args: map[string]any{"kind": "voice", "what": "english", "purpose": "voice"}}}
+	pv := &gate.Preview{TitleKey: "models.download.title", TitleArgs: map[string]any{"kind": "voice", "what": "english", "mb": 148},
+		Lines: []gate.Line{{Key: "models.download.consent", Args: map[string]any{"text": "Download the English speech model (148 MB)"}}}}
+	if a := e.propose(pAgent, dl); a.Decision != gate.Refused {
+		t.Fatalf("agent: %+v", a)
+	}
+	r := e.do(pShell, gate.Request{Op: "propose", Calls: dl, Preview: pv, OnBehalf: &gate.OnBehalf{Kind: "person"}})
+	if r.Decision != gate.Asked {
+		t.Fatalf("%+v", r)
+	}
+	n := len(e.pk.calls)
+	if d := e.approve(pShellUI, r.ID); !d.OK || d.Decision != gate.Allowed || len(e.pk.calls) != n {
+		t.Fatalf("%+v %v", d, e.pk.calls)
+	}
+	if c := e.do(pShell, gate.Request{Op: "claim", ID: r.ID, Calls: dl, Preview: pv, Executor: "basalt-shell"}); !c.OK {
+		t.Fatalf("claim: %+v", c)
+	}
+	if e.rec.find("gate.decision", "allowed", func(d map[string]any) bool { return d["id"] == r.ID && d["by"] == "person:shell" }) == nil {
+		t.Error("the consent was not recorded")
+	}
+}
+
+// Knowledge packs and remote content: requests with the consent text as
+// the preview; from the assistant or the person, never an agent.
+func TestConsentRequests(t *testing.T) {
+	e := newEnv(t)
+	web := []gate.Call{{Action: "remote.consent", Args: map[string]any{"what": "web.search", "host": "search.example.org", "scope": "conversation"}}}
+	r := e.do(pShell, gate.Request{Op: "propose", Calls: web, OnBehalf: &gate.OnBehalf{Kind: "assistant"}})
+	if r.Decision != gate.Asked || r.Class != "C3" {
+		t.Fatalf("%+v", r)
+	}
+	if a := e.propose(pAgent, web); a.Decision != gate.Refused {
+		t.Fatalf("agent: %+v", a)
+	}
+	kp := []gate.Call{{Action: "knowledge.fetch", Args: map[string]any{"pack": "nginx", "topic": "nginx", "host": "obpkg.org", "bytes": 1048576}}}
+	if k := e.do(pShell, gate.Request{Op: "propose", Calls: kp, OnBehalf: &gate.OnBehalf{Kind: "assistant"}}); k.Decision != gate.Asked {
+		t.Fatalf("%+v", k)
 	}
 }
