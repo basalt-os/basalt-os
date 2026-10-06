@@ -96,7 +96,7 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	switch p.Edition {
 	case "server":
 	case "desktop":
-		add(Warning, "edition", "the desktop edition is experimental in this installer version: it installs the server system plus packages.extra")
+		add(Warning, "edition", "the desktop edition is experimental in this installer version: it installs the server system, the desktop package set and packages.extra")
 	default:
 		add(Error, "edition", "must be server or desktop, got %q", p.Edition)
 	}

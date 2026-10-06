@@ -385,3 +385,33 @@ func TestTestingRepository(t *testing.T) {
 		t.Errorf("basalt_testing_url from the media = %q", vars)
 	}
 }
+
+// The desktop edition installs voice, the consented model downloads and
+// the local model service whatever packages.extra says (an older plan
+// listed only some of them), each package once.
+func TestDesktopPackages(t *testing.T) {
+	for _, extra := range [][]string{nil, {"basalt-desktop", "basalt-voice", "htop"}} {
+		r := Resolved{Plan: plan.Plan{Edition: "desktop"}}
+		r.Plan.Packages.Extra = extra
+		install, _ := Packages(r)
+		seen := map[string]int{}
+		for _, p := range install {
+			seen[p]++
+		}
+		for _, p := range DesktopPackages {
+			if seen[p] != 1 {
+				t.Errorf("extra %v: %s installed %d times", extra, p, seen[p])
+			}
+		}
+		if extra != nil && seen["htop"] != 1 {
+			t.Errorf("extra package lost: %v", install)
+		}
+	}
+	r := Resolved{Plan: plan.Plan{Edition: "server"}}
+	install, _ := Packages(r)
+	for _, p := range install {
+		if p == "basalt-voice" || p == "basalt-models" || p == "basalt-llm" {
+			t.Errorf("server edition installs %s", p)
+		}
+	}
+}

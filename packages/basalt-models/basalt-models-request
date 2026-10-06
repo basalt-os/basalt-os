@@ -1,0 +1,192 @@
+#!/bin/bash
+# The desktop's one-click model downloads: the privileged entry point.
+#
+# The desktop shell runs this through pkexec after the person chose
+# Download on a consent card (push to talk without a speech model, a skill
+# that needs the assistant's local model, or Settings, Voice and
+# assistant):
+#
+#   pkexec /usr/libexec/basalt-models/request download voice english|multilingual|MODEL
+#   pkexec /usr/libexec/basalt-models/request download llm recommended|MODEL
+#   pkexec /usr/libexec/basalt-models/request remove voice|llm MODEL
+#   pkexec /usr/libexec/basalt-models/request status
+#
+# polkit decides who may run it (action org.basalt-os.models.download:
+# a person in an active local session, without a password). The
+# administrator's policy in /etc/basalt/models.conf is applied here on top
+# of polkit:
+#
+#   downloads = everyone        any person in an active local session
+#   downloads = administrators  members of admin_group (wheel); others go
+#                               through request-admin (action
+#                               org.basalt-os.models.download-admin, an
+#                               administrator's password)
+#   downloads = nobody          the desktop never downloads; administrators
+#                               use basalt-voice-fetch and basalt-llm-fetch
+#
+# A download is not done here: this program checks the request against
+# the manifests, records who consented in the audit ledger and starts the
+# confined system service basalt-models-fetch@INSTANCE.service, which
+# downloads with no access to home folders and no capabilities, and
+# writes its progress to /run/basalt-models/INSTANCE.state (readable by
+# everyone: names and sizes only). It returns at once with the instance.
+#
+# Exit status: 0 started (or removed), 2 bad request, 10 refused by the
+# administrator's policy, 11 an administrator must approve (policy
+# administrators, the person is not one), 12 the tools are missing.
+set -eu
+PATH=/usr/sbin:/usr/bin
+umask 022
+
+CONF=${BASALT_MODELS_CONF:-/etc/basalt/models.conf}
+RUN=${BASALT_MODELS_RUN_DIR:-/run/basalt-models}
+VOICE_FETCH=${BASALT_MODELS_VOICE_FETCH:-/usr/bin/basalt-voice-fetch}
+LLM_FETCH=${BASALT_MODELS_LLM_FETCH:-/usr/bin/basalt-llm-fetch}
+SYSTEMCTL=${BASALT_MODELS_SYSTEMCTL:-systemctl}
+LEDGER=${BASALT_MODELS_LEDGER:-basalt-ledger}
+# Tests run the program as an ordinary user and say so; nothing else may.
+if [ "${BASALT_MODELS_TEST:-0}" != 1 ]; then
+  CONF=/etc/basalt/models.conf RUN=/run/basalt-models VOICE_FETCH=/usr/bin/basalt-voice-fetch
+  LLM_FETCH=/usr/bin/basalt-llm-fetch SYSTEMCTL=systemctl LEDGER=basalt-ledger
+fi
+
+die() { echo "basalt-models: $*" >&2; exit "${2:-2}"; }
+
+# conf KEY DEFAULT: a value of models.conf (key = value, # comments).
+conf() {
+  local line k v="" key=$1
+  if [ -r "$CONF" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line=${line%%#*}
+      case "$line" in *=*) ;; *) continue ;; esac
+      k=$(printf '%s' "${line%%=*}" | tr -d '[:space:]')
+      [ "$k" = "$key" ] || continue
+      v=$(printf '%s' "${line#*=}" | tr -d '[:space:]')
+    done <"$CONF"
+  fi
+  echo "${v:-$2}"
+}
+
+# decide POLICY VIA UID IS_ADMIN: allow, admin (an administrator must
+# approve: use request-admin) or deny. VIA is "admin" when polkit asked
+# for an administrator's password (request-admin), else "person".
+decide() {
+  local policy=$1 via=$2 uid=$3 admin=$4
+  case "$policy" in
+    everyone) echo allow ;;
+    administrators)
+      if [ "$uid" = 0 ] || [ "$via" = admin ] || [ "$admin" = yes ]; then echo allow; else echo admin; fi ;;
+    nobody) echo deny ;;
+    *) echo deny ;; # an unknown value fails closed
+  esac
+}
+
+# A test calls the decision alone.
+if [ "${1:-}" = --decide ] && [ "${BASALT_MODELS_TEST:-0}" = 1 ]; then
+  decide "$2" "$3" "$4" "$5"
+  exit 0
+fi
+
+uid=${PKEXEC_UID:-$(id -u)}
+case "$uid" in '' | *[!0-9]*) die "bad caller" ;; esac
+user=$(id -nu "$uid" 2>/dev/null || echo "uid $uid")
+group=$(conf admin_group wheel)
+admin=no
+if [ "$uid" = 0 ] || id -nG "$uid" 2>/dev/null | tr ' ' '\n' | grep -qx -- "$group"; then admin=yes; fi
+via=person
+if [ "${BASALT_MODELS_ADMIN_ACTION:-0}" = 1 ]; then via="admin"; fi
+policy=$(conf downloads everyone)
+
+json_str() {
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/ }; s=${s//$'\t'/ }; s=${s//$'\r'/ }
+  printf '"%s"' "$s"
+}
+# ledger EVENT OUTCOME key value [key value ...]: best effort (the journal
+# always gets the same line).
+ledger() {
+  local event=$1 outcome=$2 data="" sep=""
+  shift 2
+  while [ $# -ge 2 ]; do
+    data="$data$sep$(json_str "$1"):$(json_str "$2")"; sep=","; shift 2
+  done
+  echo "basalt-models: $event ($outcome) by $user: ${data//\"/}" >&2
+  command -v "$LEDGER" >/dev/null 2>&1 || return 0
+  printf '{"op":"append","record":{"v":1,"time":%s,"producer":"basalt-models","uid":%s,"event":%s,"outcome":%s,"subject":{"app":"Basalt OS model downloads"},"data":{%s}}}\n' \
+    "$(json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" "$uid" "$(json_str "$event")" "$(json_str "$outcome")" "$data" |
+    timeout 10 "$LEDGER" api >/dev/null 2>&1 || true
+}
+
+op=${1:-}
+case "$op" in
+  status)
+    # Policy and who asks, for the desktop (no secret in it).
+    echo "policy=$policy"
+    echo "admin=$admin"
+    echo "decision=$(decide "$policy" "$via" "$uid" "$admin")"
+    exit 0 ;;
+  download | remove) ;;
+  *) die "usage: request download|remove voice|llm TARGET, or request status" ;;
+esac
+[ $# -eq 3 ] || die "usage: request $op voice|llm TARGET"
+kind=$2 target=$3
+case "$target" in
+  [a-z0-9]*) ;;
+  *) die "bad target" ;;
+esac
+case "$target" in *[!a-z0-9._-]*) die "bad target" ;; esac
+[ ${#target} -le 64 ] || die "bad target"
+
+case "$kind" in
+  voice)
+    [ -x "$VOICE_FETCH" ] || die "basalt-voice is not installed" 12
+    # The plan checks the name against the manifest (a set or a model).
+    plan=$("$VOICE_FETCH" --plan "$target" 2>/dev/null) || die "no voice model $target"
+    case "$target" in
+      english | multilingual) ;;
+      ggml-silero*) ;;
+      ggml-*)
+        # A speech model needs the voice activity detector too.
+        plan=$("$VOICE_FETCH" --plan "$target" ggml-silero-v5.1.2 2>/dev/null) || die "no voice model $target" ;;
+    esac ;;
+  llm)
+    [ -x "$LLM_FETCH" ] || die "basalt-llm is not installed" 12
+    case "$target" in auto | 0.6b | 1.7b) die "the desktop downloads recommended or a published model by name" ;; esac
+    plan=$("$LLM_FETCH" --plan "$target" 2>/dev/null) || die "no language model $target"
+    case "$plan" in *,unpublished*) die "$target is not published yet" ;; esac ;;
+  *) die "kind must be voice or llm" ;;
+esac
+models=$(printf '%s\n' "$plan" | awk '{print $1}' | paste -sd, -)
+missing=$(printf '%s\n' "$plan" | awk '$5 != "present" {s += $2} END {print s + 0}')
+
+verdict=$(decide "$policy" "$via" "$uid" "$admin")
+case "$verdict" in
+  allow) ;;
+  admin)
+    ledger "model.$op.request" denied kind "$kind" what "$target" models "$models" reason "an administrator must approve (downloads = administrators)" user "$user"
+    die "an administrator must approve model downloads on this computer" 11 ;;
+  *)
+    ledger "model.$op.request" denied kind "$kind" what "$target" models "$models" reason "model $op is turned off (downloads = $policy)" user "$user"
+    die "the administrator turned model downloads off on this computer" 10 ;;
+esac
+
+if [ "$op" = remove ]; then
+  case "$target" in english | multilingual | recommended) die "remove takes a model name" ;; esac
+  if [ "$kind" = voice ]; then "$VOICE_FETCH" --remove "$target" >/dev/null; else "$LLM_FETCH" --remove "$target" >/dev/null; fi
+  ledger model.remove ok kind "$kind" what "$target" user "$user" via "$via"
+  echo "removed $kind $target"
+  exit 0
+fi
+
+inst="$kind-$target"
+mkdir -p "$RUN"
+chmod 0755 "$RUN"
+# Who asked, for the service's own ledger record; a fresh progress file.
+printf 'uid=%s\nuser=%s\nkind=%s\ntarget=%s\nmodels=%s\nbytes=%s\nvia=%s\ntime=%s\n' \
+  "$uid" "$user" "$kind" "$target" "$models" "$missing" "$via" "$(date +%s)" >"$RUN/$inst.request"
+if ! "$SYSTEMCTL" is-active --quiet "basalt-models-fetch@$inst.service"; then
+  printf 'time=%s\nstate=queued\nbytes=0\ntotal=%s\n' "$(date +%s)" "$missing" >"$RUN/$inst.state"
+fi
+ledger model.download.request allowed kind "$kind" what "$target" models "$models" size "$missing" user "$user" via "$via"
+"$SYSTEMCTL" start --no-block "basalt-models-fetch@$inst.service"
+echo "started $inst"

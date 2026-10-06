@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  The desktop's one-click model downloads (basalt-models). A person in an
+  active local session may download the speech and assistant models of
+  the manifests (pinned URLs, checked by SHA-256) without a password; the
+  administrator's policy in /etc/basalt/models.conf can limit that to
+  administrators, or turn it off.
+-->
+<policyconfig>
+  <vendor>Basalt OS</vendor>
+  <vendor_url>https://basalt-os.org/</vendor_url>
+  <action id="org.basalt-os.models.download">
+    <description>Download or remove a speech or assistant model</description>
+    <description xml:lang="pt_BR">Baixar ou remover um modelo de fala ou do assistente</description>
+    <message>Downloading a model for this computer needs your approval</message>
+    <message xml:lang="pt_BR">Baixar um modelo para este computador precisa da sua aprovação</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/basalt-models/request</annotate>
+  </action>
+  <action id="org.basalt-os.models.download-admin">
+    <description>Download or remove a model with an administrator's approval</description>
+    <description xml:lang="pt_BR">Baixar ou remover um modelo com a aprovação de um administrador</description>
+    <message>An administrator must approve model downloads on this computer</message>
+    <message xml:lang="pt_BR">Um administrador precisa aprovar downloads de modelos neste computador</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/basalt-models/request-admin</annotate>
+  </action>
+</policyconfig>

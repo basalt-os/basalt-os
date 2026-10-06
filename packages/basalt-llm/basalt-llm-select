@@ -126,6 +126,34 @@ basalt_llm_unit_limit_mib() {
   basalt_llm_min_mib "$(basalt_llm_mib_of "$high")" "$(basalt_llm_mib_of "$max")"
 }
 
+# Published stand-ins of the fine-tuned translators: the publisher's own
+# Qwen3 checkpoint of the same size, used while a translator's weights
+# are not published (or not downloaded).
+BASALT_LLM_SMALL_STANDIN=qwen3-0.6b-q8_0
+BASALT_LLM_LARGE_STANDIN=qwen3-1.7b-q8_0
+
+# basalt_llm_standin NAME: the published stand-in of a fine-tuned
+# translator, or NAME itself.
+basalt_llm_standin() {
+  case "$1" in
+    "$BASALT_LLM_SMALL") echo "$BASALT_LLM_SMALL_STANDIN" ;;
+    "$BASALT_LLM_LARGE") echo "$BASALT_LLM_LARGE_STANDIN" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# basalt_llm_candidates CHOICE: the models MODEL=auto may run, best first,
+# for the translator CHOICE that auto selected. The 1.7B choice falls back
+# to the 0.6B translator, then to the stand-ins; the 0.6B choice never
+# runs a 1.7B model.
+basalt_llm_candidates() {
+  if [[ "$1" == "$BASALT_LLM_LARGE" ]]; then
+    echo "$BASALT_LLM_LARGE $BASALT_LLM_SMALL $BASALT_LLM_LARGE_STANDIN $BASALT_LLM_SMALL_STANDIN"
+  else
+    echo "$BASALT_LLM_SMALL $BASALT_LLM_SMALL_STANDIN"
+  fi
+}
+
 # basalt_llm_auto CORES AVAIL_MIB LIMIT_MIB: sets BASALT_LLM_CHOICE (a
 # manifest name) and BASALT_LLM_REASON (one line for the log).
 basalt_llm_auto() {

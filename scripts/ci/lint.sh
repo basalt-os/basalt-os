@@ -22,7 +22,7 @@ if [[ "${1:-}" == --container ]]; then
   in_fedora -v "$REPO_ROOT:/src:ro" -w /src \
     -e FEDORA_RELEASE="$FEDORA_RELEASE" -e ACTIONLINT_VERSION="$ACTIONLINT_VERSION" -e ACTIONLINT_SHA256="$ACTIONLINT_SHA256" \
     "$FEDORA_IMAGE" bash -euc '
-      dnf -q -y install make ShellCheck rpmlint pykickstart python3 tar gzip git zsh fish >/dev/null 2>&1 ||
+      dnf -q -y install make ShellCheck rpmlint pykickstart python3 tar gzip git zsh fish openssl libxml2 >/dev/null 2>&1 ||
         { echo "dnf install failed" >&2; exit 1; }
       tmp=$(mktemp -d)
       url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
@@ -71,6 +71,11 @@ packages/basalt-llm/tests/select-test.sh || fail=1
 step "basalt-voice: ShellCheck, speech model manifest (pinned, checksummed, public-domain Piper voices only)"
 shellcheck -x -S warning packages/basalt-voice/build.sh packages/basalt-voice/basalt-voice-fetch packages/basalt-voice/tests/manifest-test.sh || fail=1
 packages/basalt-voice/tests/manifest-test.sh || fail=1
+
+step "basalt-models: ShellCheck, tests (policy decision, requests, downloads against a local HTTPS server)"
+shellcheck -x -S warning packages/basalt-models/basalt-models-request packages/basalt-models/basalt-models-request-admin \
+  packages/basalt-models/basalt-models-run packages/basalt-models/tests/models-test.sh || fail=1
+packages/basalt-models/tests/models-test.sh || fail=1
 
 step "NVIDIA driver (basalt-nonfree): ShellCheck, basalt-nvidia tests (trial, check, fallback, kernel guard)"
 shellcheck -x -S warning packages/nvidia/check-identical.sh packages/nvidia/basalt-nvidia/basalt-nvidia \

@@ -1,0 +1,10 @@
+#!/bin/bash
+# The desktop's model downloads when the administrator's policy is
+# "downloads = administrators" and the person is not one: polkit runs this
+# only after an administrator's password (action
+# org.basalt-os.models.download-admin), then the same request program
+# runs, knowing an administrator approved. pkexec clears the environment,
+# so nobody can set the marker below through the person's own action.
+set -eu
+exec /usr/bin/env -i PATH=/usr/sbin:/usr/bin PKEXEC_UID="${PKEXEC_UID:-0}" BASALT_MODELS_ADMIN_ACTION=1 \
+  /usr/libexec/basalt-models/request "$@"

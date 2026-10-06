@@ -15,7 +15,7 @@
 %global __requires_exclude ^lib(whisper|ggml|parakeet).*$
 
 Name:           basalt-voice
-Version:        0.2.1
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Local speech to text for the Basalt OS desktop (no network)
 # basalt-voice files: Apache-2.0. whisper.cpp and ggml: MIT; bundled
@@ -34,6 +34,9 @@ BuildRequires:  make
 Requires:       curl
 Requires:       coreutils
 Requires:       pipewire-utils
+# One-click, consented downloads from the desktop (polkit, the confined
+# download service).
+Recommends:     basalt-models
 Provides:       bundled(whisper-cpp) = %{whisper_version}
 
 %description
@@ -75,6 +78,15 @@ install -pm 0644 LICENSE basalt-licenses/whisper.cpp.LICENSE
 # The program starts and finds a CPU backend.
 LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basalt-voice/whisper-cli --help >/dev/null
 
+%posttrans
+# whisper-cli runs in the voice service's SELinux domain only with the type
+# basalt-shell-selinux gives it (basalt_voice_tool_exec_t, through the
+# /usr/lib64 = /usr/lib equivalence). Installed before or with that module,
+# the file may keep the label of the policy loaded when it was written.
+if [ -x %{_sbindir}/selinuxenabled ] && %{_sbindir}/selinuxenabled; then
+    %{_sbindir}/restorecon -R %{_libdir}/basalt-voice %{_sharedstatedir}/basalt-voice >/dev/null 2>&1 || :
+fi
+
 %files
 %license basalt-licenses/*
 %{_libdir}/basalt-voice/
@@ -84,6 +96,16 @@ LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basal
 %dir %{_sharedstatedir}/basalt-voice/models
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
+- %posttrans restores the SELinux labels of the speech-to-text program
+  (its domain only runs it with basalt-shell-selinux's type).
+- basalt-voice-fetch for the desktop's consented downloads (basalt-models):
+  the english set (ggml-base.en and Silero VAD), --plan (what a download
+  would fetch, sizes and host, without root), --list --porcelain,
+  --status FILE (progress while downloading), --remove, and exit codes
+  for an unreachable server (3, the partial file is kept and resumed),
+  a checksum mismatch (4) and an unwritable model directory (5).
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.1-1
 - basalt-voice-fetch multilingual fetches ggml-base-q5_1 (with Silero
   VAD) instead of ggml-small-q5_1: about three times faster, and it

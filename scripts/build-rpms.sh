@@ -2,7 +2,7 @@
 # Build the Basalt OS RPMs in a Fedora container.
 #
 #   scripts/build-rpms.sh            basalt-release, basalt-nonfree-release, basalt-logos, basalt-snapshots,
-#                                    basalt-security, basalt-prompt, basalt-assistant (Go, own script:
+#                                    basalt-security, basalt-prompt, basalt-models, basalt-assistant (Go, own script:
 #                                    packages/basalt-assistant/build.sh)
 #   scripts/build-rpms.sh --lab      also the lab canary package (versions 1, 2, 3)
 #
@@ -29,7 +29,7 @@ trap 'sudo rm -rf "$work"' EXIT
 mkdir -p "$work/SOURCES" "$work/SPECS" "$work/lab"
 
 # Sources: every file next to each spec (subdirectories such as tests/ stay out).
-for pkg in basalt-release basalt-nonfree-release basalt-snapshots basalt-security basalt-prompt; do
+for pkg in basalt-release basalt-nonfree-release basalt-snapshots basalt-security basalt-prompt basalt-models; do
   find "$REPO_ROOT/packages/$pkg" -maxdepth 1 -type f -exec cp -p {} "$work/SOURCES/" \;
   mv "$work/SOURCES/$pkg.spec" "$work/SPECS/"
 done

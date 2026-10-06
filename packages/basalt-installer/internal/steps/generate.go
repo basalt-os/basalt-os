@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -36,6 +37,14 @@ var baseServices = []string{"sshd", "firewalld", "auditd", "basalt-snapshot-boot
 	"basalt-grub-theme", "basalt-module-keys", "basalt-resolver", "basalt-ledger"}
 var assistantServices = []string{"basalt-assistantd", "basalt-notify", "basalt-audit-rotate.timer"}
 
+// DesktopPackages are what the desktop edition installs on top of the
+// server system, whatever the plan's packages.extra says: the session,
+// the shell's SELinux module, voice (whisper.cpp), the consented model
+// downloads and the local model service. No model is installed: the
+// desktop asks the person before it downloads one (basalt-models).
+var DesktopPackages = []string{"basalt-desktop", "basalt-shell-selinux", "basalt-voice", "basalt-models",
+	"basalt-llm", "basalt-llm-selinux"}
+
 // Packages returns what dnf installs and excludes for the resolved plan
 // (the kickstart's %packages, plus what Anaconda adds by itself: the kernel
 // and the UEFI boot loader).
@@ -60,7 +69,14 @@ func Packages(r Resolved) (install, exclude []string) {
 	if r.UsesTang() {
 		install = append(install, "clevis", "clevis-luks", "clevis-dracut")
 	}
-	install = append(install, r.Plan.Packages.Extra...)
+	if r.Plan.Edition == "desktop" {
+		install = append(install, DesktopPackages...)
+	}
+	for _, p := range r.Plan.Packages.Extra {
+		if !slices.Contains(install, p) {
+			install = append(install, p)
+		}
+	}
 	exclude = []string{"fedora-release", "fedora-release-common", "fedora-release-identity-basic",
 		"fedora-logos", "fedora-logos-httpd", "generic-release", "generic-logos"}
 	if r.Profile == "minimal" {

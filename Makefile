@@ -142,7 +142,7 @@ ci-boot-test: ## Install a test ISO in QEMU/KVM (Secure Boot, swtpm) with throwa
 
 # --- system assistant (packages/basalt-assistant) -----------------------------------
 
-.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-agent agent-test lab-agent-test rpm-llm rpm-swayfx rpm-voice llm-test eval-rules eval-check lab-eval-capture
+.PHONY: rpm-assistant assistant-test lab-assistant-test rpm-agent agent-test lab-agent-test rpm-llm rpm-swayfx rpm-voice llm-test models-test eval-rules eval-check lab-eval-capture
 
 rpm-assistant: ## Build only basalt-assistant (+ -selinux, source) into the RPM directory
 	packages/basalt-assistant/build.sh
@@ -194,6 +194,9 @@ rpm-voice: ## Build basalt-voice: whisper.cpp speech to text for the CPU and the
 
 llm-test: ## Unit tests of basalt-llm's model selection (MODEL=auto, aliases, unpublished models fail closed)
 	packages/basalt-llm/tests/select-test.sh
+
+models-test: ## Tests of the desktop's consented model downloads (policy, requests, downloads against a local HTTPS server)
+	packages/basalt-models/tests/models-test.sh
 
 eval-rules: ## Decision-layer evaluation suite (eval/cases) against the rules backend (needs Go)
 	@cd packages/basalt-assistant && go run ./tools/basalt-eval decide -cases ../../eval/cases

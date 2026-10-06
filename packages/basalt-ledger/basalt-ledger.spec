@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-ledger
-Version:        0.2.3
+Version:        0.2.4
 Release:        1%{?dist}
 Summary:        Append-only, hash-chained system audit service
 License:        Apache-2.0
@@ -122,6 +122,12 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_ledger.if
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.4-1
+- Sentences for the desktop's model downloads (basalt-models:
+  model.download.request, model.download, model.enable, model.remove):
+  who agreed, what and how much, and that the checksum was checked;
+  notice severity, warning when refused or failed.
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.3-1
 - Sentences and severities for the NVIDIA driver records of basalt-nvidia
   (driver.install, driver.check, driver.fallback, driver.retry,

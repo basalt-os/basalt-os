@@ -120,7 +120,8 @@ scripts/release/upload.sh /tmp/nonfree-out
 
 `build.sh` builds every package from a clean checkout of a commit:
 `scripts/build-rpms.sh` (with `basalt-nonfree-release`, whose
-repository must point at https://obpkg.org/basalt-nonfree and be off), `basalt-llm`, `swayfx` (the desktop session's
+repository must point at https://obpkg.org/basalt-nonfree and be off,
+and `basalt-models`, the desktop's consented model downloads), `basalt-llm`, `swayfx` (the desktop session's
 compositor: SwayFX from its pinned release archive, Provides and
 Conflicts with Fedora's sway, no Obsoletes, so switching stays explicit
 with `dnf swap`), and the data packages

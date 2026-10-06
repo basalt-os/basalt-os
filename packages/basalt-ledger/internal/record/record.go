@@ -148,6 +148,10 @@ func Severity(event, outcome string) string {
 		return "warning"
 	case strings.HasPrefix(event, "driver."):
 		return "notice"
+	// A model downloaded from the network as root, after a person's
+	// consent: worth seeing in the summary.
+	case strings.HasPrefix(event, "model."):
+		return "notice"
 	case strings.HasPrefix(event, "snapshot.rollback"), strings.HasPrefix(event, "polkit."),
 		strings.HasPrefix(event, "escalation."), strings.HasSuffix(event, ".grant"), event == "grant.apply",
 		event == "agent.grant.helper", event == "assistant.apply", event == "assistant.confirm",

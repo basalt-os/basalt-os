@@ -7,6 +7,14 @@ The voice service itself (`basalt-voiced`, its SELinux domain
 `docs/voice.md` for how push to talk, the skills and their security model
 work.
 
+On the desktop edition voice works out of the box: basalt-voice is
+installed with the desktop, the voice service starts with each person's
+session, and the first push to talk without a speech model offers the
+model for the person's language on the voice card (Download, Not now),
+with its size and where it comes from. Nobody runs a command; see
+[models.md](models.md) for how the download is approved, confined and
+recorded.
+
 ## What the package holds
 
 - whisper.cpp's `whisper-cli`, built from the upstream release archive
@@ -14,7 +22,9 @@ work.
   spec) for the CPU only. Every x86-64 variant is built and the best one
   is picked at run time. Files live in `/usr/lib64/basalt-voice`
   (RUNPATH `$ORIGIN`), so they never shadow a system library.
-- `basalt-voice-fetch`, the only program that downloads speech models.
+- `basalt-voice-fetch`, the only program that downloads speech models
+  (run by the desktop's confined download service after the person's
+  consent, or by an administrator).
 - `/usr/share/basalt-voice/models.manifest`, the list of models it may
   download.
 
@@ -23,16 +33,17 @@ library only (no `whisper-cli`) and pulls the ROCm runtime.
 
 ## Models: how they are fetched
 
-An administrator runs `basalt-voice-fetch` once:
-
-```sh
-sudo basalt-voice-fetch default      # ggml-base.en, Silero VAD, en_US-ljspeech-medium (+ .json)
-sudo basalt-voice-fetch multilingual # ggml-base-q5_1 and Silero VAD: speech in other languages
-sudo basalt-voice-fetch ggml-small-q5_1 # multilingual, slower: better for long dictation
-basalt-voice-fetch --list            # every model of the manifest, size, license, present or not
-sudo basalt-voice-fetch ggml-small.en
-sudo basalt-voice-fetch --verify     # re-check the files already downloaded
-```
+The person never has to fetch a model. Push to talk offers the speech
+model for the speech language (the session's language unless the person
+chose one): English gets the `english` set (`ggml-base.en` and Silero
+VAD), any other language the `multilingual` set (`ggml-base-q5_1` and
+Silero VAD). Settings, Voice and assistant, downloads and removes any
+speech model of the manifest. Either way, after the person chose
+Download, the confined service of [basalt-models](models.md) runs
+`basalt-voice-fetch` with a progress file the desktop shows; a download
+cut by the network keeps its partial file and resumes when the network
+is back. Administrators can also fetch models themselves (For
+administrators, below).
 
 - Each manifest row is `name sha256 size license url`. Every URL is
   pinned to a commit of the publisher's Hugging Face repository
@@ -118,3 +129,25 @@ step for this package.
 - It is part of the basalt-testing release set: `scripts/release/build-testing.sh`
   builds it next to basalt-shell (see `docs/publishing.md`). It is not built
   by CI.
+
+## For administrators
+
+Nothing here is needed on a desktop; these are for servers, images and
+machines where downloads from the desktop are turned off
+(`downloads = nobody` in `/etc/basalt/models.conf`).
+
+```sh
+sudo basalt-voice-fetch default      # ggml-base.en, Silero VAD, en_US-ljspeech-medium (+ .json)
+sudo basalt-voice-fetch english      # ggml-base.en and Silero VAD (what push to talk offers for English)
+sudo basalt-voice-fetch multilingual # ggml-base-q5_1 and Silero VAD: speech in other languages
+sudo basalt-voice-fetch ggml-small-q5_1 # multilingual, slower: better for long dictation
+basalt-voice-fetch --list            # every model of the manifest, size, license, present or not
+basalt-voice-fetch --plan english    # what a download would fetch, machine readable (no root)
+sudo basalt-voice-fetch --verify     # re-check the files already downloaded
+sudo basalt-voice-fetch --remove ggml-small-q5_1
+```
+
+Exit status: 0 done, 3 the server could not be reached (the partial file
+is kept and the next run resumes it), 4 checksum mismatch (the file was
+deleted), 5 the model directory is not writable. With `--status FILE` it
+writes its progress (state, model, bytes, total, error) for the desktop.
