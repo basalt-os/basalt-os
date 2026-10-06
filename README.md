@@ -54,6 +54,11 @@ allowlist and audit): [docs/agents.md](docs/agents.md). Current state and measur
 [docs/milestone-1-report.md](docs/milestone-1-report.md) (and
 [milestone 0](docs/milestone-0-report.md)).
 
+The security model in one place: [docs/security/](docs/security/README.md)
+(how Basalt protects you, the threat model, the catalog of security
+controls with how each one is verified, and an audit guide anyone can
+follow).
+
 ## Try it and tell us
 
 Basalt OS is young, and what you notice now shapes it. We would love to
@@ -96,7 +101,7 @@ packages/lab/                test fixtures for the lab (never published)
 kickstart/basalt-server.ks   the installer profile
 scripts/                     build-rpms.sh, repo.sh (signed repository), iso.sh (installer ISO)
 scripts/lab/                 local VM lab: keys, network, repository server, install and tests
-docs/                        design, lab, milestone reports
+docs/                        design, lab, milestone reports; docs/security/ the security model and controls catalog
 archive/bootc/               an earlier image-based (bootc) prototype, kept for reference
 ```
 

@@ -10,7 +10,8 @@
 # the basalt-nvidia tests,
 # ShellCheck on the CI scripts, the basalt-llm model selection tests, rpmlint on every package spec (filters in
 # scripts/ci/rpmlint.toml), ksvalidator on the kickstart for this Fedora
-# release, actionlint on the workflows.
+# release, actionlint on the workflows, the security controls catalog
+# (scripts/ci/security-controls-check.sh, docs/security/).
 source "$(dirname "$0")/../lib.sh"
 
 # actionlint, pinned by version and SHA-256 of the release archive.
@@ -22,7 +23,7 @@ if [[ "${1:-}" == --container ]]; then
   in_fedora -v "$REPO_ROOT:/src:ro" -w /src \
     -e FEDORA_RELEASE="$FEDORA_RELEASE" -e ACTIONLINT_VERSION="$ACTIONLINT_VERSION" -e ACTIONLINT_SHA256="$ACTIONLINT_SHA256" \
     "$FEDORA_IMAGE" bash -euc '
-      dnf -q -y install make ShellCheck rpmlint pykickstart python3 tar gzip git zsh fish openssl libxml2 >/dev/null 2>&1 ||
+      dnf -q -y install make ShellCheck rpmlint pykickstart python3 python3-pyyaml tar gzip git zsh fish openssl libxml2 >/dev/null 2>&1 ||
         { echo "dnf install failed" >&2; exit 1; }
       tmp=$(mktemp -d)
       url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
@@ -50,6 +51,9 @@ shellcheck -x -S warning scripts/ci/*.sh packages/basalt-assistant/build.sh scri
   packages/basalt-resolver/build.sh packages/basalt-ledger/build.sh scripts/lab/ledger-test.sh packages/basalt-ledger/tests/*.sh \
   packages/basalt-llm/build.sh packages/basalt-llm/basalt-llm-start packages/basalt-llm/basalt-llm-fetch \
   packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh scripts/data-package.sh scripts/release/*.sh || fail=1
+
+step "Security controls catalog: IDs, implementation paths, verifications, audit guide, generated controls.md"
+scripts/ci/security-controls-check.sh || fail=1
 
 step "Shared egress allowlist format: basalt-agent and basalt-resolver carry the same parser"
 for f in allowlist.go allowlist_test.go; do

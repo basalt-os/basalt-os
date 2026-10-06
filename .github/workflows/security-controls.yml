@@ -1,0 +1,30 @@
+# The security controls catalog check for changes that touch only the
+# security documentation. ci.yml ignores docs/**, so without this workflow
+# an edit of docs/security/controls.yaml alone would not be checked. Code
+# changes run the same check through scripts/ci/lint.sh in ci.yml.
+name: Security controls
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/security/**", "scripts/ci/security-controls-check.sh"]
+  pull_request:
+    paths: ["docs/security/**", "scripts/ci/security-controls-check.sh"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    name: Controls catalog
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check docs/security/controls.yaml against the repository
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q python3-yaml; }
+          scripts/ci/security-controls-check.sh
