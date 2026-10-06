@@ -18,4 +18,7 @@ Filters = [
     # library (it uses only the Go runtime and syscalls), which rpmlint reads
     # as static.
     'statically-linked-binary /usr/libexec/basalt-shell/basalt-shell-ui-launch',
+    # basalt-vm-cursor (basalt-shell 0.5.1) is built the same way: Go runtime
+    # and the DRM cursor ioctl through syscall, no shared library.
+    'statically-linked-binary /usr/libexec/basalt-shell/basalt-vm-cursor',
 ]
