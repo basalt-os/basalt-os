@@ -59,7 +59,7 @@ func TestShipped(t *testing.T) {
 	if n := count("shell.json", func(a *Action) bool { return a.PersonOnly }); n != 5 {
 		t.Errorf("person-only: %d", n)
 	}
-	for _, id := range []string{"gate.rule.change", "tool.exec", "agent.grant.host", "agent.grant.path", "agent.egress.change",
+	for _, id := range []string{"gate.rule.change", "tool.exec", "agent.grant.host", "agent.grant.path", "agent.egress.change", "agent.egress.system",
 		"model.download", "model.remove", "grant.folder", "grant.mailbox", "grant.site", "file.open", "knowledge.fetch", "remote.consent"} {
 		if r.Actions[id] == nil {
 			t.Errorf("%s not registered", id)

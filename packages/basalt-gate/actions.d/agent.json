@@ -1,12 +1,7 @@
 {
   "registry": 1,
   "source": "basalt-agent",
-  "executors": {
-    "basalt-agent-grant": {
-      "types": [],
-      "note": "the grant helper claims from phase 2 (polkit stays its authentication); until then nothing claims"
-    }
-  },
+  "executors": {},
   "groups": {},
   "actions": [
     {
@@ -14,7 +9,7 @@
       "class": "C3",
       "leaves": true,
       "system": true,
-      "description": "Let one running agent session reach one more host.",
+      "description": "Let one running agent session reach one more host. The person approves it; basalt-agent then runs its root helper through pkexec, which asks for an administrator (polkit, as before).",
       "args": {
         "session": {
           "type": "string",
@@ -33,7 +28,7 @@
           "arg": "host"
         }
       ],
-      "executor": "basalt-agent-grant",
+      "executor": "requester",
       "requesters": [
         "person",
         "tool"
@@ -43,13 +38,14 @@
           "session",
           "host"
         ]
-      }
+      },
+      "decide_auth": "session"
     },
     {
       "id": "agent.grant.path",
       "class": "C2",
       "system": true,
-      "description": "Hand one more directory to a running native agent session.",
+      "description": "Hand one more directory to a running native agent session. The person approves it; basalt-agent then runs its root helper through pkexec, which asks for an administrator (polkit, as before).",
       "args": {
         "session": {
           "type": "string",
@@ -70,7 +66,7 @@
           "expand_home": true
         }
       ],
-      "executor": "basalt-agent-grant",
+      "executor": "requester",
       "requesters": [
         "person",
         "tool"
@@ -80,14 +76,15 @@
           "session",
           "path"
         ]
-      }
+      },
+      "decide_auth": "session"
     },
     {
       "id": "agent.egress.change",
       "class": "C3",
       "leaves": true,
-      "system": true,
-      "description": "Add or remove a host in an agent profile's allowlist (user or system scope).",
+      "system": false,
+      "description": "Add or remove a host in the person's own override of an agent profile's allowlist (their sessions only).",
       "args": {
         "profile": {
           "type": "string",
@@ -106,13 +103,6 @@
           "type": "string",
           "required": true,
           "pattern": "[A-Za-z0-9.*-]{1,253}(:[0-9,-]{1,64})?"
-        },
-        "scope": {
-          "type": "string",
-          "enum": [
-            "user",
-            "system"
-          ]
         }
       },
       "resources": [
@@ -121,7 +111,7 @@
           "arg": "entry"
         }
       ],
-      "executor": "basalt-agent-grant",
+      "executor": "requester",
       "requesters": [
         "person",
         "tool"
@@ -130,10 +120,55 @@
         "show": [
           "profile",
           "op",
-          "entry",
-          "scope"
+          "entry"
         ]
       }
+    },
+    {
+      "id": "agent.egress.system",
+      "class": "C3",
+      "leaves": true,
+      "system": true,
+      "description": "Add or remove a host in an agent profile's allowlist for every user (/etc/basalt-agent/profiles). The person approves it; the root helper asks for an administrator through polkit, as before.",
+      "args": {
+        "profile": {
+          "type": "string",
+          "required": true,
+          "pattern": "[a-z0-9][a-z0-9_-]{0,40}"
+        },
+        "op": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "add",
+            "remove"
+          ]
+        },
+        "entry": {
+          "type": "string",
+          "required": true,
+          "pattern": "[A-Za-z0-9.*-]{1,253}(:[0-9,-]{1,64})?"
+        }
+      },
+      "resources": [
+        {
+          "kind": "host",
+          "arg": "entry"
+        }
+      ],
+      "executor": "requester",
+      "requesters": [
+        "person",
+        "tool"
+      ],
+      "preview": {
+        "show": [
+          "profile",
+          "op",
+          "entry"
+        ]
+      },
+      "decide_auth": "session"
     }
   ]
 }

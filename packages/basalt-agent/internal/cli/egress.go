@@ -13,6 +13,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/allowlist"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/audit"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/gateclient"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/ledger"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/profile"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/selinux"
@@ -96,15 +97,39 @@ func cmdEgress(args []string) error {
 		}
 	}
 	fmt.Println("Running sessions keep their list; new sessions use the new one (basalt-agent grant widens a running session).")
-	if !yes {
+	action := "agent.egress.change"
+	if system {
+		action = "agent.egress.system"
+	}
+	calls := []gateclient.Call{{Action: action, Args: map[string]any{"profile": name, "op": op, "entry": e.String()}}}
+	g := dialGate()
+	defer g.close()
+	gateID := ""
+	switch {
+	case g.enforced():
+		// The approval gate decides (the person approves here with their
+		// password, or in the queue; --yes cannot approve for them).
+		var err error
+		if gateID, err = g.decide(calls, isTTY(0)); err != nil {
+			return fmt.Errorf("not applied: %w", err)
+		}
+	case !yes:
 		if !isTTY(0) {
 			return errors.New("not confirmed (no terminal; pass --yes after reviewing the proposal)")
 		}
 		fmt.Print("Apply this change? [y/N] ")
 		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+			g.observe(calls, "declined", "the person at the terminal")
 			return errors.New("not applied")
 		}
+	}
+	if !g.enforced() {
+		by := "the person at the terminal"
+		if yes {
+			by = "--yes at the terminal"
+		}
+		g.observe(calls, "approved", by)
 	}
 	log := audit.Open(d.AuditLog())
 	lc := ledger.New()
@@ -124,17 +149,21 @@ func cmdEgress(args []string) error {
 		cmd := exec.Command("pkexec", GrantHelper, "profile", name, op, e.String())
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {
-			rec("denied", map[string]any{"error": err.Error()})
+			rec("denied", map[string]any{"error": err.Error(), "gate_id": gateID})
+			g.result(gateID, err)
 			return fmt.Errorf("not applied: %w", err)
 		}
-		rec("ok", nil)
+		rec("ok", map[string]any{"gate_id": gateID})
+		g.result(gateID, nil)
 		return nil
 	}
 	if err := editProfile(pr.Source, target, op, e); err != nil {
-		rec("error", map[string]any{"error": err.Error()})
+		rec("error", map[string]any{"error": err.Error(), "gate_id": gateID})
+		g.result(gateID, err)
 		return err
 	}
-	rec("ok", nil)
+	rec("ok", map[string]any{"gate_id": gateID})
+	g.result(gateID, nil)
 	fmt.Printf("applied: %s now holds the change\n", target)
 	return nil
 }

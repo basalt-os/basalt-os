@@ -169,6 +169,11 @@ fi
   executor keeps models.conf and polkit) and the shell claims them;
   knowledge.fetch and remote.consent (consent.json); mailbox resources.
   A user's own programs (not agents) may tighten that user's rules.
+- basalt-agent's actions: the tool runs what it asked for (executor
+  requester); agent.egress.change is the person's own override,
+  agent.egress.system every user's; grants and system allowlists are the
+  person's to approve (decide_auth = session; the root helper keeps
+  polkit).
 
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version (ADR 0020 phase 1): the gate alone, no existing approval

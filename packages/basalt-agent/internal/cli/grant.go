@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/egress"
+	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/gateclient"
 	"github.com/basalt-os/basalt-os/packages/basalt-agent/internal/session"
 )
 
@@ -34,11 +35,33 @@ func cmdGrant(args []string) error {
 	if !found {
 		return fmt.Errorf("no running session %s (basalt-agent sessions)", args[0])
 	}
+	if inAgentDomain() {
+		return errors.New("refused: an agent session cannot widen sessions; a person runs this outside the session")
+	}
+	action, key := "agent.grant.host", "host"
+	if args[1] == "path" {
+		action, key = "agent.grant.path", "path"
+	}
+	calls := []gateclient.Call{{Action: action, Args: map[string]any{"session": args[0], key: args[2]}}}
+	g := dialGate()
+	defer g.close()
+	id := ""
+	if g.enforced() {
+		// The approval gate decides: the person approves the request
+		// (here, or in the queue), then the root helper runs it.
+		if id, err = g.decide(calls, isTTY(0)); err != nil {
+			return fmt.Errorf("grant not applied: %w", err)
+		}
+	}
 	cmd := exec.Command("pkexec", GrantHelper, args[0], args[1], args[2])
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("grant not applied: %w", err)
+	runErr := cmd.Run()
+	g.result(id, runErr)
+	if runErr != nil {
+		g.observe(calls, "declined", "polkit at the terminal")
+		return fmt.Errorf("grant not applied: %w", runErr)
 	}
+	g.observe(calls, "approved", "polkit at the terminal")
 	return nil
 }
 

@@ -9,7 +9,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-agent
-Version:        0.3.1
+Version:        0.4.0
 Release:        1%{?dist}
 Summary:        Run AI coding agents confined by SELinux (container or native)
 License:        Apache-2.0
@@ -176,6 +176,16 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_agent.if
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.0-1
+- The approval gate (ADR 0020 phase 2, docs/gate.md): basalt-agent grant
+  and egress propose are requests to the gate when it is installed. Where
+  it decides (enforce = agent), the person approves with basalt-gate
+  approve (started on the terminal) or in the queue, a rule may decide,
+  and the change is then made as before (the root helper keeps polkit);
+  otherwise the terminal decides and the gate is told (shadow mode).
+  Without the gate nothing changes. Vendored gate client
+  (internal/gateclient, MIT OR Apache-2.0, checked against pkg/gate in CI).
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.1-1
 - Container images build on the Fedora release from the major number of
   os-release's VERSION_ID (Basalt OS 44.0 is Fedora 44), as basalt-release

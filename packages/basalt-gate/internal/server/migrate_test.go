@@ -396,3 +396,43 @@ func TestConsentRequests(t *testing.T) {
 		t.Fatalf("%+v", k)
 	}
 }
+
+// basalt-agent grant and egress propose: requests of the person's own
+// tool; an agent cannot ask; the person approves (their own password at
+// the terminal; the root helper still asks for an administrator through
+// pkexec); the tool runs it once allowed (claimed for it at wait).
+func TestAgentGrantRequests(t *testing.T) {
+	e := newEnv(t)
+	host := []gate.Call{{Action: "agent.grant.host", Args: map[string]any{"session": "s-0123456789ab", "host": "api.example.org:443"}}}
+	if a := e.propose(pAgent, host); a.Decision != gate.Refused {
+		t.Fatalf("agent: %+v", a)
+	}
+	r := e.do(pTool, gate.Request{Op: "propose", Calls: host})
+	if r.Decision != gate.Asked || r.Class != "C3" {
+		t.Fatalf("%+v", r)
+	}
+	if d := e.approve(pTTY, r.ID); !d.OK || e.pk.last() != "org.basalt-os.gate.decide" {
+		t.Fatalf("%+v %s", d, e.pk.last())
+	}
+	w := e.do(pTool, gate.Request{Op: "wait", ID: r.ID, Timeout: 1})
+	if w.Decision != gate.Allowed || !e.s.entries[r.ID].Claimed {
+		t.Fatalf("%+v", w)
+	}
+	exit := 0
+	if x := e.do(pTool, gate.Request{Op: "result", ID: r.ID, OK: yes(), Exit: &exit}); !x.OK {
+		t.Fatalf("%+v", x)
+	}
+	// The person's own allowlist override, and the system one.
+	user := []gate.Call{{Action: "agent.egress.change", Args: map[string]any{"profile": "claude", "op": "add", "entry": "docs.example.org"}}}
+	if u := e.do(pTool, gate.Request{Op: "propose", Calls: user}); u.Decision != gate.Asked {
+		t.Fatalf("%+v", u)
+	}
+	sys := []gate.Call{{Action: "agent.egress.system", Args: map[string]any{"profile": "claude", "op": "add", "entry": "docs.example.org"}}}
+	if s := e.do(pTool, gate.Request{Op: "propose", Calls: sys}); s.Decision != gate.Asked {
+		t.Fatalf("%+v", s)
+	}
+	// Shadow mode: the tool reports what the terminal decided.
+	if o := e.do(pTool, gate.Request{Op: "observe", Calls: user, Outcome: "approved", DecidedBy: "the person at the terminal"}); !o.OK {
+		t.Fatalf("%+v", o)
+	}
+}

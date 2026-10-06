@@ -2,7 +2,7 @@
 
 <!-- Generated from controls.yaml by scripts/ci/security-controls-check.sh --render. Do not edit by hand. -->
 
-Version 4, updated 2026-10-06. Each control has a
+Version 5, updated 2026-10-06. Each control has a
 stable ID, a requirement, the reason for it, where it is enforced, how it
 is verified and its status. Implemented means enforced in the shipped
 packages and checked; partial means enforced for part of the scope or
@@ -946,11 +946,12 @@ Requirement: Widening a session or a profile allowlist MUST be done by a person 
 
 Rationale: An agent cannot open its own network.
 
-Implemented in: `packages/basalt-resolver`, `packages/basalt-agent/dist/org.basalt-os.agent.policy`.
+Implemented in: `packages/basalt-resolver`, `packages/basalt-agent/dist/org.basalt-os.agent.policy`, `packages/basalt-agent/internal/cli/gate.go`.
 
 Verified by:
 
 - Test: `packages/basalt-resolver`, `func TestAllowOnlyFromRoot(`
+- Test: `packages/basalt-gate/internal/server/migrate_test.go`, `func TestAgentGrantRequests(`
 - Lab: `packages/basalt-agent/tests/attacks.sh`, `self-grant`
 - Manual: audit guide, [BSC-NET-004](audit-guide.md#bsc-net-004)
 

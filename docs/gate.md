@@ -244,6 +244,7 @@ asks which paths are enforced in `hello`.
 | Skill grants (a folder, a mailbox, a web site for the read-only skills) | `skills` | gate decides | `grant.folder`, `grant.mailbox`, `grant.site`; a person's approval becomes a rule ending with the grant |
 | Model downloads | `models` | gate decides | the card's Download is the approval; the consent is the preview |
 | Knowledge packs, web search and remote content | `consent` | gate decides | `knowledge.fetch`, `remote.consent`, on behalf of the assistant or the person |
+| basalt-agent grant and egress propose | `agent` | shadow | the person approves with `basalt-gate approve` or in the queue; the root helper keeps polkit |
 
 The system assistant's proposals (`apply`). `basalt apply ID` queues the
 proposal in the gate (calls: its typed actions; reference: its id;
@@ -306,6 +307,21 @@ fetch, a remote model, for one question or a conversation) are requests
 on behalf of the assistant (tainted: it reads untrusted content, so a
 standing rule does not cover it unless the rule accepts that) or the
 person, with the consent text as the preview.
+
+basalt-agent grant and egress propose (`agent`). `basalt-agent grant`
+(one more host or folder for a running session) and `basalt-agent egress
+propose` (a profile's allowlist, the person's own or, with `--system`,
+every user's) are requests of the person's own tool: `agent.grant.host`,
+`agent.grant.path`, `agent.egress.change`, `agent.egress.system`. Where
+the gate decides, the tool starts `basalt-gate approve` on its terminal
+(the person's own password), or waits for a decision in the queue, then
+carries the change out as before: the root helper still asks for an
+administrator through pkexec, so these actions are the person's to
+approve without a second administrator prompt at the gate
+(`decide_auth = session`). The tool runs what it asked for (the gate
+claims it for the tool when it is allowed) and reports the result. In
+shadow mode the terminal's confirmation and polkit decide, and the tool
+tells the gate. Agent sessions are refused by the tool and by the gate.
 
 ## Ledger records
 

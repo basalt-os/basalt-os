@@ -159,6 +159,16 @@ ports, such as a dev server the agent started; this also covers the
 host's own addresses, which the kernel routes over loopback, so set it to
 no when the agent does not need local services; see `docs/network.md`).
 
+With the approval gate installed ([gate.md](gate.md)), both are requests
+to it (`agent.grant.host`, `agent.grant.path`, `agent.egress.change`,
+`agent.egress.system`). Where the gate decides this path (`enforce =
+agent`), you approve the request with `basalt-gate approve` (started for
+you on a terminal: your own password) or in the queue, a rule may decide
+instead, and then the change is made as before (the root helper still
+asks for an administrator through polkit; `--yes` no longer approves).
+Until then the terminal decides and the gate is told what was decided.
+Agent sessions can do neither.
+
 ## Secrets
 
 A profile lists the API keys it needs (e.g. `ANTHROPIC_API_KEY`). They are

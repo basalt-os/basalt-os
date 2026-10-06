@@ -115,3 +115,7 @@ between releases.
 - Version 4 (2026-10-06): BSC-AI-003 is also enforced by the approval gate
   where it decides model downloads (the consent is a request only the person
   may make, approved in the shell UI).
+- Version 5 (2026-10-06): BSC-NET-004 also holds through the approval gate
+  where it decides basalt-agent grant and egress propose (requests only the
+  person's own tool makes, approved by the person; polkit stays in the root
+  helper).

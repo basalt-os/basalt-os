@@ -33,7 +33,7 @@
 # partial = enforced for some of the scope or without the full verification;
 # planned = decided or proposed, not built yet (nothing to rely on today).
 
-version: 4
+version: 5
 updated: 2026-10-06
 
 areas:
@@ -1047,8 +1047,10 @@ controls:
     implemented_in:
       - packages/basalt-resolver
       - packages/basalt-agent/dist/org.basalt-os.agent.policy
+      - packages/basalt-agent/internal/cli/gate.go
     verification:
       - {type: test, file: packages/basalt-resolver, match: "func TestAllowOnlyFromRoot("}
+      - {type: test, file: packages/basalt-gate/internal/server/migrate_test.go, match: "func TestAgentGrantRequests("}
       - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "self-grant"}
       - {type: manual, guide: BSC-NET-004}
 
