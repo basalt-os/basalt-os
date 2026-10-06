@@ -51,66 +51,70 @@ msgid "The NVIDIA driver %s is installed but switched off since %s: %s. nouveau 
 msgstr ""
 
 #: internal/cli/drivers.go:134
+msgid "Driver installation is coming soon: the basalt-nonfree repository is not published yet."
+msgstr ""
+
+#: internal/cli/drivers.go:136
 msgid "No NVIDIA GPU: the drivers already installed are the right ones."
 msgstr ""
 
-#: internal/cli/drivers.go:140
+#: internal/cli/drivers.go:142
 msgid "Before installing:"
 msgstr ""
 
-#: internal/cli/drivers.go:146
+#: internal/cli/drivers.go:148
 msgid "waiting for the first start to check it"
 msgstr ""
 
-#: internal/cli/drivers.go:148
+#: internal/cli/drivers.go:150
 msgid "in use"
 msgstr ""
 
-#: internal/cli/drivers.go:150
+#: internal/cli/drivers.go:152
 msgid "off, nouveau is used"
 msgstr ""
 
-#: internal/cli/drivers.go:152
-msgid "not set up"
-msgstr ""
-
 #: internal/cli/drivers.go:154
-#, c-format
-msgid "State: %s."
+msgid "not set up"
 msgstr ""
 
 #: internal/cli/drivers.go:156
 #, c-format
+msgid "State: %s."
+msgstr ""
+
+#: internal/cli/drivers.go:158
+#, c-format
 msgid "This start uses: %s %s"
 msgstr ""
 
-#: internal/cli/drivers.go:159
+#: internal/cli/drivers.go:161
 #, c-format
 msgid "Kernel %s waits for its NVIDIA module; the computer keeps starting an older kernel."
 msgstr ""
 
-#: internal/cli/drivers.go:162
+#: internal/cli/drivers.go:164
 #, c-format
 msgid "Secure Boot: %s."
 msgstr ""
 
-#: internal/cli/drivers.go:170
+#: internal/cli/drivers.go:172
 msgid "Read the license: basalt drivers license nvidia"
 msgstr ""
 
-#: internal/cli/drivers.go:171
+#: internal/cli/drivers.go:173
 msgid "Install it: sudo basalt drivers install nvidia --apply"
 msgstr ""
 
-#: internal/cli/drivers.go:174
+#: internal/cli/drivers.go:176
 msgid "Return to the snapshot taken before the install: sudo basalt drivers rollback --apply"
 msgstr ""
 
-#: internal/cli/drivers.go:175
+#: internal/cli/drivers.go:177
 msgid "Try the NVIDIA driver again at the next start: sudo basalt-nvidia retry"
 msgstr ""
 
-#: internal/cli/drivers.go:177
+#: internal/cli/drivers.go:179
 #, c-format
 msgid "More: %s"
 msgstr ""

@@ -232,6 +232,10 @@ msgid "The NVIDIA driver %s is installed but switched off since %s: %s. nouveau 
 msgstr "O driver NVIDIA %s está instalado, mas desligado desde %s: %s. O nouveau está em uso."
 
 #: internal/cli/drivers.go:134
+msgid "Driver installation is coming soon: the basalt-nonfree repository is not published yet."
+msgstr "A instalação de drivers chega em breve: o repositório basalt-nonfree ainda não foi publicado."
+
+#: internal/cli/drivers.go:136
 msgid "No NVIDIA GPU: the drivers already installed are the right ones."
 msgstr "Nenhuma GPU NVIDIA: os drivers já instalados são os certos."
 

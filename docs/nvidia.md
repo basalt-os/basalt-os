@@ -57,10 +57,17 @@ kept as `nvidia-gpus.json` in basalt-assistant, with its license):
 
 | The GPU is | What happens |
 |---|---|
-| supported by this driver with the open kernel modules (Turing and newer) | the NVIDIA driver is recommended |
+| supported by this driver with the open kernel modules (Turing and newer) | the NVIDIA driver is recommended, once the basalt-nonfree repository is published (until then: "not available yet", see below) |
 | one of the 580 legacy branch (Maxwell, Pascal, Volta, for example a GeForce GTX 1070) | nothing is installed: the open modules do not support these GPUs and Basalt OS does not package NVIDIA's closed kernel module; nouveau drives them |
 | older (470 branch and before) | nouveau drives it |
 | not in the list | nothing is recommended (the GPU may be newer than the driver) |
+
+The driver is offered only when `basalt-nonfree-release` can be installed:
+it is installed already, or an enabled repository offers it (dnf's cached
+metadata, read without network). Until the basalt-nonfree repository is
+published, `basalt drivers` reports the action `unavailable` ("Driver
+installation is coming soon"), proposes nothing, and the desktop page says
+that driver installation is coming soon, without an Install button.
 
 On a machine with a 580 branch GPU, RPM Fusion's `akmod-nvidia-580xx`
 builds the closed module on the machine; with Secure Boot on it needs your

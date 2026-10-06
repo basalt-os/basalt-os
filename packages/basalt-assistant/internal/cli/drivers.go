@@ -130,6 +130,8 @@ func (a *app) writeDrivers(r drivers.Report) {
 		say(fmt.Sprintf(i18n.T("The NVIDIA driver %s is installed (%s)."), st.Version, st.Installed))
 	case "fallback":
 		say(fmt.Sprintf(i18n.T("The NVIDIA driver %s is installed but switched off since %s: %s. nouveau is used."), st.Version, st.Since, st.Reason))
+	case "unavailable":
+		say(i18n.T("Driver installation is coming soon: the basalt-nonfree repository is not published yet."))
 	case "none":
 		say(i18n.T("No NVIDIA GPU: the drivers already installed are the right ones."))
 	}

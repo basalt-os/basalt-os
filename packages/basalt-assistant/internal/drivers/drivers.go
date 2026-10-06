@@ -275,16 +275,21 @@ type State struct {
 	Installed      string `json:"installed"` // nvidia-driver, nvidia-driver-compute or ""
 	Version        string `json:"version,omitempty"`
 	ReleasePackage bool   `json:"release_package"` // basalt-nonfree-release
-	RepoEnabled    bool   `json:"repo_enabled"`
-	Mode           string `json:"mode"` // none, trial, active, fallback
-	Since          string `json:"since,omitempty"`
-	Reason         string `json:"reason,omitempty"`
-	Snapshot       string `json:"snapshot,omitempty"`
-	Proposal       string `json:"proposal,omitempty"`
-	HeldKernel     string `json:"held_kernel,omitempty"`
-	ThisBoot       string `json:"this_boot,omitempty"` // nvidia or nouveau
-	ThisBootReason string `json:"this_boot_reason,omitempty"`
-	Loaded         bool   `json:"loaded"`
+	// NonfreeAvailable: basalt-nonfree-release is installed, or the
+	// enabled repositories offer it (dnf's cached metadata). Until the
+	// basalt-nonfree repository is published nothing offers it, and the
+	// driver is "unavailable": no install is recommended or proposed.
+	NonfreeAvailable bool   `json:"nonfree_available"`
+	RepoEnabled      bool   `json:"repo_enabled"`
+	Mode             string `json:"mode"` // none, trial, active, fallback
+	Since            string `json:"since,omitempty"`
+	Reason           string `json:"reason,omitempty"`
+	Snapshot         string `json:"snapshot,omitempty"`
+	Proposal         string `json:"proposal,omitempty"`
+	HeldKernel       string `json:"held_kernel,omitempty"`
+	ThisBoot         string `json:"this_boot,omitempty"` // nvidia or nouveau
+	ThisBootReason   string `json:"this_boot_reason,omitempty"`
+	Loaded           bool   `json:"loaded"`
 }
 
 func keyValues(text string) map[string]string {
@@ -315,6 +320,7 @@ func state(ctx context.Context, s Sys) State {
 		}
 	}
 	st.RepoEnabled = repoEnabled(s)
+	st.NonfreeAvailable = st.ReleasePackage || releaseOffered(ctx, s)
 	kv := keyValues(s.read(StateFile))
 	if kv["mode"] != "" {
 		st.Mode = kv["mode"]
@@ -327,6 +333,22 @@ func state(ctx context.Context, s Sys) State {
 	_, err := os.Stat(filepath.Join(s.Root, "sys/module/nvidia"))
 	st.Loaded = err == nil
 	return st
+}
+
+// releaseOffered asks dnf, from its cached metadata only (no network, no
+// metadata refresh), whether an enabled repository offers
+// basalt-nonfree-release. No cache, an error or no match all mean no.
+func releaseOffered(ctx context.Context, s Sys) bool {
+	res := s.R.Read(ctx, "dnf", "-q", "--cacheonly", "repoquery", "--available", "--queryformat", "%{name}\n", "basalt-nonfree-release")
+	if !res.OK() {
+		return false
+	}
+	for _, l := range strings.Split(res.Out, "\n") {
+		if strings.TrimSpace(l) == "basalt-nonfree-release" {
+			return true
+		}
+	}
+	return false
 }
 
 // repoEnabled reads the repository file and dnf's overrides
@@ -359,10 +381,12 @@ func repoEnabled(s Sys) bool {
 
 // Recommendation is the driver that fits, and what to do.
 type Recommendation struct {
-	// Action: install (a supported GPU, no driver yet), installed (the
-	// NVIDIA driver is in use), fallback (installed but off since a failed
-	// start), guided (an NVIDIA GPU of the 580 legacy branch: the assistant
-	// guides, nothing is packaged), unsupported, unknown, none (no NVIDIA GPU).
+	// Action: install (a supported GPU, no driver yet), unavailable (a
+	// supported GPU, but the basalt-nonfree repository is not published
+	// yet: nothing to install), installed (the NVIDIA driver is in use),
+	// fallback (installed but off since a failed start), guided (an
+	// NVIDIA GPU of the 580 legacy branch: the assistant guides, nothing
+	// is packaged), unsupported, unknown, none (no NVIDIA GPU).
 	Action   string   `json:"action"`
 	Driver   string   `json:"driver,omitempty"` // nvidia
 	Version  string   `json:"version,omitempty"`
@@ -466,6 +490,12 @@ func Recommend(gpus []GPU, st State, sb SecureBoot, kernel string, graphical boo
 		return rec
 	}
 	rec.Driver, rec.Version = "nvidia", table.Driver
+	if st.Installed == "" && !st.NonfreeAvailable {
+		rec.Action = "unavailable"
+		rec.Notes = append(rec.Notes, "The NVIDIA driver for "+best.Name+" is not available yet: the basalt-nonfree repository is not published. "+
+			"A coming update of Basalt OS installs it from Additional drivers; until then nouveau drives this GPU.")
+		return rec
+	}
 	rec.Variant = "compute"
 	if graphical {
 		rec.Variant = "display"

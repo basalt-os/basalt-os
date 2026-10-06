@@ -159,7 +159,7 @@ Changes (root):
 | `basalt confirm ID` | checks, as root, the snapshot a hint of the daemon or the MCP server rests on (see Hints) and stores it as a proposal |
 | `basalt snapshots rollback N` or `--before ID` | proposes and runs `basalt-rollback N`; `--before` uses the snapshot `basalt apply` took before proposal ID |
 | `basalt why UNIT --apply`, `basalt fix selinux --apply`, `basalt disk --apply` | store the proposal and go straight to the confirmation |
-| `basalt drivers install nvidia [display\|compute] [--apply]` | the `driver.install` proposal for the recommended driver (refused without a supported GPU, when it is installed already, or with Secure Boot on and the Basalt module CA not enrolled) |
+| `basalt drivers install nvidia [display\|compute] [--apply]` | the `driver.install` proposal for the recommended driver (refused without a supported GPU, while the basalt-nonfree repository is not published, when it is installed already, or with Secure Boot on and the Basalt module CA not enrolled) |
 | `basalt drivers rollback [--apply]` | the rollback to the snapshot `basalt apply` took before the NVIDIA driver install |
 
 Other Basalt tools through `basalt`: a first word that is not one of the

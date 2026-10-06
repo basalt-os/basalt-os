@@ -46,9 +46,20 @@ func fakeSys(t *testing.T, devs []dev, files map[string]string, answers map[stri
 	ids := "8086  Intel Corporation\n\ta7a0  Raptor Lake-P [Iris Xe Graphics]\n1af4  Red Hat, Inc.\n\t1050  Virtio 1.0 GPU\n"
 	must(t, os.MkdirAll(filepath.Join(root, "usr/share/hwdata"), 0o755))
 	must(t, os.WriteFile(filepath.Join(root, PCIIDs), []byte(ids), 0o644))
+	// The published basalt-nonfree repository offers its definition
+	// unless a test answers the query itself.
+	if answers == nil {
+		answers = map[string]runner.Result{}
+	}
+	if _, ok := answers[repoquery]; !ok {
+		answers[repoquery] = runner.Result{Out: "basalt-nonfree-release\n"}
+	}
 	return Sys{Root: root, R: &runner.Fake{Answers: answers, Default: &runner.Result{Code: 1}}, ReadFile: os.ReadFile,
 		Kernel: func() string { return "7.2.8-200.fc44.x86_64" }, Graphical: func() bool { return true }}
 }
+
+// repoquery is the question whether a repository offers basalt-nonfree-release.
+var repoquery = runner.Join([]string{"dnf", "-q", "--cacheonly", "repoquery", "--available", "--queryformat", "%{name}\n", "basalt-nonfree-release"})
 
 func must(t *testing.T, err error) {
 	t.Helper()
@@ -228,6 +239,36 @@ func TestStateFallback(t *testing.T) {
 	}
 	if _, err := InstallProposal(r, "cli", ""); err == nil {
 		t.Error("installed twice")
+	}
+}
+
+// Until the basalt-nonfree repository is published (no repository offers
+// basalt-nonfree-release, or dnf has no cached metadata), a supported GPU
+// gets "unavailable": no install recommendation, no packages, and no
+// proposal. An installed definition counts as available.
+func TestNonfreeNotPublished(t *testing.T) {
+	for name, res := range map[string]runner.Result{
+		"not offered": {Out: ""},
+		"no cache":    {Code: 1, Out: "Cache-only enabled but no cache for repository \"basalt\"\n"},
+		"dnf missing": {Code: 127, Err: runner.ErrNotFound},
+	} {
+		r := Build(context.Background(), fakeSys(t, []dev{intelIGPU, rtx4060Laptop}, nil, map[string]runner.Result{repoquery: res}), false)
+		rec := r.Recommendation
+		if r.State.NonfreeAvailable || rec.Action != "unavailable" || len(rec.Packages) != 0 || len(rec.Changes) != 0 ||
+			!strings.Contains(strings.Join(rec.Notes, " "), "not available yet") {
+			t.Errorf("%s: %+v %+v", name, r.State, rec)
+		}
+		if _, err := InstallProposal(r, "cli", ""); err == nil || !strings.Contains(err.Error(), "not available yet") {
+			t.Errorf("%s: install proposed: %v", name, err)
+		}
+	}
+	answers := map[string]runner.Result{
+		repoquery: {Out: ""},
+		"rpm -q --qf '%{NAME} %{VERSION}\n' nvidia-driver nvidia-driver-compute basalt-nonfree-release": {Code: 1, Out: "package nvidia-driver is not installed\npackage nvidia-driver-compute is not installed\nbasalt-nonfree-release 1\n"},
+	}
+	r := Build(context.Background(), fakeSys(t, []dev{rtx4090}, nil, answers), false)
+	if !r.State.NonfreeAvailable || r.Recommendation.Action != "install" {
+		t.Errorf("installed definition: %+v %+v", r.State, r.Recommendation)
 	}
 }
 

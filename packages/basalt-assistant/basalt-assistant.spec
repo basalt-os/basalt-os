@@ -193,6 +193,11 @@ fi
   (repository on, packages, nouveau off, a trial start that falls back to
   nouveau); basalt drivers rollback returns to the snapshot taken before.
   MCP tools basalt_drivers and basalt_propose_driver_install.
+- Until the basalt-nonfree repository is published (no enabled
+  repository offers basalt-nonfree-release in dnf's cached metadata, and
+  it is not installed), basalt drivers reports the action unavailable
+  ("Driver installation is coming soon"), recommends and proposes no
+  install; state.nonfree_available tells the desktop.
 
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.9.0-1
 - basalt feedback: an opt-in report to the Basalt OS project. The person's
