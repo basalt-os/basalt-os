@@ -55,6 +55,8 @@ var templates = map[string]string{
 	"driver.boot:error":             "This start used nouveau instead of the NVIDIA driver: {reason}",
 	"driver.kernel_hold":            "Kernel {kernel} has no NVIDIA module yet; the computer keeps starting kernel {default}",
 	"driver.kernel_release":         "Kernel {kernel} now has its NVIDIA module and is the default again",
+	"model.download.consent":        "{user} chose Download for {what} ({bytes} bytes) on the desktop ({purpose})",
+	"model.remove.consent":          "{user} chose Remove for {what} on the desktop",
 	"model.download.request":        "{user} agreed to download {what} ({models}, {size} bytes) from the desktop",
 	"model.download.request:denied": "{user} asked to download {what} from the desktop and was refused: {reason}",
 	"model.remove.request:denied":   "{user} asked to remove {what} from the desktop and was refused: {reason}",

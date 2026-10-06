@@ -125,6 +125,8 @@ func TestDescribeModels(t *testing.T) {
 			`{"kind":"voice","what":"english","models":"ggml-base.en,ggml-silero-v5.1.2","size":"148849309","user":"basalt"}`),
 		"The download of recommended that basalt agreed to failed (network)": rec("model.download", "error",
 			`{"kind":"llm","what":"recommended","reason":"network","user":"basalt"}`),
+		"uid 1000 chose Download for multilingual (60592723 bytes) on the desktop (push-to-talk)": rec("model.download.consent", "allowed",
+			`{"kind":"voice","what":"multilingual","bytes":60592723,"purpose":"push-to-talk","models":["ggml-base-q5_1","ggml-silero-v5.1.2"]}`),
 		"uid 1000 asked to download english from the desktop and was refused: model download is turned off (downloads = nobody)": rec("model.download.request", "denied",
 			`{"what":"english","reason":"model download is turned off (downloads = nobody)"}`),
 	}

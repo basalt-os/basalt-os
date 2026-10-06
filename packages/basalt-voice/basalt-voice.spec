@@ -78,6 +78,15 @@ install -pm 0644 LICENSE basalt-licenses/whisper.cpp.LICENSE
 # The program starts and finds a CPU backend.
 LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basalt-voice/whisper-cli --help >/dev/null
 
+%posttrans
+# whisper-cli runs in the voice service's SELinux domain only with the type
+# basalt-shell-selinux gives it (basalt_voice_tool_exec_t, through the
+# /usr/lib64 = /usr/lib equivalence). Installed before or with that module,
+# the file may keep the label of the policy loaded when it was written.
+if [ -x %{_sbindir}/selinuxenabled ] && %{_sbindir}/selinuxenabled; then
+    %{_sbindir}/restorecon -R %{_libdir}/basalt-voice %{_sharedstatedir}/basalt-voice >/dev/null 2>&1 || :
+fi
+
 %files
 %license basalt-licenses/*
 %{_libdir}/basalt-voice/
@@ -88,6 +97,8 @@ LD_LIBRARY_PATH=%{buildroot}%{_libdir}/basalt-voice %{buildroot}%{_libdir}/basal
 
 %changelog
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
+- %posttrans restores the SELinux labels of the speech-to-text program
+  (its domain only runs it with basalt-shell-selinux's type).
 - basalt-voice-fetch for the desktop's consented downloads (basalt-models):
   the english set (ggml-base.en and Silero VAD), --plan (what a download
   would fetch, sizes and host, without root), --list --porcelain,
