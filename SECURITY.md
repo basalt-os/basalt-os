@@ -6,6 +6,9 @@ confinement, the egress policy, the confirmation of a proposal, the audit
 trail, the boot chain or package signatures is a security problem. Please
 report it privately and give us time to fix it before it is disclosed.
 
+What Basalt OS promises, control by control, and how each promise is
+checked: [docs/security/](docs/security/README.md).
+
 ## Reporting a vulnerability
 
 Use GitHub's private vulnerability reporting for this repository:

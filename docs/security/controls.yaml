@@ -1,0 +1,1886 @@
+# Basalt OS security controls catalog (machine-readable).
+#
+# This file is the source of truth for docs/security/controls.md, which is
+# generated from it: scripts/ci/security-controls-check.sh --render
+# CI runs scripts/ci/security-controls-check.sh (from scripts/ci/lint.sh) and
+# fails when this catalog drifts from the repository: a duplicate or malformed
+# ID, an implemented control whose code path is gone, a verification whose
+# test name no longer exists, a manual step missing from audit-guide.md, or a
+# controls.md that was not regenerated.
+#
+# Fields of a control:
+#   id              BSC-<AREA>-<NNN>, stable forever; a retired control keeps
+#                   its ID with status "retired" and is never reused
+#   title           short name
+#   requirement     what must hold, in MUST / MUST NOT language
+#   rationale       why, and what it protects against
+#   status          implemented | partial | planned | retired
+#   adr             the design decisions (ADR numbers) that own the control
+#   implemented_in  where it is enforced: a path in this repository, or
+#                   {repo: <name>, path: <path>} for another Basalt OS repository
+#   verification    how it is checked, one or more of:
+#                     {type: test|ci|lab|suite, file: <path>, match: <text>}
+#                       automated: <text> must appear in <path> (a file, or a
+#                       directory searched recursively); add repo: <name> for
+#                       another repository
+#                     {type: manual, guide: <ID>}
+#                       a step in docs/security/audit-guide.md, under the
+#                       heading of that control ID
+#   gap             for partial and planned controls: what is missing
+#   references      external references the control maps to (optional)
+#
+# Status meanings: implemented = enforced in the shipped packages and checked;
+# partial = enforced for some of the scope or without the full verification;
+# planned = decided or proposed, not built yet (nothing to rely on today).
+
+version: 1
+updated: 2026-10-06
+
+areas:
+  BOOT: Secure Boot, kernel lockdown and module signatures
+  PKG: Packages, repositories and the build and release pipeline
+  DISK: Disk encryption and unlock
+  MAC: Mandatory access control (SELinux) and service hardening
+  GATE: Approvals, confirmations and the approval gate
+  LEDGER: The audit ledger and audit logs
+  NET: Network egress and inbound access
+  AGENT: Confinement of AI agents
+  AI: Models, knowledge, the assistant and content handling
+  PRIV: Privacy and data leaving the machine
+  UPD: Updates, snapshots and rollback
+  KEY: Signing keys and their custody
+  GOV: Process, disclosure and the security program itself
+
+controls:
+
+  # ---------------------------------------------------------------- BOOT
+
+  - id: BSC-BOOT-001
+    title: Verified boot chain with UEFI Secure Boot
+    requirement: >-
+      Basalt OS MUST boot through the UEFI Secure Boot chain (firmware, shim,
+      GRUB, kernel) with every stage signature-checked, and MUST NOT ship an
+      unsigned boot component. The installer and the boot test MUST run with
+      Secure Boot enabled.
+    rationale: >-
+      Stops boot kits and tampered kernels from running before the operating
+      system's own protections start, and is the root the disk unlock (PCR 7)
+      depends on.
+    status: implemented
+    adr: ["0002", "0017"]
+    implemented_in:
+      - docs/secure-boot.md
+      - scripts/ci/boot-test.sh
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: 'result PASS "secure boot"'}
+      - {type: manual, guide: BSC-BOOT-001}
+    references: ["CIS: secure boot settings"]
+
+  - id: BSC-BOOT-002
+    title: Kernel lockdown and module signature enforcement on by default
+    requirement: >-
+      Installs MUST put lockdown=integrity and module.sig_enforce=1 on the
+      kernel command line unless the administrator explicitly opts out, and
+      the installer MUST warn when they are left off.
+    rationale: >-
+      A machine booted with Secure Boot off still refuses unsigned kernel
+      modules, writes to /dev/mem, unsigned kexec images and hibernation to an
+      unverified image.
+    status: implemented
+    adr: ["0017"]
+    implemented_in:
+      - kickstart/basalt-server.ks
+      - packages/basalt-installer/internal/plan/validate.go
+    verification:
+      - {type: test, file: packages/basalt-installer/internal/steps/testdata/preview-default.txt, match: "lockdown=integrity module.sig_enforce=1"}
+      - {type: test, file: packages/basalt-installer/internal/plan/validate.go, match: "kernel lockdown and module signature enforcement are left off"}
+      - {type: manual, guide: BSC-BOOT-002}
+
+  - id: BSC-BOOT-003
+    title: Basalt kernel modules signed under the Basalt module CA
+    requirement: >-
+      Every kernel module Basalt builds MUST be signed with a certificate
+      issued by the Basalt kernel module CA. The CA MUST reach the kernel only
+      through a MOK enrollment confirmed by a person at the console.
+      Signing certificates MUST be loaded at boot only when the enrolled CA
+      issued them.
+    rationale: >-
+      Lets Basalt ship drivers that load with Secure Boot and lockdown on,
+      without asking people to turn either off, and keeps the physical
+      presence step that stops remote software from adding trusted keys.
+    status: implemented
+    adr: ["0017"]
+    implemented_in:
+      - packages/basalt-security/basalt-module-keys.service
+      - packages/basalt-security/basalt-secureboot
+      - scripts/release/sign-modules.sh
+    verification:
+      - {type: lab, file: scripts/lab/mok-test.sh, match: "mokutil"}
+      - {type: test, file: packages/nvidia/tests/basalt-nvidia-test.sh, match: "sig"}
+      - {type: manual, guide: BSC-BOOT-003}
+
+  - id: BSC-BOOT-004
+    title: Optional custom Secure Boot keys (custom db mode)
+    requirement: >-
+      Basalt OS MUST offer a custom db mode in which the firmware trusts only
+      binaries Basalt signed, with a Basalt-signed shim shipped as a package
+      and a documented path back to stock keys.
+    rationale: >-
+      Narrows what can boot on a machine (other vendors' shims, old vulnerable
+      boot loaders) and therefore what can reproduce PCR 7 to unlock the disk.
+    status: partial
+    adr: ["0002"]
+    implemented_in:
+      - docs/secure-boot.md
+      - scripts/lab/sb-custom-test.sh
+    verification:
+      - {type: lab, file: scripts/lab/sb-custom-test.sh, match: "negative control"}
+    gap: >-
+      The procedure is tested in the lab with development keys. Release PK,
+      KEK and db keys exist, but no Basalt-signed shim package is published
+      and custom db mode is not offered outside the lab yet.
+
+  # ---------------------------------------------------------------- PKG
+
+  - id: BSC-PKG-001
+    title: Signed packages and signed repository metadata
+    requirement: >-
+      Every Basalt repository definition MUST set gpgcheck=1 and
+      repo_gpgcheck=1 with the OpenBasalt release key shipped in the
+      basalt-release package; dnf MUST refuse tampered metadata and packages
+      signed by another key.
+    rationale: >-
+      Makes the hosting location irrelevant to integrity: a compromised CDN,
+      mirror or bucket cannot serve modified packages.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - packages/basalt-release/basalt.repo
+      - packages/basalt-release/RPM-GPG-KEY-basalt
+    verification:
+      - {type: test, file: scripts/release/client-test.sh, match: "negative: a tampered repomd.xml must be refused"}
+      - {type: test, file: scripts/release/client-test.sh, match: "negative: another key must be refused"}
+      - {type: manual, guide: BSC-PKG-001}
+    references: ["NIST SSDF PS.2", "OWASP LLM03 Supply Chain"]
+
+  - id: BSC-PKG-002
+    title: Signing isolated from building
+    requirement: >-
+      Packages MUST be built on a host that holds no keys and signed on a
+      release signer in a container without network, from a subkey-only
+      export (the secret primary key MUST be refused), with key material only
+      on a tmpfs and shredded after use, and the result MUST be verified with
+      the public key alone in a second container.
+    rationale: >-
+      A compromised build host or CI runner cannot sign; a mistake in the
+      signer cannot leak the primary key.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - scripts/release/build.sh
+      - scripts/release/sign.sh
+      - scripts/release/sign-apt.sh
+    verification:
+      - {type: test, file: scripts/release/sign.sh, match: "the export contains the secret PRIMARY key"}
+      - {type: test, file: scripts/release/sign.sh, match: "--network none"}
+      - {type: manual, guide: BSC-PKG-002}
+    references: ["NIST SSDF PS.1", "NIST SSDF PS.2"]
+
+  - id: BSC-PKG-003
+    title: Release builds refuse lab overrides
+    requirement: >-
+      A release build MUST refuse development repository keys, lab module
+      certificates, lab repository URLs and lab knowledge manifests, and MUST
+      record SHA256SUMS and build information for what it produced.
+    rationale: >-
+      A lab key or URL can never reach a published package by accident.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - scripts/release/build.sh
+    verification:
+      - {type: test, file: scripts/release/build.sh, match: "are refused"}
+      - {type: manual, guide: BSC-PKG-003}
+
+  - id: BSC-PKG-004
+    title: Published artifacts are immutable
+    requirement: >-
+      A published package or repository blob MUST never be replaced by
+      different content; metadata MUST be uploaded after the files it points
+      to; a tree signed with a test key MUST be refused for the public bucket.
+    rationale: >-
+      Prevents silent substitution of a released file and clients seeing
+      metadata that points at missing files.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - scripts/release/upload.sh
+      - scripts/release/merge-published.sh
+    verification:
+      - {type: test, file: scripts/release/upload.sh, match: "Immutable objects: refuse to replace a different RPM or blob"}
+      - {type: manual, guide: BSC-PKG-004}
+    references: ["NIST SSDF PS.3"]
+
+  - id: BSC-PKG-005
+    title: Images contain only release-signed packages
+    requirement: >-
+      Installer and live images built from the published repositories MUST
+      verify the metadata signature and every package checksum against the
+      signed metadata before using a package.
+    rationale: >-
+      The installation media inherit the repository's integrity.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - scripts/release/mirror-published.sh
+    verification:
+      - {type: test, file: scripts/release/mirror-published.sh, match: "repomd"}
+      - {type: manual, guide: BSC-PKG-005}
+
+  - id: BSC-PKG-006
+    title: Signed installer image checksums
+    requirement: >-
+      Every published installer image MUST come with a checksum file signed
+      by the release key, and the download page MUST explain how to check it.
+    rationale: >-
+      People can verify the medium before they boot it; the ISO is the one
+      artifact not covered by dnf's checks.
+    status: planned
+    adr: ["0005"]
+    implemented_in: []
+    verification: []
+    gap: >-
+      No installer image is published with a signed checksum yet; the release
+      workflow that would do it is a disabled skeleton.
+
+  - id: BSC-PKG-007
+    title: Separate signing subkey per repository family
+    requirement: >-
+      The basalt-tools and third-party repositories MUST be signed with a
+      subkey different from the basalt repository's, so that the compromise of
+      one does not affect the other, and a key change in a third-party
+      repository MUST need confirmation.
+    rationale: >-
+      Limits the blast radius of a signing key compromise.
+    status: planned
+    adr: ["0005"]
+    implemented_in: []
+    verification: []
+    gap: >-
+      Today one packages signing subkey signs every repository (basalt,
+      basalt-tools, basalt-testing, basalt-nonfree, apt). This is a recorded
+      deviation from the decision.
+
+  - id: BSC-PKG-008
+    title: CI holds no secrets and pins its actions
+    requirement: >-
+      Continuous integration MUST run with read-only repository permissions,
+      MUST NOT hold signing keys or publish credentials, and MUST pin
+      third-party actions by commit SHA.
+    rationale: >-
+      A compromised workflow or dependency cannot sign or publish.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - .github/workflows/ci.yml
+      - .github/workflows/release.yml
+    verification:
+      - {type: ci, file: .github/workflows/ci.yml, match: "contents: read"}
+      - {type: manual, guide: BSC-PKG-008}
+    references: ["NIST SSDF PO.3", "NIST SSDF PS.1"]
+
+  # ---------------------------------------------------------------- DISK
+
+  - id: BSC-DISK-001
+    title: Full disk encryption on by default
+    requirement: >-
+      The installer MUST encrypt the system with LUKS2 by default. Turning
+      encryption off, or limiting it to /home, MUST be an explicit choice that
+      states in plain language what stays unencrypted.
+    rationale: >-
+      Protects data at rest against a lost or stolen machine or disk.
+    status: implemented
+    adr: ["0002", "0006"]
+    implemented_in:
+      - kickstart/basalt-server.ks
+      - packages/basalt-installer/internal/plan/validate.go
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"luks key slots"'}
+      - {type: manual, guide: BSC-DISK-001}
+    references: ["CIS: filesystem encryption"]
+
+  - id: BSC-DISK-002
+    title: Recovery key always generated, installer secret removed
+    requirement: >-
+      Every encrypted install MUST enroll a recovery key shown to the person
+      at install time, and MUST remove the temporary passphrase the installer
+      used, leaving only the unlock method and the recovery key.
+    rationale: >-
+      The machine stays recoverable when the automatic unlock fails, and no
+      installer secret remains on disk.
+    status: implemented
+    adr: ["0002"]
+    implemented_in:
+      - kickstart/basalt-server.ks
+      - packages/basalt-installer
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '*recovery*'}
+      - {type: lab, file: scripts/lab/sb-test.sh, match: "recovery"}
+      - {type: manual, guide: BSC-DISK-002}
+
+  - id: BSC-DISK-003
+    title: TPM unlock bound to the Secure Boot state (PCR 7)
+    requirement: >-
+      Unattended TPM2 unlock MUST be sealed to PCR 7, so a changed Secure Boot
+      state (keys, dbx, Secure Boot off) stops the automatic unlock and asks
+      for the recovery key. Planned changes MUST go through basalt-tpm
+      suspend, which is limited to one boot.
+    rationale: >-
+      A tampered boot chain cannot unlock the disk; routine kernel updates and
+      rollbacks still unlock unattended.
+    status: implemented
+    adr: ["0002"]
+    implemented_in:
+      - packages/basalt-security/tpm.conf
+      - packages/basalt-security/basalt-tpm
+      - packages/basalt-security/basalt-tpm-resume.service
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"tpm2 policy"'}
+      - {type: lab, file: scripts/lab/sb-test.sh, match: "recovery"}
+      - {type: manual, guide: BSC-DISK-003}
+    gap: >-
+      PCR 7 does not say which signed kernel ran: with stock keys any
+      Fedora-signed chain reproduces it. Custom db mode or Tang narrow this.
+
+  - id: BSC-DISK-004
+    title: Network-bound unlock with a pinned Tang key
+    requirement: >-
+      The tang and tpm2+tang unlock methods MUST pin the Tang server's key
+      thumbprint when given and MUST warn and log when the key is trusted on
+      first use.
+    rationale: >-
+      A disk that must open only on the site network cannot be opened by a
+      look-alike Tang server.
+    status: implemented
+    adr: ["0002"]
+    implemented_in:
+      - kickstart/basalt-server.ks
+    verification:
+      - {type: lab, file: scripts/lab/tang-test.sh, match: "tang"}
+      - {type: test, file: kickstart/basalt-server.ks, match: "Tang key trusted on first use"}
+      - {type: manual, guide: BSC-DISK-004}
+
+  - id: BSC-DISK-005
+    title: No swap on disk
+    requirement: >-
+      Swap MUST be zram only, so memory is never written to disk unencrypted,
+      including on installs that encrypt only /home.
+    rationale: >-
+      Keeps secrets in memory (keys, passwords, documents) off the disk.
+    status: implemented
+    adr: ["0002"]
+    implemented_in:
+      - kickstart/basalt-server.ks
+    verification:
+      - {type: test, file: kickstart/basalt-server.ks, match: "zram-generator"}
+      - {type: manual, guide: BSC-DISK-005}
+
+  # ---------------------------------------------------------------- MAC
+
+  - id: BSC-MAC-001
+    title: SELinux enforcing from the first boot
+    requirement: >-
+      SELinux MUST be enforcing with the targeted policy on every install, and
+      turning it to permissive or off MUST NOT be offered as a fix by any
+      Basalt tool.
+    rationale: >-
+      Mandatory access control is the boundary that confines services,
+      agents and the assistant even when they are compromised.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - kickstart/basalt-server.ks
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"$tag selinux"'}
+      - {type: manual, guide: BSC-MAC-001}
+    references: ["CIS: SELinux enforcing"]
+
+  - id: BSC-MAC-002
+    title: Every Basalt service in its own SELinux domain
+    requirement: >-
+      Each Basalt daemon (assistant, ledger, resolver, local model server,
+      agent proxy) MUST run in a dedicated SELinux domain with only the access
+      it needs, shipped as a -selinux package.
+    rationale: >-
+      A bug in one service is contained to what its domain allows.
+    status: implemented
+    adr: ["0009", "0010"]
+    implemented_in:
+      - packages/basalt-assistant/selinux/basalt_assistant.te
+      - packages/basalt-ledger/selinux/basalt_ledger.te
+      - packages/basalt-resolver/selinux/basalt_resolver.te
+      - packages/basalt-llm/selinux/basalt_llm.te
+      - packages/basalt-agent/selinux/basalt_agent.te
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"assistant daemon confined"'}
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"resolver and ledger confined"'}
+      - {type: manual, guide: BSC-MAC-002}
+
+  - id: BSC-MAC-003
+    title: Zero SELinux denials in normal operation
+    requirement: >-
+      A fresh install doing its normal work (boot, updates, services, allowed
+      agent work) MUST produce zero SELinux denials, so every denial is a
+      signal worth reading.
+    rationale: >-
+      Noise trains people to ignore or disable protection.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - scripts/ci/vm-test.sh
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"$tag avc denials"'}
+      - {type: lab, file: scripts/lab/agent-test.sh, match: "none during allowed work"}
+      - {type: manual, guide: BSC-MAC-003}
+
+  - id: BSC-MAC-004
+    title: Denials are never turned into policy automatically
+    requirement: >-
+      No Basalt tool MAY generate policy from denials (no audit2allow action);
+      a denial without a known fix MUST be reported for review, and denials of
+      Basalt's own domains MUST be treated as bugs, never fixed by widening
+      access on the machine.
+    rationale: >-
+      Automatic policy widening is how attackers turn a blocked attempt into
+      an allowed one.
+    status: implemented
+    adr: ["0004", "0009"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestSuspiciousIsNeverFixed("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestAnalyzePathNeverRelabelsShadow("}
+      - {type: manual, guide: BSC-MAC-004}
+
+  - id: BSC-MAC-005
+    title: Agent family neverallow rules
+    requirement: >-
+      The SELinux base module of the agent family MUST forbid, for every
+      agent domain present or future: reading SSH, GnuPG and certificate
+      keys, shadow, the agent secret store and generic home content; running
+      sudo; loading policy or changing enforcement and booleans; and the
+      setuid, sys_admin, sys_ptrace and DAC override capabilities.
+    rationale: >-
+      A later policy change cannot quietly give an agent credentials or
+      privilege, because the build refuses it.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - packages/basalt-agent/selinux/basalt_agent_base.te
+      - packages/basalt-agent/selinux/basalt_agent.te
+    verification:
+      - {type: test, file: packages/basalt-agent/selinux/basalt_agent_base.te, match: "neverallow basalt_agent_domain security_t:security { load_policy setenforce setbool };"}
+      - {type: lab, file: packages/basalt-agent/tests/driver.sh, match: "selinux"}
+      - {type: manual, guide: BSC-MAC-005}
+    gap: >-
+      Fedora's policy store does not check neverallow rules at install time
+      (expand-check=0), so the rules hold at build time and are checked on
+      a running system by behaviour tests and sesearch.
+
+  - id: BSC-MAC-006
+    title: systemd hardening for Basalt services
+    requirement: >-
+      Basalt system services MUST run with NoNewPrivileges, ProtectSystem=strict,
+      a private /tmp, home directories hidden or read-only, the smallest
+      capability bounding set they need, and no network where they need none.
+    rationale: >-
+      A second fence, independent of SELinux, around each service.
+    status: implemented
+    adr: ["0009", "0010"]
+    implemented_in:
+      - packages/basalt-ledger/dist/basalt-ledger.service
+      - packages/basalt-resolver/dist/basalt-resolver.service
+      - packages/basalt-assistant/dist/basalt-assistantd.service
+      - packages/basalt-llm/basalt-llm.service
+      - packages/basalt-models/basalt-models-fetch@.service
+    verification:
+      - {type: test, file: packages/basalt-ledger/dist/basalt-ledger.service, match: "PrivateNetwork=yes"}
+      - {type: test, file: packages/basalt-llm/basalt-llm.service, match: "IPAddressDeny=any"}
+      - {type: manual, guide: BSC-MAC-006}
+    references: ["CIS: service hardening"]
+
+  - id: BSC-MAC-007
+    title: Confined user roles for the default user
+    requirement: >-
+      The default desktop user SHOULD run in a confined SELinux user (user_u
+      or staff_u) so that code the person runs is not unconfined_t.
+    rationale: >-
+      Today an unconfined process of the same user is outside SELinux's
+      control and could, for example, drive the shell UI.
+    status: planned
+    adr: ["0009"]
+    implemented_in: []
+    verification: []
+    gap: Not evaluated yet; users run unconfined_t as on Fedora.
+
+  - id: BSC-MAC-008
+    title: Confinement for user applications
+    requirement: >-
+      Graphical applications SHOULD run through Flatpak (namespaces and
+      portals) under SELinux, and command-line or daemon applications without
+      upstream policy SHOULD get Basalt policy modules over time.
+    rationale: >-
+      Extends "every app has its confinement" beyond AI agents.
+    status: planned
+    adr: ["0009"]
+    implemented_in: []
+    verification: []
+    gap: Only Basalt's own services, agents and desktop workers are confined today.
+
+  - id: BSC-MAC-009
+    title: Basalt Shield, protections people can understand
+    requirement: >-
+      Basalt OS MUST give people a plain-language view of their protections
+      (blocked attempts translated from SELinux denials, the state of each
+      protection, recent changes from the ledger) in which every change is an
+      approval gate request and the locked list stays locked.
+    rationale: >-
+      A protection people cannot understand gets switched off.
+    status: planned
+    adr: ["0022"]
+    implemented_in: []
+    verification: []
+    gap: Name decided; the tool is scheduled after phase 2 of the approval gate.
+
+  # ---------------------------------------------------------------- GATE
+
+  - id: BSC-GATE-001
+    title: Agents request, only a trusted UI confirms
+    requirement: >-
+      A confirmation of a desktop proposal MUST be accepted only from the
+      shell UI's SELinux domain, identified by the kernel (SO_PEERCRED and
+      SO_PEERSEC), never by what the client claims; agent domains MUST NOT be
+      able to enter, trace or connect to that domain.
+    rationale: >-
+      A prompt-injected agent cannot approve its own request.
+    status: implemented
+    adr: ["0009", "0020"]
+    implemented_in:
+      - {repo: basalt-shell, path: internal/shell/peer.go}
+      - {repo: basalt-shell, path: selinux/basalt_shell.te}
+    verification:
+      - {type: test, repo: basalt-shell, file: internal/shell/peer_test.go, match: "func TestUICheck("}
+      - {type: lab, repo: basalt-shell, file: lab/demo/security-test.sh, match: "ui"}
+      - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "shell-socket-confirm"}
+      - {type: suite, repo: ai-audit-suite, file: cases/04-confirmation-boundary/probe.sh, match: "confirm.shell-socket"}
+      - {type: manual, guide: BSC-GATE-001}
+    references: ["OWASP LLM06 Excessive Agency"]
+
+  - id: BSC-GATE-002
+    title: System changes are typed actions from a closed set
+    requirement: >-
+      The system assistant MUST express every change as an action from a
+      closed set with strict validators, rebuild the exact command lines from
+      validated parameters every time they are shown or run, and offer no
+      free-form command action.
+    rationale: >-
+      Neither a model nor a forged proposal file can express an arbitrary
+      command.
+    status: implemented
+    adr: ["0004", "0020"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestCommandsAreExact("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestValidationRejects("}
+      - {type: manual, guide: BSC-GATE-002}
+    references: ["OWASP LLM05 Improper Output Handling", "OWASP LLM06 Excessive Agency"]
+
+  - id: BSC-GATE-003
+    title: A confirmation binds to exactly what was shown
+    requirement: >-
+      A non-interactive confirmation MUST carry a code derived from the
+      SHA-256 of the proposal and its command lines, so a changed proposal
+      needs a new confirmation; the code MUST never be returned to an MCP
+      client or any other requester.
+    rationale: >-
+      Approve A, run B (replay or swap) is impossible, and an agent never
+      holds a token that confirms.
+    status: implemented
+    adr: ["0004", "0020"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestFingerprintBindsCommands("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestProtocolAndProposeOnly("}
+      - {type: manual, guide: BSC-GATE-003}
+
+  - id: BSC-GATE-004
+    title: Preview, snapshot, verification and audit for every applied change
+    requirement: >-
+      Applying a system proposal MUST show the full report and exact
+      commands, take a snapshot before and after, run the action's
+      verification, and write an audit record with every output.
+    rationale: >-
+      Every change can be explained and undone.
+    status: implemented
+    adr: ["0004", "0006"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: lab, file: scripts/lab/assistant-test.sh, match: "apply"}
+      - {type: manual, guide: BSC-GATE-004}
+
+  - id: BSC-GATE-005
+    title: Person-only actions refuse agents
+    requirement: >-
+      Actions that act in the person's name (inserting text, sending mail,
+      moving files, voice answer settings, power from the command bar) MUST
+      be planned only from the person's own words, and an agent connection
+      MUST NOT be able to propose them.
+    rationale: >-
+      Content and agents cannot make the machine speak or act for the person.
+    status: implemented
+    adr: ["0012", "0020"]
+    implemented_in:
+      - {repo: basalt-shell, path: internal/shell/acting.go}
+    verification:
+      - {type: test, repo: basalt-shell, file: internal/shell/acting_test.go, match: "func TestPersonActionsRefuseAgents("}
+      - {type: manual, guide: BSC-GATE-005}
+
+  - id: BSC-GATE-006
+    title: Confirmation sheets resist spoofing
+    requirement: >-
+      Confirmation surfaces MUST ignore input for a short arming delay after
+      a request appears, MUST refuse a confirmation that follows synthetic
+      input too closely, MUST show one request at a time, and MUST render all
+      content as plain text.
+    rationale: >-
+      An agent with screen control cannot click or type its own Confirm, and
+      content cannot draw a fake button or link.
+    status: implemented
+    adr: ["0012", "0020"]
+    implemented_in:
+      - {repo: basalt-shell, path: internal/shell/agent.go}
+    verification:
+      - {type: test, repo: basalt-shell, file: internal/shell/agent_test.go, match: "func TestCaptureNeedsConfirmationOutsideSession("}
+      - {type: manual, guide: BSC-GATE-006}
+
+  - id: BSC-GATE-007
+    title: One approval gate for every side effect
+    requirement: >-
+      Every request for a side effect (from the person by voice or command
+      bar, the assistant, agents, apps, tools, schedules, the phone) MUST go
+      through one local gate that validates it against an action registry,
+      computes its risk class, applies hard limits and deterministic policy,
+      queues what must be asked, and hands executors a single-use claim bound
+      to the proposal digest.
+    rationale: >-
+      One format, one queue, one history and one stop button instead of many
+      separate approval paths.
+    status: planned
+    adr: ["0020"]
+    implemented_in: []
+    verification: []
+    gap: >-
+      Proposed; phase 1 (the gate core) is being built. Until then the
+      approval paths above (GATE-001 to GATE-006, AGENT-008, AI-004) are the
+      enforced ones.
+
+  - id: BSC-GATE-008
+    title: Hard limits no rule can lift
+    requirement: >-
+      A locked list (SELinux off, replacing Basalt policy, Secure Boot keys,
+      disabling or rewriting the ledger, loosening the gate, removing disk
+      encryption, wiping disks, bulk credential reads, making a user an
+      administrator) MUST be refused by policy and unlockable only for one
+      named request, at the local console, with an administrator password and
+      a second factor.
+    rationale: >-
+      Automation and full AI mode can never disable the protections they run
+      under.
+    status: planned
+    adr: ["0013", "0020"]
+    implemented_in: []
+    verification: []
+    gap: Part of the gate (phase 1).
+
+  - id: BSC-GATE-009
+    title: Pre-approvals never apply to tainted requests
+    requirement: >-
+      Allow rules MUST NOT match a request made after the session read web or
+      personal content, scheduled rules MUST match only requests the gate
+      itself started, and new destinations MUST never be pre-approved.
+    rationale: >-
+      Prompt injection cannot ride on a standing approval.
+    status: planned
+    adr: ["0019", "0020"]
+    implemented_in: []
+    verification: []
+    gap: Part of the gate (phase 1); no pre-approval exists today, everything asks.
+    references: ["OWASP LLM01 Prompt Injection"]
+
+  - id: BSC-GATE-010
+    title: Emergency stop for all automation
+    requirement: >-
+      One action available from every surface, without authentication, MUST
+      suspend every allow rule, pause schedules, end agent control and freeze
+      or stop agent sessions; resuming MUST be confirmed on a trusted surface.
+    rationale: >-
+      The person can always stop the machine acting on its own.
+    status: partial
+    adr: ["0012", "0020"]
+    implemented_in:
+      - {repo: basalt-shell, path: internal/shell/agent.go}
+    verification:
+      - {type: manual, guide: BSC-GATE-010}
+    gap: >-
+      Today the stop key and button end an agent's control session only. The
+      full stop is part of the gate.
+
+  - id: BSC-GATE-011
+    title: Full AI mode is off, informed, scoped and reversible
+    requirement: >-
+      A mode in which agents act without asking MUST be off by default, and
+      turning it on MUST be a critical request with a risk screen,
+      administrator authentication and typed confirmation, limited in scope
+      and time, with a visible indicator and stop; the hard limits stay on.
+    rationale: >-
+      Autonomy is a choice the person makes knowingly, never a default.
+    status: planned
+    adr: ["0013", "0020"]
+    implemented_in: []
+    verification: []
+    gap: The mode does not exist; nothing runs without confirmation today.
+
+  - id: BSC-GATE-012
+    title: Phone approvals end to end
+    requirement: >-
+      Approvals from a phone MUST be signed by a key in the phone's hardware
+      keystore over the request digest, requests MUST be encrypted to the
+      phone, and any relay MUST see ciphertext only; locked items MUST NOT be
+      approvable from the phone alone.
+    rationale: >-
+      A relay or push service cannot read or forge approvals.
+    status: planned
+    adr: ["0013", "0020"]
+    implemented_in: []
+    verification: []
+    gap: Future work (gate phase 4).
+
+  # ---------------------------------------------------------------- LEDGER
+
+  - id: BSC-LEDGER-001
+    title: One append-only, hash-chained audit trail
+    requirement: >-
+      Security-relevant events (agent sessions, network decisions, SELinux
+      denials, escalations, logins, snapshots and rollbacks, assistant
+      decisions, driver and model changes) MUST be recorded in one ledger
+      where each record carries the SHA-256 of the previous, with a chain
+      that runs across rotated files.
+    rationale: >-
+      Editing, removing or reordering records breaks the chain and is
+      detected.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-ledger
+    verification:
+      - {type: test, file: packages/basalt-ledger, match: "func TestChainAcrossRotations("}
+      - {type: test, file: packages/basalt-ledger, match: "func TestTamperDetected("}
+      - {type: ci, file: scripts/ci/vm-test.sh, match: "basalt-ledger verify"}
+      - {type: suite, repo: ai-audit-suite, file: cases/03-ledger-integrity/probe.sh, match: "verify.intact"}
+      - {type: manual, guide: BSC-LEDGER-001}
+    references: ["CIS: audit logging"]
+
+  - id: BSC-LEDGER-002
+    title: No operation rewrites history
+    requirement: >-
+      The ledger MUST offer no operation that changes or removes a record;
+      such requests MUST be refused and the refusal recorded.
+    rationale: >-
+      Clients, including compromised producers, can only add.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-ledger/internal/server/server.go
+    verification:
+      - {type: test, file: packages/basalt-ledger, match: "func TestNoRewrite("}
+      - {type: suite, repo: ai-audit-suite, file: cases/03-ledger-integrity/probe.sh, match: "file.rewrite"}
+      - {type: manual, guide: BSC-LEDGER-002}
+
+  - id: BSC-LEDGER-003
+    title: Producers are identified by the kernel
+    requirement: >-
+      Who may write MUST be decided from the peer's kernel identity
+      (SO_PEERCRED, SO_PEERSEC): unprivileged users write only their own
+      records under user producer names, agent and app domains MUST NOT
+      write, network records MUST come only from root in the resolver's
+      domain, and built-in collector names MUST NOT be accepted from the
+      socket.
+    rationale: >-
+      Nobody can forge records that look like they came from another
+      component.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-ledger/internal/server/server.go
+      - packages/basalt-ledger/selinux/basalt_ledger.te
+    verification:
+      - {type: test, file: packages/basalt-ledger, match: "func TestProducerRules("}
+      - {type: suite, repo: ai-audit-suite, file: cases/03-ledger-integrity/probe.sh, match: "forge.producer"}
+      - {type: manual, guide: BSC-LEDGER-003}
+
+  - id: BSC-LEDGER-004
+    title: Users read only their own records
+    requirement: >-
+      A user MUST see only records of their own uid; reading everything MUST
+      need administrator authentication; the files MUST be root-only.
+    rationale: >-
+      The audit trail does not leak one person's activity to another.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-ledger/internal/server/server.go
+      - packages/basalt-ledger/dist/org.basalt-os.ledger.policy
+    verification:
+      - {type: test, file: packages/basalt-ledger, match: "func TestReadIsolation("}
+      - {type: manual, guide: BSC-LEDGER-004}
+
+  - id: BSC-LEDGER-005
+    title: File attributes, sealed rotation and a separate subvolume
+    requirement: >-
+      The current ledger file MUST be append-only (chattr +a) and sealed files
+      immutable (+i); rotation MUST append a seal with the file's SHA-256 and
+      continue the chain in the next file; the logs MUST live on a subvolume
+      outside the root snapshots so a rollback never rewinds them.
+    rationale: >-
+      Raises the bar for tampering by root and keeps history across
+      rollbacks.
+    status: implemented
+    adr: ["0006", "0010"]
+    implemented_in:
+      - packages/basalt-ledger
+      - kickstart/basalt-server.ks
+    verification:
+      - {type: test, file: packages/basalt-ledger, match: "func TestSealedFileTamperDetected("}
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"audit sealed rotation"'}
+      - {type: manual, guide: BSC-LEDGER-005}
+
+  - id: BSC-LEDGER-006
+    title: Retention is recorded in the chain
+    requirement: >-
+      Removing expired files MUST first append a retention record naming the
+      file, its sequence range, its seal and its SHA-256; verify MUST accept a
+      shortened chain only when such a record vouches for it.
+    rationale: >-
+      Old files can expire without opening a way to delete history silently.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-ledger
+    verification:
+      - {type: test, file: packages/basalt-ledger, match: "func TestRetentionRecordMustMatch("}
+      - {type: manual, guide: BSC-LEDGER-006}
+
+  - id: BSC-LEDGER-007
+    title: Signed exports with a TPM-held key
+    requirement: >-
+      Exports MUST be signed; on a machine with a TPM the key MUST be held by
+      the TPM and never leave it; a software fallback MUST be labeled as such
+      in every export and in status.
+    rationale: >-
+      An incident report can be checked anywhere for integrity and origin.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-ledger
+    verification:
+      - {type: test, file: packages/basalt-ledger, match: "func TestTPMKey("}
+      - {type: test, file: packages/basalt-ledger, match: "func TestSoftwareKey("}
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"ledger: TPM-signed export"'}
+      - {type: suite, repo: ai-audit-suite, file: cases/03-ledger-integrity/probe.sh, match: "export.tamper"}
+      - {type: manual, guide: BSC-LEDGER-007}
+
+  - id: BSC-LEDGER-008
+    title: Off-machine anchoring of the chain head
+    requirement: >-
+      The ledger SHOULD periodically anchor its chain head to an external
+      immutable store, so that root rewriting the whole chain on the machine
+      is detectable from outside.
+    rationale: >-
+      On the machine the ledger is tamper evident, not tamper proof: root can
+      rewrite every file and recompute the chain.
+    status: planned
+    adr: ["0010"]
+    implemented_in: []
+    verification: []
+    gap: Future work.
+
+  - id: BSC-LEDGER-009
+    title: Attestation that the export key is TPM-resident
+    requirement: >-
+      The export key SHOULD be certified by the TPM's attestation key chained
+      to the manufacturer's endorsement certificate.
+    rationale: >-
+      Today the TPM key proves "signed on this machine" only to someone who
+      already trusts its public key.
+    status: planned
+    adr: ["0010"]
+    implemented_in: []
+    verification: []
+    gap: Future work.
+
+  - id: BSC-LEDGER-010
+    title: The assistant's own audit log is chained and sealed
+    requirement: >-
+      The system assistant MUST write every decision, proposal, confirmation,
+      refusal and apply to a root-only, append-only, hash-chained log with
+      sealed rotation, and to the journal for the ledger.
+    rationale: >-
+      What the assistant did is reviewable even without the ledger service.
+    status: implemented
+    adr: ["0004", "0010"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestChainAppendVerifyTamper("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestVerifyDetectsTamperingAcrossFiles("}
+      - {type: ci, file: scripts/ci/vm-test.sh, match: "basalt audit verify"}
+      - {type: manual, guide: BSC-LEDGER-010}
+
+  # ---------------------------------------------------------------- NET
+
+  - id: BSC-NET-001
+    title: Default-deny egress for agent sessions, by name
+    requirement: >-
+      Every agent session MUST be default deny in the kernel (nftables matched
+      on the session's cgroup), with addresses admitted only from DNS answers
+      for names on the session's allowlist, on the ports the entry names;
+      everything else MUST be dropped and recorded.
+    rationale: >-
+      A prompt-injected or buggy agent cannot reach arbitrary hosts, and a
+      bug in the proxy cannot either.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-resolver
+      - packages/basalt-agent
+    verification:
+      - {type: test, file: packages/basalt-resolver, match: "func TestAllowedNameFillsSet("}
+      - {type: test, file: packages/basalt-resolver, match: "func TestUnlistedRefused("}
+      - {type: lab, file: scripts/lab/ledger-test.sh, match: "egress"}
+      - {type: suite, repo: ai-audit-suite, file: cases/02-network-egress/probe.sh, match: "egress.unlisted-direct"}
+      - {type: manual, guide: BSC-NET-001}
+    references: ["OWASP LLM02 Sensitive Information Disclosure", "OWASP LLM06 Excessive Agency"]
+
+  - id: BSC-NET-002
+    title: DNS rebinding and IP literals refused
+    requirement: >-
+      An allowed name resolving to a loopback, private or link-local address
+      MUST be refused unless its entry is marked private, and IP literals MUST
+      NOT be accepted as destinations.
+    rationale: >-
+      An allowed name cannot be pointed at local services, and the allowlist
+      cannot be bypassed by address.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-resolver
+      - packages/basalt-agent
+    verification:
+      - {type: test, file: packages/basalt-resolver, match: "func TestRebindingRefused("}
+      - {type: test, file: packages/basalt-agent, match: "func TestPrivateAddressesRefused("}
+      - {type: manual, guide: BSC-NET-002}
+    gap: >-
+      The public audit suite's two rebinding cases need a lab name server and
+      were not run in the October 2026 audit; the unit and lab tests cover it.
+
+  - id: BSC-NET-003
+    title: No data through DNS names
+    requirement: >-
+      Names not on the allowlist MUST be refused before any upstream query,
+      and DNS to any other server (ports 53, 853, 5353) MUST be dropped.
+    rationale: >-
+      A session cannot exfiltrate data as DNS labels it chooses.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-resolver
+    verification:
+      - {type: test, file: packages/basalt-resolver, match: "func TestUnlistedRefused("}
+      - {type: suite, repo: ai-audit-suite, file: cases/02-network-egress/probe.sh, match: "egress.dns-exfil"}
+      - {type: manual, guide: BSC-NET-003}
+    gap: Wildcard entries still let a session choose labels under the allowed suffix.
+
+  - id: BSC-NET-004
+    title: Allowlists only grow through a person
+    requirement: >-
+      Widening a session or a profile allowlist MUST be done by a person
+      (administrator authentication for one session or for the system scope,
+      preview and confirmation for a user profile) and recorded; the resolver
+      MUST accept allowlist changes only from root.
+    rationale: >-
+      An agent cannot open its own network.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-resolver
+      - packages/basalt-agent/dist/org.basalt-os.agent.policy
+    verification:
+      - {type: test, file: packages/basalt-resolver, match: "func TestAllowOnlyFromRoot("}
+      - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "self-grant"}
+      - {type: manual, guide: BSC-NET-004}
+
+  - id: BSC-NET-005
+    title: Egress fails closed
+    requirement: >-
+      When the resolver stops, sessions MUST keep their rules and lose DNS
+      (nothing opens up); native agent sessions MUST refuse to start without
+      the resolver; a session whose rules cannot be installed MUST NOT start.
+    rationale: >-
+      Failure never widens access.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-resolver
+      - packages/basalt-agent
+    verification:
+      - {type: test, file: packages/basalt-resolver, match: "func TestRestoreAfterRestart("}
+      - {type: manual, guide: BSC-NET-005}
+
+  - id: BSC-NET-006
+    title: Direct egress off by default
+    requirement: >-
+      The SELinux boolean basalt_agent_direct_egress MUST default to off, so
+      native agents reach the network only through the session proxy, with
+      SELinux and the kernel sets both in front of every connection.
+    rationale: >-
+      Two independent boundaries instead of one.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-agent/selinux/basalt_agent.te
+    verification:
+      - {type: test, file: packages/basalt-agent/selinux/basalt_agent.te, match: "basalt_agent_direct_egress"}
+      - {type: manual, guide: BSC-NET-006}
+
+  - id: BSC-NET-007
+    title: Proxy and kernel filter share one allowlist parser
+    requirement: >-
+      The agent proxy and the resolver MUST use byte-identical allowlist
+      parsing code, checked in CI.
+    rationale: >-
+      The two filters can never disagree about what an entry means.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-agent/internal/allowlist/allowlist.go
+      - packages/basalt-resolver/internal/allowlist/allowlist.go
+    verification:
+      - {type: ci, file: scripts/ci/lint.sh, match: "Shared egress allowlist format"}
+
+  - id: BSC-NET-008
+    title: Inbound closed except SSH on servers
+    requirement: >-
+      The server edition MUST default to a firewall zone that allows SSH only.
+    rationale: >-
+      A fresh server exposes one service.
+    status: implemented
+    adr: ["0010"]
+    implemented_in:
+      - packages/basalt-release/basalt.xml
+      - packages/basalt-release/firewalld-basalt.conf
+    verification:
+      - {type: manual, guide: BSC-NET-008}
+    references: ["CIS: host firewall"]
+
+  - id: BSC-NET-009
+    title: SSH keys only
+    requirement: >-
+      sshd MUST accept public keys only (no passwords, no keyboard-interactive,
+      no empty passwords), root MUST NOT log in with a password, and agent and
+      X11 forwarding, tunnels and user environment MUST be off.
+    rationale: >-
+      Removes password guessing and reduces what a stolen session can reach.
+    status: implemented
+    adr: ["0006"]
+    implemented_in:
+      - packages/basalt-release/10-basalt-hardening.conf
+    verification:
+      - {type: test, file: packages/basalt-release/10-basalt-hardening.conf, match: "AuthenticationMethods publickey"}
+      - {type: manual, guide: BSC-NET-009}
+    references: ["CIS: SSH server configuration"]
+
+  - id: BSC-NET-010
+    title: Per-process network accounting
+    requirement: >-
+      Network decisions inside a session SHOULD be attributed to the program
+      that made them (eBPF accounting).
+    rationale: >-
+      Richer audit: which tool in a session opened what.
+    status: planned
+    adr: ["0010"]
+    implemented_in: []
+    verification: []
+    gap: Future work.
+
+  # ---------------------------------------------------------------- AGENT
+
+  - id: BSC-AGENT-001
+    title: Agents see only their project
+    requirement: >-
+      An AI agent run through basalt-agent MUST get read-write access to its
+      project directory and its own configuration home only, and MUST NOT
+      read SSH or GnuPG keys, keyrings, browser profiles, other projects or
+      other users' files, or write anywhere else in the home directory.
+    rationale: >-
+      A prompt-injected agent cannot steal credentials or plant persistence
+      such as a shell rc change.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - packages/basalt-agent
+    verification:
+      - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "read-ssh-key"}
+      - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "append-bashrc"}
+      - {type: suite, repo: ai-audit-suite, file: cases/01-agent-confinement/probe.sh, match: "fs.read-ssh-key"}
+      - {type: manual, guide: BSC-AGENT-001}
+    references: ["OWASP LLM06 Excessive Agency"]
+
+  - id: BSC-AGENT-002
+    title: Sessions isolated from each other
+    requirement: >-
+      Every agent session MUST get a unique SELinux MCS level, so one session
+      cannot read another session's project, environment, secrets or control
+      socket.
+    rationale: >-
+      Two agents, or two projects, do not leak into each other.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - packages/basalt-agent
+    verification:
+      - {type: test, file: packages/basalt-agent, match: "func TestLevels("}
+      - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "victim-secret-file"}
+      - {type: suite, repo: ai-audit-suite, file: cases/01-agent-confinement/probe.sh, match: "session.victim-environ"}
+      - {type: manual, guide: BSC-AGENT-002}
+
+  - id: BSC-AGENT-003
+    title: API keys never enter the agent session
+    requirement: >-
+      Provider keys MUST be held only by the launcher and the session proxy;
+      the agent MUST get a placeholder; the proxy MUST add a key only to
+      requests for that key's provider host over verified TLS and strip
+      credential headers from every other request.
+    rationale: >-
+      A prompt-injected agent can spend through its provider but cannot copy
+      a key out to another host.
+    status: implemented
+    adr: ["0009", "0011"]
+    implemented_in:
+      - packages/basalt-agent
+    verification:
+      - {type: test, file: packages/basalt-agent, match: "func TestRouteInjectsOnlyOnItsHost("}
+      - {type: test, file: packages/basalt-agent, match: "func TestRouteNeedsAllowlistAndTrustedTLS("}
+      - {type: lab, file: packages/basalt-agent/tests/credattacks.sh, match: "secret-store-read"}
+      - {type: manual, guide: BSC-AGENT-003}
+    references: ["OWASP LLM02 Sensitive Information Disclosure"]
+
+  - id: BSC-AGENT-004
+    title: The secret store and the proxy are out of agents' reach
+    requirement: >-
+      The key store MUST carry its own SELinux type that no agent domain may
+      open, read or list (neverallow), and no agent domain may read, trace or
+      signal the session proxy.
+    rationale: >-
+      A later policy change cannot open the key store to agents.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - packages/basalt-agent/selinux/basalt_agent_base.te
+      - packages/basalt-agent/selinux/basalt_agent.te
+    verification:
+      - {type: test, file: packages/basalt-agent/selinux/basalt_agent_base.te, match: "neverallow basalt_agent_domain basalt_agent_secret_t:file"}
+      - {type: lab, file: packages/basalt-agent/tests/credattacks.sh, match: "secret-store-list"}
+      - {type: manual, guide: BSC-AGENT-004}
+
+  - id: BSC-AGENT-005
+    title: No privilege escalation from a session
+    requirement: >-
+      Agent sessions MUST run with no_new_privs and MUST NOT run sudo, su or
+      pkexec, gain capabilities, trace or signal the launcher, inject
+      keystrokes into the terminal (TIOCSTI) or reach the container engine.
+    rationale: >-
+      An agent cannot become the person, or root.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - packages/basalt-agent
+      - packages/basalt-agent/selinux/basalt_agent_base.te
+    verification:
+      - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "tiocsti"}
+      - {type: suite, repo: ai-audit-suite, file: cases/01-agent-confinement/probe.sh, match: "priv.sudo"}
+      - {type: manual, guide: BSC-AGENT-005}
+
+  - id: BSC-AGENT-006
+    title: Git hooks and configuration are read-only to agents
+    requirement: >-
+      Inside a project, .git/hooks and .git/config MUST be read-only to the
+      agent.
+    rationale: >-
+      An agent cannot plant a hook that later runs with the person's rights.
+    status: implemented
+    adr: ["0009"]
+    implemented_in:
+      - packages/basalt-agent
+    verification:
+      - {type: lab, file: packages/basalt-agent/tests/attacks.sh, match: "write-git-hook"}
+      - {type: manual, guide: BSC-AGENT-006}
+
+  - id: BSC-AGENT-007
+    title: Shipped profiles keep egress short
+    requirement: >-
+      Shipped profiles for common agents MUST allow only their provider, login
+      hosts and the shared package registry list; GitHub MUST be opt-in per
+      profile.
+    rationale: >-
+      The secure path is the easy path, and an allowed host that accepts
+      uploads (GitHub) is a deliberate choice.
+    status: implemented
+    adr: ["0009", "0011"]
+    implemented_in:
+      - packages/basalt-agent/dist
+    verification:
+      - {type: test, file: packages/basalt-agent, match: "func TestShippedProfiles("}
+      - {type: manual, guide: BSC-AGENT-007}
+    gap: A profile that allows a package registry also allows publishing to it (accepted risk).
+
+  - id: BSC-AGENT-008
+    title: Desktop agents reach the desktop only through the shell daemon
+    requirement: >-
+      The shell's agent domain MUST NOT reach the Wayland, X11, D-Bus session
+      or PipeWire sockets, home files or the network; screenshots and input
+      MUST exist only through the shell daemon, inside a control session the
+      person confirmed, with a visible frame and a stop key.
+    rationale: >-
+      An agent cannot capture the screen or type unseen.
+    status: implemented
+    adr: ["0012"]
+    implemented_in:
+      - {repo: basalt-shell, path: selinux/basalt_shell.te}
+      - {repo: basalt-shell, path: internal/shell/agent.go}
+    verification:
+      - {type: lab, repo: basalt-shell, file: lab/demo/security-test.sh, match: "Wayland"}
+      - {type: manual, guide: BSC-AGENT-008}
+
+  - id: BSC-AGENT-009
+    title: Voice and skill workers run their own tools only
+    requirement: >-
+      The voice service and the skill workers MUST run in their own SELinux
+      domains that may run only their own tools (no shell, interpreter,
+      setuid helper or self-written program), with no_new_privs and network
+      only through a per-job allowlist.
+    rationale: >-
+      Content a worker reads cannot turn it into a general program runner.
+    status: implemented
+    adr: ["0012"]
+    implemented_in:
+      - {repo: basalt-shell, path: selinux/basalt_shell.te}
+    verification:
+      - {type: lab, repo: basalt-shell, file: lab/voice/tests/escape-test.sh, match: "basalt_skill"}
+      - {type: manual, guide: BSC-AGENT-009}
+
+  # ---------------------------------------------------------------- AI
+
+  - id: BSC-AI-001
+    title: Knowledge is used only when signed
+    requirement: >-
+      The assistant MUST use a knowledge index only when its manifest carries
+      a valid signature by the knowledge subkey of the pinned OpenBasalt
+      release key and every file matches the manifest; anything else MUST fall
+      back to the built-in rules.
+    rationale: >-
+      Tampered or poisoned knowledge cannot steer diagnoses.
+    status: implemented
+    adr: ["0004", "0007"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestVSMKnowledgeSignatureFailsClosed("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestReleaseKeyBindsKnowledgeSubkey("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestSignatureRefusals("}
+      - {type: manual, guide: BSC-AI-001}
+    references: ["OWASP LLM04 Data and Model Poisoning", "OWASP LLM03 Supply Chain"]
+
+  - id: BSC-AI-002
+    title: Model files pinned and checksummed
+    requirement: >-
+      Every model the system downloads (local language model, speech models)
+      MUST come from a manifest pinned to a publisher revision, over HTTPS
+      only, and MUST be installed only after its SHA-256 matches; unpublished
+      models MUST fail closed.
+    rationale: >-
+      A compromised or changed upstream file is refused.
+    status: implemented
+    adr: ["0004", "0011"]
+    implemented_in:
+      - packages/basalt-llm
+      - packages/basalt-voice
+      - packages/basalt-models
+    verification:
+      - {type: test, file: packages/basalt-models/tests/models-test.sh, match: "checksum"}
+      - {type: test, file: packages/basalt-voice/tests/manifest-test.sh, match: "sha256"}
+      - {type: test, file: packages/basalt-llm/tests/select-test.sh, match: "unpublished"}
+      - {type: manual, guide: BSC-AI-002}
+    references: ["OWASP LLM03 Supply Chain"]
+
+  - id: BSC-AI-003
+    title: Model downloads need the person's consent and policy
+    requirement: >-
+      The desktop MUST download a model only after the person chooses
+      Download in the shell UI, under the administrator's policy (everyone,
+      administrators, nobody), through a confined download service, with
+      every step recorded.
+    rationale: >-
+      Nothing large or new arrives without a person's choice; agents cannot
+      start downloads.
+    status: implemented
+    adr: ["0011", "0012"]
+    implemented_in:
+      - packages/basalt-models
+    verification:
+      - {type: test, file: packages/basalt-models/tests/models-test.sh, match: "nobody"}
+      - {type: manual, guide: BSC-AI-003}
+
+  - id: BSC-AI-004
+    title: The model proposes, it never executes
+    requirement: >-
+      No language model in Basalt OS MAY execute an action: it may only file
+      a typed proposal that a person confirms; the deterministic validators
+      and confirmation MUST stay in force whatever model is plugged in.
+    rationale: >-
+      A better or remote model gains intelligence, not power.
+    status: implemented
+    adr: ["0004", "0011", "0019"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+      - {repo: basalt-shell, path: internal/shell/core.go}
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestProtocolAndProposeOnly("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestConfidentAnswerWithoutAFixProposesNothing("}
+      - {type: manual, guide: BSC-AI-004}
+    references: ["OWASP LLM06 Excessive Agency"]
+
+  - id: BSC-AI-005
+    title: Content is data (prompt injection guard)
+    requirement: >-
+      Text read from mail, web pages and files MUST be scanned, cleaned and
+      fenced as untrusted data before any model sees it; the plan MUST come
+      from the person's words, never from content; answers MUST be filtered
+      to plain text without links, markup, code or addresses; findings MUST be
+      shown to the person.
+    rationale: >-
+      Instructions hidden in content are not followed.
+    status: partial
+    adr: ["0012", "0019"]
+    implemented_in:
+      - {repo: basalt-shell, path: internal/guard/guard.go}
+    verification:
+      - {type: test, repo: basalt-shell, file: internal/guard/guard_test.go, match: "func TestScanInstructions("}
+      - {type: suite, repo: ai-audit-suite, file: cases/05-prompt-injection, match: "no_action"}
+      - {type: manual, guide: BSC-AI-005}
+    gap: >-
+      The guard and its unit tests exist, but the public suite's 121 live
+      prompt-injection assertions have not run against a real assistant
+      endpoint yet; only the corpus self-check runs.
+    references: ["OWASP LLM01 Prompt Injection", "OWASP LLM05 Improper Output Handling"]
+
+  - id: BSC-AI-006
+    title: Local model service has no network
+    requirement: >-
+      The local language model server MUST run in its own SELinux domain as a
+      dynamic user with no network (PrivateNetwork, IPAddressDeny), no
+      capabilities and a system call filter.
+    rationale: >-
+      A malicious model file or a server bug cannot send data out.
+    status: implemented
+    adr: ["0004", "0011"]
+    implemented_in:
+      - packages/basalt-llm/basalt-llm.service
+      - packages/basalt-llm/selinux/basalt_llm.te
+    verification:
+      - {type: test, file: packages/basalt-llm/basalt-llm.service, match: "PrivateNetwork=yes"}
+      - {type: manual, guide: BSC-AI-006}
+
+  - id: BSC-AI-007
+    title: The assistant daemon is confined and offline
+    requirement: >-
+      The assistant daemon and its MCP server MUST run in a confined domain
+      that reads what diagnosis needs, writes only its own state, appends to
+      its own log, has no network and no transitions out; what it cannot
+      check it MUST NOT propose as an action.
+    rationale: >-
+      A compromised assistant cannot change the system or send data out.
+    status: implemented
+    adr: ["0004"]
+    implemented_in:
+      - packages/basalt-assistant/selinux/basalt_assistant.te
+      - packages/basalt-assistant/dist/basalt-assistantd.service
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestConfinedRestoreIsAHint("}
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"assistant daemon confined"'}
+      - {type: manual, guide: BSC-AI-007}
+
+  - id: BSC-AI-008
+    title: Evaluation gate for knowledge and models
+    requirement: >-
+      Every knowledge or decision-model release MUST pass the shared
+      evaluation suite (accuracy, calibration, no regression on lab cases,
+      negative cases respected) before it is signed.
+    rationale: >-
+      Quality and safety regressions are caught before release.
+    status: partial
+    adr: ["0004", "0007"]
+    implemented_in:
+      - eval
+    verification:
+      - {type: test, file: Makefile, match: "eval-check:"}
+      - {type: manual, guide: BSC-AI-008}
+    gap: >-
+      The suite and its checks exist and run by hand; they are not yet a
+      required step of the knowledge release pipeline.
+
+  - id: BSC-AI-009
+    title: Knowledge packs and remote knowledge, permission first
+    requirement: >-
+      Optional knowledge packs and remote knowledge answers MUST be signed by
+      the publisher and verified on the client, fetched only with the
+      person's permission, and treated as untrusted content that can only lead
+      to proposals.
+    rationale: >-
+      Remote knowledge cannot be forged by a server, a mirror or the network.
+    status: planned
+    adr: ["0018"]
+    implemented_in: []
+    verification: []
+    gap: >-
+      The open protocol and its conformance tests exist as a separate
+      project; the Basalt client is not integrated.
+
+  - id: BSC-AI-010
+    title: Natural-language assistant safety
+    requirement: >-
+      An agent loop over tools MUST keep per-request budgets, track taint
+      (system, web, personal) and refuse to send anything shaped like a
+      secret, address or personal data off the machine after reading content,
+      and record each step without the content read.
+    rationale: >-
+      A capable model with tools stays inside the same safety model.
+    status: planned
+    adr: ["0019"]
+    implemented_in: []
+    verification: []
+    gap: Proposed; a prototype exists outside the main branch.
+
+  # ---------------------------------------------------------------- PRIV
+
+  - id: BSC-PRIV-001
+    title: Nothing leaves the machine without a person
+    requirement: >-
+      Data MUST leave the machine only when a person starts it; feedback MUST
+      be opt-in for every part, show the exact payload, scrub personal data,
+      and bind a non-interactive confirmation to the payload's hash.
+    rationale: >-
+      Reports and logs do not leak host names, user names, addresses or
+      secrets.
+    status: implemented
+    adr: ["0004", "0007"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestCodeBindsThePayload("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestScrub("}
+      - {type: manual, guide: BSC-PRIV-001}
+    references: ["OWASP LLM02 Sensitive Information Disclosure"]
+
+  - id: BSC-PRIV-002
+    title: Remote models are opt-in and redacted
+    requirement: >-
+      Sending content to a remote model MUST be off by default, allowed by
+      the administrator, chosen by the person, shown before sending, and
+      redacted of secrets; the built-in model MUST keep working offline.
+    rationale: >-
+      Using a cloud model is a visible, informed choice.
+    status: partial
+    adr: ["0004", "0011", "0019"]
+    implemented_in:
+      - packages/basalt-assistant/internal
+    verification:
+      - {type: test, file: packages/basalt-assistant, match: "func TestRemoteEndpointRefused("}
+      - {type: test, file: packages/basalt-assistant, match: "func TestRedact("}
+      - {type: manual, guide: BSC-PRIV-002}
+    gap: >-
+      Implemented and tested for the system assistant's explanation layer;
+      the desktop's remote tier (what is sent, per-conversation permission)
+      is part of the proposed natural-language assistant.
+
+  - id: BSC-PRIV-003
+    title: No telemetry
+    requirement: >-
+      Basalt components MUST NOT send usage data, crash reports or
+      identifiers on their own; the only reports are the ones a person sends.
+    rationale: >-
+      Privacy by default.
+    status: implemented
+    adr: ["0004"]
+    implemented_in:
+      - packages/basalt-assistant/dist/basalt-assistantd.service
+    verification:
+      - {type: manual, guide: BSC-PRIV-003}
+    gap: >-
+      Fedora's own repository files keep countme=1 (an anonymous weekly
+      counter Fedora uses to estimate users); Basalt does not change it yet
+      and says so.
+
+  - id: BSC-PRIV-004
+    title: Secrets and content never in records
+    requirement: >-
+      Audit records MUST name credentials (name, host, port), never hold their
+      values, and MUST NOT hold the content an assistant read or the text of
+      its answers.
+    rationale: >-
+      The audit trail is safe to export and share.
+    status: implemented
+    adr: ["0009", "0010", "0019"]
+    implemented_in:
+      - packages/basalt-agent
+    verification:
+      - {type: lab, file: packages/basalt-agent/tests/credattacks.sh, match: "LAB"}
+      - {type: manual, guide: BSC-PRIV-004}
+
+  - id: BSC-PRIV-005
+    title: Minimized remote knowledge queries
+    requirement: >-
+      Remote knowledge queries MUST carry identifiers only (intent,
+      component, hardware IDs, versions, error codes), free text only with the
+      person's consent for that question, no account and no machine
+      identifier.
+    rationale: >-
+      Asking for help does not profile the person or the machine.
+    status: planned
+    adr: ["0018"]
+    implemented_in: []
+    verification: []
+    gap: Protocol defined; Basalt client not integrated.
+
+  - id: BSC-PRIV-006
+    title: Conversations are not stored by default
+    requirement: >-
+      Assistant conversations MUST live in memory and be forgotten after a
+      period of inactivity; keeping one MUST be opt-in per conversation, in a
+      private file.
+    rationale: >-
+      What a person asks stays private unless they choose otherwise.
+    status: planned
+    adr: ["0019"]
+    implemented_in: []
+    verification: []
+    gap: Proposed with the natural-language assistant.
+
+  # ---------------------------------------------------------------- UPD
+
+  - id: BSC-UPD-001
+    title: Snapshot around every package transaction
+    requirement: >-
+      Every dnf transaction on an installed system MUST be wrapped in a pre
+      and post root snapshot.
+    rationale: >-
+      A bad update, or a malicious package, can be rolled back.
+    status: implemented
+    adr: ["0006"]
+    implemented_in:
+      - packages/basalt-snapshots/basalt-snapper.actions
+      - packages/basalt-snapshots/basalt-snapshot-dnf
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"snapper pre/post"'}
+      - {type: lab, file: scripts/lab/snapshot-test.sh, match: "snapper"}
+      - {type: manual, guide: BSC-UPD-001}
+    gap: >-
+      A snapshot failure is logged and does not block an update (by design),
+      and the root snapshot configuration is created by the installer.
+
+  - id: BSC-UPD-002
+    title: Rollback without losing data
+    requirement: >-
+      Rollback MUST be possible from the running system and from the boot
+      menu, always with a preview and confirmation, and MUST NOT touch the
+      data subvolumes (home, logs, databases, containers, srv).
+    rationale: >-
+      Recovering the system never costs user data or the audit trail.
+    status: implemented
+    adr: ["0006"]
+    implemented_in:
+      - packages/basalt-snapshots/basalt-rollback
+      - packages/basalt-snapshots/basalt-snapshot-boot
+    verification:
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"basalt-rollback dry run"'}
+      - {type: ci, file: scripts/ci/vm-test.sh, match: '"snapshot in boot menu"'}
+      - {type: lab, file: scripts/lab/rollback-test.sh, match: "rollback"}
+      - {type: manual, guide: BSC-UPD-002}
+
+  - id: BSC-UPD-003
+    title: Never boot a kernel without its signed driver module
+    requirement: >-
+      On machines with the NVIDIA driver, a new kernel MUST be held until the
+      matching signed module is published; a failed driver start MUST fall
+      back to the open driver with a recorded reason.
+    rationale: >-
+      Updates never leave a machine without display or with Secure Boot off.
+    status: implemented
+    adr: ["0017"]
+    implemented_in:
+      - packages/nvidia/basalt-nvidia
+    verification:
+      - {type: test, file: packages/nvidia/tests/basalt-nvidia-test.sh, match: "kernel"}
+      - {type: manual, guide: BSC-UPD-003}
+
+  - id: BSC-UPD-004
+    title: Release upgrades tested before they are announced
+    requirement: >-
+      Each Fedora release upgrade path MUST be tested in virtual machines
+      (snapshot, upgrade, boot, rollback) before it is announced.
+    rationale: >-
+      The biggest update of the year is not a gamble.
+    status: partial
+    adr: ["0006"]
+    implemented_in:
+      - scripts/lab/upgrade-test.sh
+      - scripts/lab/upgrade-rollback-test.sh
+    verification:
+      - {type: lab, file: scripts/lab/upgrade-rollback-test.sh, match: "rollback"}
+    gap: Lab scripts exist and were run by hand; not yet a release gate in CI.
+
+  - id: BSC-UPD-005
+    title: Weekly rebuild and boot test
+    requirement: >-
+      CI MUST rebuild and boot-test the system at least weekly, so a Fedora
+      change that breaks an install or a control shows up without a commit.
+    rationale: >-
+      Drift in the base distribution is caught early.
+    status: implemented
+    adr: ["0006"]
+    implemented_in:
+      - .github/workflows/ci.yml
+    verification:
+      - {type: ci, file: .github/workflows/ci.yml, match: "cron:"}
+      - {type: manual, guide: BSC-UPD-005}
+
+  # ---------------------------------------------------------------- KEY
+
+  - id: BSC-KEY-001
+    title: Release key primary is offline and certify-only
+    requirement: >-
+      The OpenBasalt release key's primary MUST be certify-only and kept
+      offline; only signing subkeys MAY be used by the release signer, and no
+      release key MAY be stored in CI.
+    rationale: >-
+      Day-to-day signing never exposes the root of trust.
+    status: partial
+    adr: ["0005"]
+    implemented_in:
+      - docs/key-ceremony.md
+      - scripts/release/sign.sh
+    verification:
+      - {type: test, file: scripts/release/sign.sh, match: "302461D26520E077D07FFCA9AA27C62C36CCFC4B"}
+      - {type: manual, guide: BSC-KEY-001}
+    gap: >-
+      The primary is certify-only, signing uses subkey exports only and CI
+      holds no key. The primary is held in encrypted storage, not on an
+      offline hardware token yet (see BSC-KEY-004).
+    references: ["NIST SSDF PS.1"]
+
+  - id: BSC-KEY-002
+    title: Kernel module CA private key offline
+    requirement: >-
+      The kernel module CA's private key MUST be offline only and used only
+      to issue signing certificates; module signing certificates MUST be
+      rotated by package update before they expire.
+    rationale: >-
+      A leaked signing certificate can be replaced without asking every
+      machine owner to enroll again.
+    status: partial
+    adr: ["0017"]
+    implemented_in:
+      - packages/basalt-security/basalt-module-ca.der
+      - packages/basalt-security/basalt-module-signing.der
+    verification:
+      - {type: manual, guide: BSC-KEY-002}
+    gap: >-
+      The CA key is used only to issue certificates and the first signing
+      certificates are valid to 2028; the CA key is held in encrypted storage,
+      not offline on a hardware token yet (see BSC-KEY-004).
+
+  - id: BSC-KEY-003
+    title: Release Secure Boot keys (PK, KEK, db)
+    requirement: >-
+      Release PK, KEK and db keys for custom db mode MUST be created in a key
+      ceremony and kept offline.
+    rationale: >-
+      Needed before custom db mode can be offered outside the lab.
+    status: partial
+    adr: ["0002"]
+    implemented_in:
+      - docs/key-ceremony.md
+    verification:
+      - {type: manual, guide: BSC-KEY-003}
+    gap: >-
+      Created (with signed update files for setup mode) and held in encrypted
+      storage, not offline on hardware tokens yet; not used by any published
+      package.
+
+  - id: BSC-KEY-004
+    title: Key ceremony with two people and a signed log
+    requirement: >-
+      Release keys MUST be created on an air-gapped machine with two people
+      (one operates, one verifies every fingerprint aloud), backups on two
+      tokens in different places, passphrases split, and a log signed by both.
+    rationale: >-
+      No single person or machine can create or misuse a release key
+      unnoticed.
+    status: partial
+    adr: ["0005"]
+    implemented_in:
+      - docs/key-ceremony.md
+    verification:
+      - {type: manual, guide: BSC-KEY-004}
+    gap: >-
+      The procedure is documented, but the existing keys were generated by
+      one operator in a network-isolated container on a general-purpose
+      computer rather than on a dedicated air-gapped machine with two people,
+      and are held in encrypted storage rather than on hardware tokens.
+      Repeating the ceremony to the documented standard is planned.
+
+  - id: BSC-KEY-005
+    title: Published fingerprints and a revocation plan
+    requirement: >-
+      Fingerprints of every release key and certificate MUST be published in
+      more than one place, and the response to each kind of key compromise
+      MUST be documented and include a public announcement.
+    rationale: >-
+      People can check keys out of band, and a compromise has a known
+      response.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - SECURITY.md
+      - docs/key-ceremony.md
+      - docs/secure-boot.md
+    verification:
+      - {type: test, file: SECURITY.md, match: "3601 7348 42BD 4E48 2D19  DE4A E4EE D5EC A395 B302"}
+      - {type: manual, guide: BSC-KEY-005}
+    gap: >-
+      The revocation procedures have not been rehearsed, and the release
+      key's third signing subkey (for release files) is not yet listed next
+      to the packages and knowledge subkeys.
+
+  # ---------------------------------------------------------------- GOV
+
+  - id: BSC-GOV-001
+    title: Private vulnerability reporting
+    requirement: >-
+      Every public Basalt OS repository MUST offer private vulnerability
+      reporting and a SECURITY.md with scope, timelines and supported
+      versions.
+    rationale: >-
+      People who find a problem have a safe way to tell us.
+    status: implemented
+    adr: ["0005"]
+    implemented_in:
+      - SECURITY.md
+    verification:
+      - {type: test, file: SECURITY.md, match: "security/advisories/new"}
+      - {type: manual, guide: BSC-GOV-001}
+
+  - id: BSC-GOV-002
+    title: Controls change only with a decision record
+    requirement: >-
+      A change to a control's requirement, scope or status MUST come with a
+      design decision (ADR) and an update of this catalog in the same change,
+      and the catalog MUST pass its CI check.
+    rationale: >-
+      What we promise and what we build cannot drift apart silently.
+    status: implemented
+    adr: ["0020"]
+    implemented_in:
+      - docs/security/change-policy.md
+      - scripts/ci/security-controls-check.sh
+    verification:
+      - {type: ci, file: scripts/ci/lint.sh, match: "security-controls-check.sh"}
+      - {type: manual, guide: BSC-GOV-002}
+
+  - id: BSC-GOV-003
+    title: Public adversarial testing every release
+    requirement: >-
+      Every release MUST be tested with the public AI audit suite on a fresh
+      install, and the results published, including cases not run.
+    rationale: >-
+      Security claims are measured in the open, not asserted.
+    status: partial
+    adr: ["0009", "0010"]
+    implemented_in:
+      - {repo: ai-audit-suite, path: run-audit.sh}
+    verification:
+      - {type: manual, guide: BSC-GOV-003}
+    gap: >-
+      Run by hand so far (published results for 2026-10-05); not yet wired
+      into the release process, and the live prompt-injection and DNS
+      rebinding cases still need their lab endpoints.
+
+  - id: BSC-GOV-004
+    title: Repository protections on the public code repositories
+    requirement: >-
+      Public Basalt OS repositories MUST have secret scanning with push
+      protection and security updates for dependencies turned on.
+    rationale: >-
+      Keeps credentials out of history and known-vulnerable dependencies out
+      of builds.
+    status: partial
+    adr: ["0005"]
+    implemented_in:
+      - .github/dependabot.yml
+    verification:
+      - {type: manual, guide: BSC-GOV-004}
+    gap: >-
+      Not enabled on every public repository yet.
+
+mappings:
+  - reference: OWASP Top 10 for LLM Applications (2025)
+    items:
+      - {item: "LLM01 Prompt Injection", controls: [BSC-AI-005, BSC-GATE-009, BSC-GATE-001, BSC-AI-004]}
+      - {item: "LLM02 Sensitive Information Disclosure", controls: [BSC-AGENT-003, BSC-NET-001, BSC-PRIV-001, BSC-PRIV-004]}
+      - {item: "LLM03 Supply Chain", controls: [BSC-PKG-001, BSC-AI-001, BSC-AI-002]}
+      - {item: "LLM04 Data and Model Poisoning", controls: [BSC-AI-001, BSC-AI-008]}
+      - {item: "LLM05 Improper Output Handling", controls: [BSC-GATE-002, BSC-AI-005]}
+      - {item: "LLM06 Excessive Agency", controls: [BSC-GATE-001, BSC-GATE-002, BSC-AGENT-001, BSC-AI-004, BSC-GATE-008]}
+      - {item: "LLM07 System Prompt Leakage", controls: [BSC-GATE-002, BSC-AI-004]}
+      - {item: "LLM08 Vector and Embedding Weaknesses", controls: [BSC-AI-001, BSC-AI-009]}
+      - {item: "LLM09 Misinformation", controls: [BSC-AI-008, BSC-GATE-004]}
+      - {item: "LLM10 Unbounded Consumption", controls: [BSC-AI-010, BSC-AGENT-003]}
+  - reference: NIST SP 800-218 Secure Software Development Framework (SSDF)
+    items:
+      - {item: "PO.3 Implement supporting toolchains", controls: [BSC-PKG-008, BSC-GOV-002]}
+      - {item: "PS.1 Protect all forms of code", controls: [BSC-PKG-002, BSC-KEY-001, BSC-GOV-004]}
+      - {item: "PS.2 Provide a mechanism for verifying release integrity", controls: [BSC-PKG-001, BSC-PKG-006, BSC-KEY-005]}
+      - {item: "PS.3 Archive and protect each release", controls: [BSC-PKG-004]}
+      - {item: "PW.7 and PW.8 Review and test for vulnerabilities", controls: [BSC-MAC-003, BSC-GOV-003]}
+      - {item: "RV.1 Identify and confirm vulnerabilities", controls: [BSC-GOV-001]}
+  - reference: CIS-style host hardening (benchmark topics, not a CIS benchmark result)
+    items:
+      - {item: "Secure boot settings", controls: [BSC-BOOT-001, BSC-BOOT-002]}
+      - {item: "Mandatory access control", controls: [BSC-MAC-001, BSC-MAC-002]}
+      - {item: "Filesystem encryption and swap", controls: [BSC-DISK-001, BSC-DISK-005]}
+      - {item: "Host firewall", controls: [BSC-NET-008]}
+      - {item: "SSH server configuration", controls: [BSC-NET-009]}
+      - {item: "Logging and auditing", controls: [BSC-LEDGER-001, BSC-LEDGER-005]}
+      - {item: "Software updates and package integrity", controls: [BSC-PKG-001, BSC-UPD-001]}
