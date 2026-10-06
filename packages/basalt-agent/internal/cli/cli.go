@@ -344,6 +344,9 @@ func cmdInstall(args []string) error {
 	if err := os.MkdirAll(tools, 0o700); err != nil {
 		return err
 	}
+	if err := installToolsPresent(pr.Method, pr.Packages, exec.LookPath); err != nil {
+		return err
+	}
 	var cmd *exec.Cmd
 	switch pr.Method {
 	case "npm":
@@ -373,4 +376,28 @@ func cmdInstall(args []string) error {
 		Subject: audit.Subject{Profile: pr.Name, Mode: "native"},
 		Data:    map[string]any{"method": pr.Method, "package": pr.Package, "target": tools}})
 	return err
+}
+
+// installToolsPresent checks that the program an install method runs is
+// there, and otherwise names the command that installs what the profile
+// needs (the desktop edition ships neither npm nor pip): before, the
+// person got "exec: npm: executable file not found in $PATH".
+func installToolsPresent(method string, packages []string, lookPath func(string) (string, error)) error {
+	var need string
+	switch method {
+	case "npm":
+		need = "npm"
+	case "pip":
+		need = "python3"
+	default:
+		return nil
+	}
+	if _, err := lookPath(need); err == nil {
+		return nil
+	}
+	pkgs := strings.Join(packages, " ")
+	if pkgs == "" {
+		pkgs = need
+	}
+	return fmt.Errorf("%s is not installed; install what this profile needs first:\n  sudo dnf install %s", need, pkgs)
 }

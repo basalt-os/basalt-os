@@ -129,6 +129,13 @@ loopback too, so this also reaches services that listen on the host's LAN
 address on those ports, not only on 127.0.0.1. Privileged ports (below
 1024) and the resolver ports of other sessions stay closed either way.
 
+In native mode SELinux lets the agent listen on and connect to TCP ports
+1024 and up (it reasons about port types, not addresses), so this filter
+is what keeps those connections on loopback or on the allowlisted names;
+inbound connections from other hosts are refused by the firewall's
+default zone. A command line login that waits for the browser's redirect
+on 127.0.0.1 (Claude Code) works the same way.
+
 A profile that does not need local services should turn it off:
 
 ```

@@ -9,7 +9,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-agent
-Version:        0.4.0
+Version:        0.4.1
 Release:        1%{?dist}
 Summary:        Run AI coding agents confined by SELinux (container or native)
 License:        Apache-2.0
@@ -176,6 +176,22 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_agent.if
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.1-1
+- Native mode: the agent may listen on and reach TCP ports 1024 and up
+  (SELinux module basalt_agent 0.3.1), so dev and test servers it starts
+  (Go's httptest, npm run dev) and Claude Code's sign-in, which waits for
+  the browser's redirect on 127.0.0.1, work; the sign-in used to fail
+  with "permission denied 127.0.0.1:0". The kernel filter still keeps the
+  session on loopback and its allowlist, and the firewall refuses inbound
+  connections. Found in the daily-driver lab on the desktop edition.
+- Probes Claude Code makes and does not need (/dev, /proc/kcore,
+  /proc/sys/fs, the devpts root, /dev/log) are refused quietly, so allowed
+  work leaves no denials in the log.
+- tests/normal.sh: a local server and a client of it, in both modes.
+- basalt-agent install: when npm (or python3 for pip) is missing, says so
+  and prints the dnf command for the profile's packages, instead of
+  "exec: npm: executable file not found".
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.0-1
 - The approval gate (ADR 0020 phase 2, docs/gate.md): basalt-agent grant
   and egress propose are requests to the gate when it is installed. Where
