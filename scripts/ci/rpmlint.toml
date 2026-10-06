@@ -7,6 +7,10 @@ Filters = [
     'spelling-error',
     # libdnf5-plugin-actions is a dnf5 plugin, not a shared library.
     'explicit-lib-dependency libdnf5-plugin-actions',
+    # basalt-desktop (basalt-shell 0.9) requires libfuse 2 for AppImages built
+    # with the older runtime: they load it at run time, so rpm cannot find
+    # the dependency by itself.
+    'explicit-lib-dependency fuse-libs',
     # The SSH hardening drop-in is root-only on purpose, like sshd_config.
     'non-readable /etc/ssh/sshd_config.d/10-basalt-hardening.conf',
     # The assistant's audit log and state are root-only on purpose.
