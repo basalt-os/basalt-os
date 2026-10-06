@@ -41,7 +41,7 @@ restart.
         |  reads /run/basalt-models/voice-english.state (names and sizes only)
         v
  basalt-models-fetch@voice-english.service (confined, see below)
-        basalt-voice-fetch --status ... english   or   basalt-llm-fetch --status ... recommended
+        basalt-voice-fetch --status FILE english   or   basalt-llm-fetch --status FILE recommended
         pinned URL (https only), SHA-256 checked, SELinux label restored
         ledger: model.download (ok or error, with the reason)
         assistant's model only, after a verified download (privileged step):
