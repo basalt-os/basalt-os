@@ -109,7 +109,10 @@ type opts struct {
 
 	// basalt updates, basalt channels and basalt __source
 	security bool
-	kv       map[string]string
+	// --cached: from the report root's executor keeps (drivers): no rpm
+	// or dnf runs (the desktop's read helper asks this way).
+	cached bool
+	kv     map[string]string
 }
 
 // valueOpts are the options of basalt channels and basalt __source that
@@ -176,6 +179,8 @@ func parse(argv []string) (opts, error) {
 			o.preview = true
 		case "--security":
 			o.security = true
+		case "--cached":
+			o.cached = true
 		case "--source":
 			o.source, err = val()
 		case "-h", "--help":

@@ -442,7 +442,7 @@ func (a Action) Commands() ([]runner.Command, error) {
 				{Argv: append([]string{"dnf", "-y", "upgrade", "--offline"}, pk...),
 					Description: "download " + what + " (checked against the repositories' signing keys) and prepare them to install at the next start"},
 				{Argv: []string{"dnf", "-y", "offline", "reboot"}, AfterRecord: true,
-					Description: "restart now: they install before the desktop starts, then the computer starts normally"},
+					Description: "restart into them (after the desktop's countdown, or sudo basalt updates restart): they install before the desktop starts"},
 			}, nil
 		}
 		return []runner.Command{

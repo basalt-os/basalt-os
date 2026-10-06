@@ -4,13 +4,18 @@
 // - basalt-apply@ID_CODE.service applies one confirmed proposal: always an
 //   administrator's password, never kept;
 // - basalt-updates-check.service refreshes the package lists (installs
-//   nothing): no password for an administrator at the computer.
+//   nothing) and basalt-drivers-refresh.service the drivers report (reads
+//   only): no password for an administrator at the computer;
+// - basalt-offline-reboot.service restarts into an offline update the
+//   person already confirmed with a password (it refuses without one):
+//   no second password, like Restart in the power menu.
 polkit.addRule(function(action, subject) {
     if (action.id != "org.freedesktop.systemd1.manage-units" || action.lookup("verb") != "start") {
         return polkit.Result.NOT_HANDLED;
     }
     var unit = action.lookup("unit") || "";
-    if (unit == "basalt-updates-check.service" && subject.local && subject.active && subject.isInGroup("wheel")) {
+    var quiet = ["basalt-updates-check.service", "basalt-drivers-refresh.service", "basalt-offline-reboot.service"];
+    if (quiet.indexOf(unit) >= 0 && subject.local && subject.active && subject.isInGroup("wheel")) {
         return polkit.Result.YES;
     }
     if (unit.indexOf("basalt-apply@") == 0) {

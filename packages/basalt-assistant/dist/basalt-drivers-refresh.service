@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh the Additional drivers report
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/nvidia.md
+
+[Service]
+# basalt drivers refresh: the GPUs, the installed driver's packages and
+# whether basalt-nonfree-release is available, written for Settings,
+# Additional drivers, so that the desktop never runs rpm or dnf. Changes
+# nothing. SELinux: basalt_apply_t.
+Type=oneshot
+ExecStart=/usr/libexec/basalt-assistant/basalt-apply-exec drivers-refresh
+TimeoutStartSec=5min

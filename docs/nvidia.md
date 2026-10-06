@@ -53,7 +53,8 @@ the DLSS updater, Vulkan SC and the 32-bit libraries.
 
 ## Which GPUs
 
-`basalt drivers` and Settings, Additional drivers, read every display
+`basalt drivers` and Settings, Additional drivers (from the report
+`basalt-drivers-refresh.service` writes as root), read every display
 controller from sysfs (PCI class 03) and look NVIDIA's device ids up in the
 list of supported GPUs that ships with the driver (`supported-gpus.json`,
 kept as `nvidia-gpus.json` in basalt-assistant, with its license):

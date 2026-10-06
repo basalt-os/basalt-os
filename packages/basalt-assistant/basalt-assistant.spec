@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.12.0
+Version:        0.12.1
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -113,15 +113,14 @@ install -Dpm 0755 bin/basalt-notify %{buildroot}%{_libexecdir}/basalt/basalt-not
 install -Dpm 0755 dist/basalt-policy-query %{buildroot}%{_libexecdir}/basalt/basalt-policy-query
 install -Dpm 0755 bin/basalt-gate-exec %{buildroot}%{_libexecdir}/basalt-assistant/basalt-gate-exec
 install -Dpm 0644 dist/basalt-gate-exec@.service %{buildroot}%{_unitdir}/basalt-gate-exec@.service
-%{_libexecdir}/basalt-assistant/basalt-apply-exec
-%{_unitdir}/basalt-apply@.service
-%{_unitdir}/basalt-updates-check.service
-%{_unitdir}/basalt-offline-finish.service
-%{_datadir}/polkit-1/rules.d/50-basalt-assistant.rules
 install -Dpm 0755 bin/basalt-apply-exec %{buildroot}%{_libexecdir}/basalt-assistant/basalt-apply-exec
 install -Dpm 0644 dist/basalt-apply@.service %{buildroot}%{_unitdir}/basalt-apply@.service
 install -Dpm 0644 dist/basalt-updates-check.service %{buildroot}%{_unitdir}/basalt-updates-check.service
 install -Dpm 0644 dist/basalt-offline-finish.service %{buildroot}%{_unitdir}/basalt-offline-finish.service
+install -d %{buildroot}%{_unitdir}/multi-user.target.wants
+ln -s ../basalt-offline-finish.service %{buildroot}%{_unitdir}/multi-user.target.wants/basalt-offline-finish.service
+install -Dpm 0644 dist/basalt-offline-reboot.service %{buildroot}%{_unitdir}/basalt-offline-reboot.service
+install -Dpm 0644 dist/basalt-drivers-refresh.service %{buildroot}%{_unitdir}/basalt-drivers-refresh.service
 install -Dpm 0644 dist/50-basalt-assistant.rules %{buildroot}%{_datadir}/polkit-1/rules.d/50-basalt-assistant.rules
 install -Dpm 0644 dist/basalt-assistantd.service %{buildroot}%{_unitdir}/basalt-assistantd.service
 install -Dpm 0644 dist/basalt-notify.service %{buildroot}%{_unitdir}/basalt-notify.service
@@ -147,10 +146,10 @@ done
 
 %post
 %tmpfiles_create %{name}.conf
-%systemd_post basalt-assistantd.service basalt-notify.service basalt-audit-rotate.timer basalt-offline-finish.service
+%systemd_post basalt-assistantd.service basalt-notify.service basalt-audit-rotate.timer
 
 %preun
-%systemd_preun basalt-assistantd.service basalt-notify.service basalt-audit-rotate.service basalt-audit-rotate.timer basalt-offline-finish.service
+%systemd_preun basalt-assistantd.service basalt-notify.service basalt-audit-rotate.service basalt-audit-rotate.timer
 
 %postun
 %systemd_postun_with_restart basalt-assistantd.service basalt-notify.service
@@ -181,6 +180,14 @@ fi
 %dir %{_libexecdir}/basalt-assistant
 %{_libexecdir}/basalt-assistant/basalt-gate-exec
 %{_unitdir}/basalt-gate-exec@.service
+%{_libexecdir}/basalt-assistant/basalt-apply-exec
+%{_unitdir}/basalt-apply@.service
+%{_unitdir}/basalt-updates-check.service
+%{_unitdir}/basalt-offline-finish.service
+%{_unitdir}/multi-user.target.wants/basalt-offline-finish.service
+%{_unitdir}/basalt-offline-reboot.service
+%{_unitdir}/basalt-drivers-refresh.service
+%{_datadir}/polkit-1/rules.d/50-basalt-assistant.rules
 %{_unitdir}/basalt-assistantd.service
 %{_unitdir}/basalt-notify.service
 %{_unitdir}/basalt-audit-rotate.service
@@ -200,6 +207,19 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.1-1
+- An offline update no longer restarts the computer by itself: it stays
+  staged until Settings' 60 second countdown ends (or Restart now), through
+  basalt-offline-reboot.service (basalt updates restart); a start that did
+  not run it keeps it staged.
+- basalt-offline-finish.service is linked into multi-user.target.wants by
+  the package (it was enabled by a preset only, which an upgrade skips).
+- The %files list of 0.12.0 sat in %install; the sources test read a file
+  outside the package. Both fixed.
+- The Additional drivers report the desktop reads is written by
+  basalt-drivers-refresh.service (basalt drivers refresh); with --cached,
+  basalt drivers, drivers install and drivers rollback run no rpm or dnf.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.0-1
 - Updates, channels and software sources (docs/updates.md): basalt updates
   and basalt channels, and the actions update.check, update.install,

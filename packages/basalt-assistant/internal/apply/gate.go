@@ -193,9 +193,5 @@ func (a *Applier) Execute(ctx context.Context, id string) error {
 	if _, err := g.Report(id, ok, exit, detail, snaps); err != nil {
 		a.printf("Warning: the result could not be reported to the approval gate: %v\n", err)
 	}
-	if runErr == nil {
-		// The restart into an offline update, once the gate knows.
-		a.RunAfter(ctx)
-	}
 	return runErr
 }

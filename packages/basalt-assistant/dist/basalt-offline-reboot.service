@@ -1,0 +1,12 @@
+[Unit]
+Description=Restart into the staged Basalt OS offline update
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/updates.md
+ConditionPathExists=/var/lib/basalt-assistant/offline-pending.json
+
+[Service]
+# Started by Settings when its 60 second countdown ends (or Restart now):
+# dnf offline reboot, only for an update the person confirmed and the
+# assistant staged (basalt updates restart refuses anything else).
+# SELinux: basalt_apply_t.
+Type=oneshot
+ExecStart=/usr/libexec/basalt-assistant/basalt-apply-exec offline-reboot

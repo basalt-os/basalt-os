@@ -13,5 +13,5 @@ Type=oneshot
 ExecStart=/usr/libexec/basalt-assistant/basalt-apply-exec offline-finish
 TimeoutStartSec=15min
 
-[Install]
-WantedBy=multi-user.target
+# Always on: the package links it into multi-user.target.wants (also on
+# an upgrade, where presets do not apply).

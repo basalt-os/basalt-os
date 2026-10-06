@@ -1,4 +1,3 @@
 enable basalt-assistantd.service
 enable basalt-notify.service
 enable basalt-audit-rotate.timer
-enable basalt-offline-finish.service

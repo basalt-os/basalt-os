@@ -19,7 +19,11 @@ import (
 
 // updatesSys is the real system for the updates report.
 func (a *app) updatesSys() updates.Sys {
-	return updates.Sys{R: runner.Exec{Timeout: 2 * time.Minute}, Store: a.store, AuditPath: a.cfg.AuditPath,
+	var r runner.Reader = runner.Exec{Timeout: 2 * time.Minute}
+	if _, real := a.env.R.(runner.Exec); !real && a.env.R != nil {
+		r = a.env.R // tests
+	}
+	return updates.Sys{R: r, Store: a.store, AuditPath: a.cfg.AuditPath,
 		CachePath: a.cfg.StateDir + "/updates.json", BootID: bootID,
 		AppsDir: "/usr/share/applications", BootTime: bootTime,
 		PreSnapshots: func() map[string]int {
@@ -63,6 +67,7 @@ func bootTime() time.Time {
 //	basalt updates check [--json]             update.check: refresh the package lists and the report (root)
 //	basalt updates install [--security]       the update.install proposal (root stores it)
 //	basalt updates rollback                   the update.rollback proposal for the last update
+//	basalt updates restart                    restart into the staged offline update (root)
 func (a *app) updates(ctx context.Context) error {
 	sub := ""
 	if len(a.o.args) > 1 {
@@ -131,6 +136,26 @@ func (a *app) updates(ctx context.Context) error {
 			return err
 		}
 		return a.storeAndPresent(ctx, p)
+	case "restart":
+		// The restart into a staged offline update (dnf offline reboot),
+		// after the desktop's countdown or at an administrator's terminal.
+		if !a.root {
+			return errors.New("restarting into the offline update needs root: sudo basalt updates restart (or Restart and update in Settings)")
+		}
+		ap := a.applier()
+		defer ap.Gate.Close()
+		pend, err := ap.ReadPending()
+		if err != nil {
+			return errors.New("no offline update is staged: nothing to restart into")
+		}
+		p, err := a.store.Load(pend.Proposal)
+		if err != nil {
+			return err
+		}
+		if p.Status != proposal.Scheduled {
+			return fmt.Errorf("%s is %s, not staged for the next start", p.ID, p.Status)
+		}
+		return ap.RunAfter(ctx, p)
 	case "rollback":
 		r := updates.Build(ctx, s)
 		if r.Undo == nil {
@@ -561,7 +586,7 @@ func (a *app) offlineFinish(ctx context.Context) error {
 	ap := a.applier()
 	defer ap.Gate.Close()
 	err := ap.FinishOffline(ctx)
-	if errors.Is(err, apply.ErrNoPending) {
+	if errors.Is(err, apply.ErrNoPending) || errors.Is(err, apply.ErrStillStaged) {
 		return nil
 	}
 	return err

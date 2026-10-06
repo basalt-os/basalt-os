@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -27,8 +29,25 @@ func (a *app) drivers(ctx context.Context) error {
 		sub = a.o.args[1]
 	}
 	switch sub {
+	case "refresh":
+		// basalt-drivers-refresh.service (root): the report the desktop
+		// reads, so that no rpm or dnf runs in the desktop's read path.
+		if !a.root {
+			return errors.New("refreshing the drivers report needs root (basalt-drivers-refresh.service)")
+		}
+		r := drivers.Build(ctx, sys, true)
+		if err := a.writeDriversCache(r); err != nil {
+			return err
+		}
+		if a.o.json {
+			return a.printJSON(r)
+		}
+		return nil
 	case "":
-		r := drivers.Build(ctx, sys, a.o.json)
+		r, err := a.driversReport(ctx, sys, a.o.json)
+		if err != nil {
+			return err
+		}
 		if a.o.json {
 			return a.printJSON(r)
 		}
@@ -51,7 +70,10 @@ func (a *app) drivers(ctx context.Context) error {
 				return errors.New("usage: basalt drivers install nvidia [display|compute]")
 			}
 		}
-		r := drivers.Build(ctx, sys, false)
+		r, err := a.driversReport(ctx, sys, false)
+		if err != nil {
+			return err
+		}
 		p, err := drivers.InstallProposal(r, "cli", variant)
 		if err != nil {
 			return err
@@ -62,7 +84,10 @@ func (a *app) drivers(ctx context.Context) error {
 		}
 		return a.present(ctx, p)
 	case "rollback":
-		r := drivers.Build(ctx, sys, false)
+		r, err := a.driversReport(ctx, sys, false)
+		if err != nil {
+			return err
+		}
 		n, before := 0, r.State.Proposal
 		if before != "" {
 			n, _ = a.env.FindApplySnapshots(ctx, before)
@@ -73,7 +98,15 @@ func (a *app) drivers(ctx context.Context) error {
 		if n == 0 {
 			return errors.New(i18n.T("No snapshot from before the NVIDIA driver install is known on this system."))
 		}
-		plan, err := a.env.PlanRollback(ctx, n)
+		env := a.env
+		if a.o.cached {
+			// The desktop's read path: the package comparison (rpm on the
+			// snapshots) is left out; basalt snapshots diff shows it.
+			e := *a.env
+			e.Confined = true
+			env = &e
+		}
+		plan, err := env.PlanRollback(ctx, n)
 		if err != nil {
 			return err
 		}
@@ -177,4 +210,45 @@ func (a *app) writeDrivers(r drivers.Report) {
 		say(i18n.T("Try the NVIDIA driver again at the next start: sudo basalt-nvidia retry"))
 	}
 	say(fmt.Sprintf(i18n.T("More: %s"), r.Docs))
+}
+
+// driversCachePath is the report basalt drivers refresh writes.
+func (a *app) driversCachePath() string { return a.cfg.StateDir + "/drivers.json" }
+
+func (a *app) writeDriversCache(r drivers.Report) error {
+	b, err := json.MarshalIndent(r, "", " ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(a.cfg.StateDir, 0o700); err != nil {
+		return err
+	}
+	tmp := a.driversCachePath() + ".tmp"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, a.driversCachePath())
+}
+
+// ErrNoDriversCache: no report from basalt drivers refresh yet.
+var ErrNoDriversCache = errors.New("no drivers report yet: it is written by basalt-drivers-refresh.service (basalt drivers refresh as root)")
+
+// driversReport is the live report, or with --cached the one root's
+// executor wrote (no rpm, no dnf).
+func (a *app) driversReport(ctx context.Context, sys drivers.Sys, withLicense bool) (drivers.Report, error) {
+	if !a.o.cached {
+		return drivers.Build(ctx, sys, withLicense), nil
+	}
+	var r drivers.Report
+	b, err := os.ReadFile(a.driversCachePath())
+	if err != nil {
+		return r, ErrNoDriversCache
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return r, fmt.Errorf("%s: %v", a.driversCachePath(), err)
+	}
+	if !withLicense {
+		r.License.Text = ""
+	}
+	return r, nil
 }

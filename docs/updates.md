@@ -87,7 +87,13 @@ run in rpm_script_t. Checking for updates starts
 `basalt-updates-check.service` (no password for an administrator at the
 computer); it refreshes the package lists and the report the assistant
 keeps in `/var/lib/basalt-assistant/updates.json`, which is all the desktop
-reads. The Additional drivers page applies its proposals the same way.
+reads. The Additional drivers page applies its proposals the same way, and
+its report is written by `basalt-drivers-refresh.service` (`basalt drivers
+refresh`, root) to `/var/lib/basalt-assistant/drivers.json`; the desktop's
+read helper only asks `basalt drivers --json --cached` (and `drivers
+install` or `rollback` with `--cached`), so no rpm or dnf runs in the
+desktop's domain. A test of the assistant runs every request the read
+helper allows against a runner that refuses rpm and dnf.
 
 ## Offline updates
 
@@ -96,9 +102,16 @@ package manager, the SELinux policy, basalt-shell, basalt-greeter,
 basalt-gate, Mesa, the compositor and the session's shell) installs
 offline: update.install carries `mode=offline` (the validator refuses a
 live install of such a set), the packages are downloaded and checked now,
-the snapshot before is taken, and `dnf offline reboot` restarts the
-computer once the result is recorded; dnf installs them before the
-session starts (system-update.target). At the next start
+the snapshot before is taken, and the update stays staged. The restart
+into it never happens without warning: Settings opens the power menu's 60
+second countdown ("Restarting to install updates", focused on Cancel);
+when it ends, or with Restart now, the desktop starts
+basalt-offline-reboot.service, which runs `basalt updates restart` (`dnf
+offline reboot`, refused unless an update is staged). Cancel keeps it
+staged and the page offers "Restart and update" again; at a terminal,
+`sudo basalt updates restart`. dnf installs it before the session starts
+(system-update.target). A start that did not go through it leaves it
+staged. At the next start
 basalt-offline-finish.service takes the snapshot after, checks that every
 package is installed and records the result; the page offers undo as for
 a live update. Smaller sets without core packages stay live. The page

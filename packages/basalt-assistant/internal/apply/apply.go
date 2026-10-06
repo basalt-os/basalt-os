@@ -46,7 +46,6 @@ type Applier struct {
 
 	decidedBy string    // who decided the apply in progress
 	started   time.Time // when it started
-	after     []runner.Command
 
 	// OnUpdated runs after an update applied live (the updates report is
 	// refreshed: the installed ones are gone from it).
@@ -146,11 +145,7 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	a.audit("confirm", fmt.Sprintf("confirmed %s (%s) by %s", p.ID, fp, by), map[string]any{"proposal": p.ID, "fingerprint": fp,
 		"commands": strs(cmds), "by": by})
 	a.decidedBy = by
-	err := a.run(ctx, p, cmds, fp)
-	if err == nil && o.DecidedBy == "" {
-		a.RunAfter(ctx)
-	}
-	return err
+	return a.run(ctx, p, cmds, fp)
 }
 
 // progress records where a running apply is (the desktop's Updates page
@@ -169,14 +164,12 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	start := time.Now()
 	res := &proposal.Result{Time: start.UTC(), Fingerprint: fp}
 	desc := "basalt apply " + p.ID
-	// Commands that end the apply itself (a restart into an offline
-	// update) run only once the result is recorded (RunAfter).
+	// Commands that end the apply itself (the restart into an offline
+	// update) are not run here: the person starts them after a warning
+	// (Settings' countdown, or basalt updates restart), RunAfter.
 	var now []runner.Command
-	a.after = nil
 	for _, c := range cmds {
-		if c.AfterRecord {
-			a.after = append(a.after, c)
-		} else {
+		if !c.AfterRecord {
 			now = append(now, c)
 		}
 	}
@@ -269,7 +262,6 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 		p.Status = proposal.Applied
 	default:
 		p.Status = proposal.Failed
-		a.after = nil
 	}
 	rec := a.audit(typ, fmt.Sprintf("%s %s: %s", p.ID, p.Status, p.Title), map[string]any{
 		"proposal": p.ID, "title": p.Title, "actions": p.Actions, "result": res})
@@ -279,6 +271,7 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	}
 	if ok && offline {
 		a.printf("\nReady: %s installs at the next start (audit record #%d).\n", p.ID, rec.Seq)
+		a.printf("Restart to install it: Settings, Updates and channels, or sudo basalt updates restart\n")
 	} else if ok {
 		a.printf("\nDone: %s is applied and every check passed (audit record #%d).\n", p.ID, rec.Seq)
 		if a.OnUpdated != nil && isUpdate(p.Actions) {
@@ -409,12 +402,26 @@ func mark(ok bool) string {
 	return "FAIL"
 }
 
-// RunAfter runs the commands that wait for the recorded result (the
-// restart into an offline update). Apply does it itself; the gate's
-// executor calls it after reporting to the gate.
-func (a *Applier) RunAfter(ctx context.Context) {
-	cmds := a.after
-	a.after = nil
+// RunAfter runs the commands of a proposal that wait for its recorded
+// result and for the person (the restart into an offline update): basalt
+// updates restart, after the desktop's countdown.
+func (a *Applier) RunAfter(ctx context.Context, p *proposal.Proposal) error {
+	var cmds []runner.Command
+	for _, act := range p.Actions {
+		cs, err := act.Commands()
+		if err != nil {
+			return err
+		}
+		for _, c := range cs {
+			if c.AfterRecord {
+				cmds = append(cmds, c)
+			}
+		}
+	}
+	if len(cmds) == 0 {
+		return fmt.Errorf("%s has nothing to run at a restart", p.ID)
+	}
+	a.audit("restart", "restart to install "+p.ID+": "+p.Title, map[string]any{"proposal": p.ID, "commands": strs(cmds)})
 	for _, c := range cmds {
 		a.printf("$ %s\n", c.String())
 		r := a.Exec.Run(ctx, c)
@@ -422,9 +429,11 @@ func (a *Applier) RunAfter(ctx context.Context) {
 			a.printf("%s\n", indent(clip(r.Out, 2000)))
 		}
 		if !r.OK() {
-			a.printf("That command failed (exit code %d). The update stays prepared: restart the computer to install it.\n", r.Code)
+			a.printf("That command failed (exit code %d). The update stays prepared.\n", r.Code)
+			return fmt.Errorf("%s: exit code %d", c.String(), r.Code)
 		}
 	}
+	return nil
 }
 
 // OfflineUpdate reports a proposal that installs an update at the next

@@ -8,6 +8,11 @@
 //	basalt-updates-check.service      basalt updates check (update.check)
 //	basalt-offline-finish.service     basalt __offline-finish (at the start
 //	                                  after an offline update)
+//	basalt-offline-reboot.service     basalt updates restart (the restart into
+//	                                  a staged offline update, after the
+//	                                  desktop's countdown)
+//	basalt-drivers-refresh.service    basalt drivers refresh (the report the
+//	                                  Additional drivers page reads)
 //
 // SELinux runs it in basalt_apply_t (module basalt_assistant), the
 // assistant's executor, which may start dnf in rpm_t like an
@@ -29,7 +34,7 @@ var version = "dev"
 var instRe = regexp.MustCompile(`^(p-[0-9a-f]{6})_([0-9a-f]{8})$`)
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: basalt-apply-exec apply ID_CODE | check | offline-finish (from the basalt-apply@, basalt-updates-check and basalt-offline-finish units)")
+	fmt.Fprintln(os.Stderr, "usage: basalt-apply-exec apply ID_CODE | check | offline-finish | offline-reboot | drivers-refresh (from the assistant units)")
 	os.Exit(2)
 }
 
@@ -55,6 +60,16 @@ func main() {
 			usage()
 		}
 		os.Exit(cli.Main([]string{"updates", "check"}, version))
+	case "offline-reboot":
+		if len(os.Args) != 2 {
+			usage()
+		}
+		os.Exit(cli.Main([]string{"updates", "restart"}, version))
+	case "drivers-refresh":
+		if len(os.Args) != 2 {
+			usage()
+		}
+		os.Exit(cli.Main([]string{"drivers", "refresh"}, version))
 	case "offline-finish":
 		if len(os.Args) != 2 {
 			usage()

@@ -128,7 +128,9 @@ func TestChannelsReport(t *testing.T) {
 	p := tempPaths(t)
 	key, _ := os.ReadFile("testdata/RPM-GPG-KEY-basalt")
 	_ = os.WriteFile(filepath.Join(p.KeyDir, "RPM-GPG-KEY-basalt"), key, 0o644)
-	repo, _ := os.ReadFile("../../../basalt-release/basalt.repo")
+	// A copy of packages/basalt-release/basalt.repo: the package builds
+	// from its own directory only.
+	repo, _ := os.ReadFile("testdata/basalt.repo")
 	repo = []byte(strings.ReplaceAll(string(repo), "file:///etc/pki/rpm-gpg/", "file://"+p.KeyDir+"/"))
 	_ = os.WriteFile(filepath.Join(p.RepoDir, "basalt.repo"), repo, 0o644)
 	_ = os.WriteFile(filepath.Join(p.RepoDir, "fedora.repo"), []byte("[fedora]\nname=Fedora\nenabled=1\n"), 0o644)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
@@ -35,6 +36,19 @@ func (a *Applier) pendingPath() string {
 	return filepath.Join(dir, PendingFile)
 }
 
+// ReadPending returns the offline update waiting for the next start.
+func (a *Applier) ReadPending() (Pending, error) {
+	var p Pending
+	b, err := os.ReadFile(a.pendingPath())
+	if os.IsNotExist(err) {
+		return p, ErrNoPending
+	}
+	if err != nil {
+		return p, err
+	}
+	return p, json.Unmarshal(b, &p)
+}
+
 func writePending(path string, p Pending) error {
 	b, _ := json.MarshalIndent(p, "", "  ")
 	tmp := path + ".tmp"
@@ -43,6 +57,9 @@ func writePending(path string, p Pending) error {
 	}
 	return os.Rename(tmp, path)
 }
+
+// ErrStillStaged: the offline update did not run at this start.
+var ErrStillStaged = errors.New("the offline update is still staged")
 
 // ErrNoPending: no offline update waits.
 var ErrNoPending = errors.New("no offline update waits for this start")
@@ -70,6 +87,13 @@ func (a *Applier) FinishOffline(ctx context.Context) error {
 	if err != nil {
 		_ = os.Remove(path)
 		return err
+	}
+	// A start without the offline transaction (the person cancelled the
+	// restart into it and restarted later another way): it is still
+	// staged, and waits for "Restart and update".
+	if st := a.Exec.Read(ctx, "dnf", "offline", "status"); strings.Contains(st.Out, "offline transaction was initiated") {
+		a.printf("%s is still staged: it installs when the computer restarts into it.\n", p.ID)
+		return ErrStillStaged
 	}
 	res := p.Result
 	if res == nil {
