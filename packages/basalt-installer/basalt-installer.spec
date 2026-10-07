@@ -3,7 +3,7 @@
 # and a graphical frontend (Quickshell) in the -gui subpackage.
 
 Name:           basalt-installer
-Version:        0.2.2
+Version:        0.2.3
 Release:        1%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
@@ -113,6 +113,16 @@ done
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.3-1
+- The installation's end state changes together with the "done" event: a
+  frontend that finishes, retries or reads the status right after it no
+  longer sees the installation still running. A run that stops before it
+  can report (lock held, log not writable) is marked failed and announced
+  instead of leaving the frontends waiting; a retry waits for the previous
+  run to release its lock.
+- An unattended installation reacts to each state change instead of
+  polling once a second.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.2-1
 - Desktop edition: the graphical boot splash (rhgb quiet
   plymouth.ignore-serial-consoles on the kernel command line, the serial

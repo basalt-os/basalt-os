@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-resolver
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Per-session default-deny egress with DNS-aware allowlists
 License:        Apache-2.0
@@ -119,6 +119,11 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_resolver.if
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.1-1
+- A resolver port that another program holds (UDP or TCP) is skipped:
+  the session gets the next free port of the range instead of being
+  refused.
+
 * Sun Oct 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: per-session default-deny egress (nftables chains matched
   by cgroup, sets filled from DNS answers for allowlisted names), DNS
