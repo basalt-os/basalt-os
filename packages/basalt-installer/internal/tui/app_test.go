@@ -57,7 +57,7 @@ func testModelWith(t *testing.T, cmdline, lsblk string, inspector session.HomeIn
 			return "kvm\n", nil
 		}},
 		Steps:         steps.Options{Root: filepath.Join(dir, "sysroot"), Work: filepath.Join(dir, "work"), MediaDir: filepath.Join(dir, "media")},
-		Engine:        engine.Options{Runner: &engine.FakeRunner{}, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock")},
+		Engine:        engine.Options{Runner: &engine.FakeRunner{}, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock"), LogNoSync: true},
 		Cmdline:       filepath.Join(root, "proc/cmdline"),
 		HomeInspector: inspector,
 	})

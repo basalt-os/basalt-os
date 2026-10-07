@@ -63,7 +63,7 @@ func newRig(t *testing.T, planYAML, cmdline string) *rig {
 			return "kvm\n", nil
 		}},
 		Steps:   steps.Options{Root: filepath.Join(dir, "sysroot"), Work: filepath.Join(dir, "work"), MediaDir: filepath.Join(dir, "media")},
-		Engine:  engine.Options{Runner: &engine.FakeRunner{Captured: key + "\n"}, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock")},
+		Engine:  engine.Options{Runner: &engine.FakeRunner{Captured: key + "\n"}, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock"), LogNoSync: true},
 		Cmdline: filepath.Join(root, "proc/cmdline"),
 		Finisher: func(_ context.Context, action string) error {
 			r.mu.Lock()
@@ -89,18 +89,46 @@ accounts:
 finish: poweroff
 `
 
+// run starts the unattended installation and returns its status once it
+// has ended or is waiting for the person (the recovery key on the screen).
+// It waits on the session's change notifications, never on a fixed delay.
 func (r *rig) run(t *testing.T) AutoStatus {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
+	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
+	t.Cleanup(func() { cancel(); <-done })
 	go func() { r.ss.RunUnattended(ctx, time.Second); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		// Still running: waiting for the recovery key acknowledgement.
-	}
+	r.waitFor(t, done, func(st Status) bool {
+		return st.Unattended.State == AutoRunning && st.State == Succeeded && st.RecoveryKey
+	})
 	return r.ss.Status().Unattended
+}
+
+// waitFor blocks until cond holds for the session status or stop is
+// closed (nil: never). The deadline only turns a hang into a failure; it
+// is not part of the expectation.
+func (r *rig) waitFor(t *testing.T, stop <-chan struct{}, cond func(Status) bool) {
+	t.Helper()
+	deadline := time.After(2 * time.Minute)
+	for {
+		changed := r.ss.changes()
+		if cond(r.ss.Status()) {
+			return
+		}
+		select {
+		case <-changed:
+		case <-stop:
+			return
+		case <-deadline:
+			t.Fatalf("timed out; status %+v", r.ss.Status())
+		}
+	}
+}
+
+func (r *rig) finishedAction() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.finished
 }
 
 func TestUnattendedNeedsTheConfirmation(t *testing.T) {
@@ -133,10 +161,13 @@ func TestUnattendedWaitsForTheRecoveryKey(t *testing.T) {
 	if a.State != AutoRunning || st.State != Succeeded || !st.RecoveryKey {
 		t.Fatalf("unattended status %+v, session %+v", a, st)
 	}
-	if r.finished != "" {
+	if r.finishedAction() != "" {
 		t.Fatal("finished before the recovery key was acknowledged")
 	}
-	if len(r.written) != 0 {
+	r.mu.Lock()
+	written := len(r.written)
+	r.mu.Unlock()
+	if written != 0 {
 		t.Fatal("the key was written somewhere without being asked to")
 	}
 	// A copy on a USB stick on request; not an acknowledgement.
@@ -147,25 +178,22 @@ func TestUnattendedWaitsForTheRecoveryKey(t *testing.T) {
 	if _, err := r.ss.SaveRecoveryKey(context.Background(), "/dev/vda"); err == nil {
 		t.Fatal("the target disk is not removable media")
 	}
+	r.mu.Lock()
 	for _, c := range r.written {
 		if !strings.Contains(c, "\n"+key+"\n") {
 			t.Fatalf("key file: %q", c)
 		}
 	}
+	r.mu.Unlock()
 	if !r.ss.Status().RecoveryKey {
 		t.Fatal("saving a copy must not count as the acknowledgement")
 	}
 	if err := r.ss.AckRecoveryKey("abcdefgh"); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) && r.ss.Status().Unattended.State != AutoDone {
-		time.Sleep(50 * time.Millisecond)
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.finished != "poweroff" || r.ss.Status().Unattended.State != AutoDone {
-		t.Fatalf("end action %q, status %+v", r.finished, r.ss.Status().Unattended)
+	r.waitFor(t, nil, func(st Status) bool { return st.Unattended.State == AutoDone || st.Unattended.State == AutoFailed })
+	if r.finishedAction() != "poweroff" || r.ss.Status().Unattended.State != AutoDone {
+		t.Fatalf("end action %q, status %+v", r.finishedAction(), r.ss.Status().Unattended)
 	}
 }
 
@@ -173,8 +201,8 @@ func TestUnattendedWithKeyMediaNeedsNobody(t *testing.T) {
 	r := newRig(t, basePlan+"encryption: {recovery_key_media: KEYS}\n", "basalt.inst.plan=PLAN basalt.inst.confirm=vda")
 	a := r.run(t)
 	st := r.ss.Status()
-	if a.State != AutoDone || r.finished != "poweroff" || !st.RecoveryAcked || len(st.KeySaved) != 1 {
-		t.Fatalf("unattended %+v, session %+v, finished %q", a, st, r.finished)
+	if a.State != AutoDone || r.finishedAction() != "poweroff" || !st.RecoveryAcked || len(st.KeySaved) != 1 {
+		t.Fatalf("unattended %+v, session %+v, finished %q", a, st, r.finishedAction())
 	}
 	if r.ss.RecoveryKey() != "" {
 		t.Fatal("the key stays in memory after it was written")
@@ -185,5 +213,38 @@ func TestKeyMediaMustExist(t *testing.T) {
 	r := newRig(t, basePlan+"encryption: {recovery_key_media: ELSEWHERE}\n", "basalt.inst.plan=PLAN basalt.inst.confirm=vda")
 	if a := r.run(t); a.State != AutoRefused || !strings.Contains(a.Error, "ELSEWHERE") {
 		t.Fatalf("missing key medium: %+v", a)
+	}
+}
+
+// A frontend reacts to the "done" event (finish, status, retry): by then
+// the session must already report the end, never "installing". The state
+// is read the moment the event arrives, while the installation goroutine
+// may still be running.
+func TestStateIsSettledWhenDoneIsHeard(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		r := newRig(t, basePlan, "basalt.inst.plan=PLAN basalt.inst.confirm=vda")
+		events, stop := r.ss.Subscribe()
+		ctx, cancel := context.WithCancel(context.Background())
+		ended := make(chan struct{})
+		go func() { r.ss.RunUnattended(ctx, time.Second); close(ended) }()
+		deadline := time.After(2 * time.Minute) // a hang guard only
+	events:
+		for {
+			select {
+			case e := <-events:
+				if e.Type != engine.EvDone {
+					continue
+				}
+				if st := r.ss.Status(); !e.OK || st.State != Succeeded || st.FinishBlockers != "confirm that you stored the recovery key" {
+					t.Fatalf("done %+v heard with session %+v", e, st)
+				}
+				break events
+			case <-deadline:
+				t.Fatalf("no done event; session %+v", r.ss.Status())
+			}
+		}
+		stop()
+		cancel()
+		<-ended
 	}
 }

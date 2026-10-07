@@ -48,20 +48,37 @@ type Server struct {
 // Listen creates the socket (mode 0660, group gid when >= 0) and serves
 // until ctx ends.
 func (s *Server) Listen(ctx context.Context, path string, gid int) error {
-	_ = os.Remove(path)
-	l, err := net.Listen("unix", path)
+	l, err := Bind(path, gid)
 	if err != nil {
 		return err
 	}
-	defer l.Close()
+	return s.Serve(ctx, l)
+}
+
+// Bind creates the socket (mode 0660, group gid when >= 0). Clients can
+// connect as soon as it returns.
+func Bind(path string, gid int) (net.Listener, error) {
+	_ = os.Remove(path)
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.Chmod(path, 0o660); err != nil {
-		return err
+		l.Close()
+		return nil, err
 	}
 	if gid >= 0 {
 		if err := os.Chown(path, 0, gid); err != nil {
-			return err
+			l.Close()
+			return nil, err
 		}
 	}
+	return l, nil
+}
+
+// Serve accepts connections on l until ctx ends, then closes it.
+func (s *Server) Serve(ctx context.Context, l net.Listener) error {
+	defer l.Close()
 	go func() { <-ctx.Done(); l.Close() }()
 	for {
 		c, err := l.Accept()
@@ -149,8 +166,12 @@ func (s *Server) serve(ctx context.Context, c *net.UnixConn) {
 				go func() {
 					for e := range ch {
 						if send(map[string]any{"event": e}) != nil {
-							return
+							break
 						}
+					}
+					// Keep draining after a write error: the forwarder
+					// in subscribe ends only when stop closes ch.
+					for range ch {
 					}
 				}()
 			}

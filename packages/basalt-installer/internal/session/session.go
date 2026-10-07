@@ -83,11 +83,17 @@ type Session struct {
 	planErr  error
 	started  time.Time
 	ended    time.Time
+	// runExit is closed when the goroutine of the last installation has
+	// returned (engine lock released, audit log closed).
+	runExit chan struct{}
+	// changed is closed (and replaced) on every state change, so a waiter
+	// wakes up at once instead of polling.
+	changed chan struct{}
 }
 
 // New returns a session.
 func New(opt Options) *Session {
-	return &Session{opt: opt, state: Idle, subs: map[int]chan engine.Event{}}
+	return &Session{opt: opt, state: Idle, subs: map[int]chan engine.Event{}, changed: make(chan struct{})}
 }
 
 // Facts probes the machine (once, or again with refresh).
@@ -188,7 +194,18 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 		s.mu.Unlock()
 		return fmt.Errorf("type %q to confirm that %s is erased", pv.ConfirmWord(), pv.Resolved.Disk.Path)
 	}
+	prev := s.runExit
 	s.mu.Unlock()
+	// A failed run reports "done" a moment before its engine releases the
+	// lock and closes the log: a retry waits for it instead of hitting
+	// ErrBusy.
+	if prev != nil {
+		select {
+		case <-prev:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	// The disk must still be free: probe again right before writing.
 	f, err := s.Facts(ctx, true)
 	if err != nil {
@@ -198,9 +215,21 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 		return err
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
+	exit := make(chan struct{})
 	s.mu.Lock()
+	// Checked again: another call may have started meanwhile.
+	switch s.state {
+	case Installing:
+		s.mu.Unlock()
+		cancel()
+		return errors.New("an installation is already running")
+	case Succeeded:
+		s.mu.Unlock()
+		cancel()
+		return errors.New("the system is installed; reboot")
+	}
 	s.state, s.history, s.recKey, s.acked, s.lastErr, s.cancel = Installing, nil, "", false, "", cancel
-	s.keySaved, s.started, s.ended = nil, time.Now(), time.Time{}
+	s.keySaved, s.started, s.ended, s.runExit = nil, time.Now(), time.Time{}, exit
 	s.mu.Unlock()
 
 	eopt := s.opt.Engine
@@ -212,6 +241,7 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 	}
 	eng := engine.New(eopt)
 	go func() {
+		defer close(exit)
 		err := eng.Run(runCtx, pv.Steps, func(e engine.Event) {
 			// The plan's removable medium gets the key before the frontends
 			// hear that the installation is done, so none of them asks for
@@ -223,20 +253,34 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 		})
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		s.ended = time.Now()
-		if err != nil {
-			// The volume the recovery key opened was rolled back with
-			// the rest: the key is worthless and is not kept.
-			s.state, s.lastErr, s.recKey = Failed, err.Error(), ""
-			if errors.Is(err, engine.ErrBusy) {
-				s.broadcast(engine.Event{Type: engine.EvDone, OK: false, Error: err.Error()})
-			}
-		} else {
-			s.state = Succeeded
-		}
+		cancel()
 		s.cancel = nil
+		if s.state != Installing {
+			// The done event already settled the state (dispatch).
+			return
+		}
+		// The engine stopped before it could report "done" (lock held by
+		// another frontend, log directory not writable): settle the
+		// state and tell the frontends, which would wait forever.
+		if err == nil {
+			err = errors.New("the installation stopped without a result")
+		}
+		s.settleLocked(false, err.Error())
+		s.broadcast(engine.Event{Type: engine.EvDone, OK: false, Error: err.Error()})
 	}()
 	return nil
+}
+
+// settleLocked records the end of an installation. Callers hold s.mu.
+func (s *Session) settleLocked(ok bool, errText string) {
+	s.ended = time.Now()
+	if ok {
+		s.state = Succeeded
+		return
+	}
+	// The volume the recovery key opened was rolled back with the rest:
+	// the key is worthless and is not kept.
+	s.state, s.lastErr, s.recKey = Failed, errText, ""
 }
 
 // Cancel stops a running installation; the engine rolls back.
@@ -258,13 +302,36 @@ func (s *Session) dispatch(e engine.Event) {
 	}
 	if e.Type == engine.EvDone {
 		s.logPath = e.LogPath
+		// The state changes together with the event, under the same lock:
+		// a frontend that reacts to "done" (finish, status, retry) never
+		// sees the installation still running.
+		if s.state == Installing {
+			s.settleLocked(e.OK, e.Error)
+		}
 	}
 	s.broadcast(e)
 }
 
+// notifyLocked wakes up the waiters of changes(). Callers hold s.mu.
+func (s *Session) notifyLocked() {
+	close(s.changed)
+	s.changed = make(chan struct{})
+}
+
+// changes returns a channel closed at the next state change. Take it
+// before reading the state, so a change in between is not missed.
+func (s *Session) changes() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.changed
+}
+
 // broadcast keeps a history (without secrets) for late subscribers and
-// fans the event out. Callers hold s.mu.
+// fans the event out. Every state change goes through here (done, key
+// saved, key acknowledged), so it also wakes up the waiters of changes().
+// Callers hold s.mu.
 func (s *Session) broadcast(e engine.Event) {
+	defer s.notifyLocked()
 	hist := e
 	if hist.Type == engine.EvSecret {
 		hist.Secret = ""

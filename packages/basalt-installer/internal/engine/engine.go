@@ -70,6 +70,9 @@ type Options struct {
 	Header map[string]any
 	// Secrets are extra values scrubbed from every output line (passwords).
 	Secrets []string
+	// LogNoSync skips the fsync after each log record. For tests and the
+	// demo only: an installation keeps every record on disk at once.
+	LogNoSync bool
 }
 
 // Engine runs one installation.
@@ -144,6 +147,7 @@ func (e *Engine) Run(ctx context.Context, list []steps.Step, emit func(Event)) (
 	if e.log, err = auditlog.Create(logPath); err != nil {
 		return err
 	}
+	e.log.SetSync(!e.opt.LogNoSync)
 	defer e.log.Close()
 	e.record("start", "", "installation started", e.opt.Header)
 	emit(Event{Type: EvStarted, Total: len(list), LogPath: logPath})

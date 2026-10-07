@@ -334,19 +334,19 @@ msgstr ""
 msgid "The recovery key could not be written to %s (%v). It is shown on the screen instead."
 msgstr ""
 
-#: internal/session/unattended.go:76
+#: internal/session/unattended.go:100
+#, c-format
+msgid "basalt.inst.confirm=%s does not name the disk the plan erases (%s): nothing was written"
+msgstr ""
+
+#: internal/session/unattended.go:78
 #, c-format
 msgid "basalt.inst.confirm=%s names a disk but there is no plan: add basalt.inst.plan=PATH or URL to the boot line"
 msgstr ""
 
-#: internal/session/unattended.go:94
+#: internal/session/unattended.go:96
 #, c-format
 msgid "the plan %s could not be read: %v"
-msgstr ""
-
-#: internal/session/unattended.go:98
-#, c-format
-msgid "basalt.inst.confirm=%s does not name the disk the plan erases (%s): nothing was written"
 msgstr ""
 
 #: internal/tui/app.go:1026

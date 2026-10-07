@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,10 +31,10 @@ func fakeMachine(t *testing.T) string {
 	}
 	files := map[string]string{
 		"sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c": "\x06\x00\x00\x00\x01",
-		"sys/class/tpm/tpm0/tpm_version_major": "2\n",
-		"etc/os-release":                       "NAME=Fedora\nVERSION_ID=44\n",
-		"proc/meminfo":                         "MemTotal: 4000000 kB\n",
-		"proc/cmdline":                         "console=ttyS0 basalt.inst.repo=http://10.0.2.2:8098 basalt.inst.hostname=lab1",
+		"sys/class/tpm/tpm0/tpm_version_major":                                     "2\n",
+		"etc/os-release":                                                           "NAME=Fedora\nVERSION_ID=44\n",
+		"proc/meminfo":                                                             "MemTotal: 4000000 kB\n",
+		"proc/cmdline":                                                             "console=ttyS0 basalt.inst.repo=http://10.0.2.2:8098 basalt.inst.hostname=lab1",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
@@ -86,7 +87,8 @@ func (cl *client) call(op string, args any) Response {
 	select {
 	case r := <-cl.res:
 		return r
-	case <-time.After(5 * time.Second):
+	case <-time.After(time.Minute):
+		// A hang guard, not an expectation: slow CI runners stay green.
 		cl.t.Fatalf("no answer to %s", op)
 	}
 	return Response{}
@@ -95,7 +97,13 @@ func (cl *client) call(op string, args any) Response {
 func TestInstallOverTheSocket(t *testing.T) {
 	root := fakeMachine(t)
 	dir := t.TempDir()
+	var finishMu sync.Mutex
 	finished := ""
+	finishedAction := func() string {
+		finishMu.Lock()
+		defer finishMu.Unlock()
+		return finished
+	}
 	fr := &engine.FakeRunner{Captured: "abcdefgh-ijklmnop-qrstuvwx\n", Delay: time.Millisecond}
 	ss := session.New(session.Options{
 		Prober: probe.Prober{Root: root, Read: func(_ context.Context, argv ...string) (string, error) {
@@ -104,11 +112,13 @@ func TestInstallOverTheSocket(t *testing.T) {
 			}
 			return "kvm\n", nil
 		}},
-		Steps:  steps.Options{Root: filepath.Join(dir, "sysroot"), Work: filepath.Join(dir, "work")},
-		Engine: engine.Options{Runner: fr, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock")},
+		Steps:   steps.Options{Root: filepath.Join(dir, "sysroot"), Work: filepath.Join(dir, "work")},
+		Engine:  engine.Options{Runner: fr, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock"), LogNoSync: true},
 		Cmdline: filepath.Join(root, "proc/cmdline"),
 		Finisher: func(_ context.Context, action string) error {
+			finishMu.Lock()
 			finished = action
+			finishMu.Unlock()
 			return nil
 		},
 	})
@@ -121,13 +131,14 @@ func TestInstallOverTheSocket(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	srv := &Server{Session: ss, AllowUIDs: []int{os.Getuid()}, Logf: t.Logf}
-	go func() { _ = srv.Listen(ctx, sock, -1) }()
-	for i := 0; i < 100; i++ {
-		if _, err := os.Stat(sock); err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	// The socket exists before the server goroutine starts: no wait.
+	l, err := Bind(sock, -1)
+	if err != nil {
+		t.Fatal(err)
 	}
+	served := make(chan struct{})
+	go func() { _ = srv.Serve(ctx, l); close(served) }()
+	t.Cleanup(func() { cancel(); <-served })
 	cl := dial(t, sock)
 
 	r := cl.call("suggest", nil)
@@ -175,7 +186,7 @@ func TestInstallOverTheSocket(t *testing.T) {
 		t.Fatal(r.Error)
 	}
 	gotKey := ""
-	deadline := time.After(20 * time.Second)
+	deadline := time.After(2 * time.Minute) // a hang guard only
 wait:
 	for {
 		select {
@@ -208,17 +219,33 @@ wait:
 	if r := cl.call("recovery_key", nil); r.OK {
 		t.Fatal("the key is forgotten after the acknowledgement")
 	}
-	if r := cl.call("finish", nil); !r.OK || finished != "reboot" {
-		t.Fatalf("finish: %+v, action %q", r, finished)
+	if r := cl.call("finish", nil); !r.OK || finishedAction() != "reboot" {
+		t.Fatalf("finish: %+v, action %q", r, finishedAction())
 	}
-	// A late subscriber gets the history without the secret.
+	// A late subscriber gets the history without the secret. The replay
+	// ends with the acknowledgement, after the secret and "done".
 	cl2 := dial(t, sock)
 	cl2.call("subscribe", nil)
-	time.Sleep(50 * time.Millisecond)
-	for len(cl2.evs) > 0 {
-		e := <-cl2.evs
-		if e["type"] == "secret" && e["secret"] != nil {
-			t.Fatal("the history replays the recovery key")
+	sawSecret := false
+	deadline = time.After(2 * time.Minute)
+replay:
+	for {
+		select {
+		case e := <-cl2.evs:
+			if e["type"] == "secret" {
+				sawSecret = true
+				if e["secret"] != nil {
+					t.Fatal("the history replays the recovery key")
+				}
+			}
+			if e["type"] == session.EvKeyAcked {
+				break replay
+			}
+		case <-deadline:
+			t.Fatal("the history was not replayed")
 		}
+	}
+	if !sawSecret {
+		t.Fatal("the history lost the (redacted) secret event")
 	}
 }

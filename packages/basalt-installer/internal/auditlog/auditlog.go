@@ -39,6 +39,8 @@ type Log struct {
 	seq  int
 	prev string
 	now  func() time.Time
+	// noSync skips the fsync after each record (SetSync).
+	noSync bool
 }
 
 // Create starts a new log file (mode 0600). It fails if the file exists.
@@ -48,6 +50,15 @@ func Create(path string) (*Log, error) {
 		return nil, err
 	}
 	return &Log{f: f, path: path, prev: Genesis, now: time.Now}, nil
+}
+
+// SetSync turns the fsync after each record on (the default) or off. An
+// installation keeps it on, so the log survives a power cut; unit tests
+// turn it off, so a busy disk cannot stretch them into timeouts.
+func (l *Log) SetSync(on bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.noSync = !on
 }
 
 // Path returns the file the log is written to.
@@ -68,6 +79,9 @@ func (l *Log) Append(typ, step, text string, fields map[string]any) error {
 		return err
 	}
 	l.prev = r.Hash
+	if l.noSync {
+		return nil
+	}
 	return l.f.Sync()
 }
 

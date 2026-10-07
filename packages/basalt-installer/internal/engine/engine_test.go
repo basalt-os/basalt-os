@@ -55,7 +55,7 @@ func testSteps(t *testing.T, mutate func(*plan.Plan)) ([]steps.Step, string) {
 }
 
 func newEngine(dir string, fr *FakeRunner) *Engine {
-	return New(Options{Runner: fr, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock")})
+	return New(Options{Runner: fr, LogDir: filepath.Join(dir, "log"), LockPath: filepath.Join(dir, "lock"), LogNoSync: true})
 }
 
 func collect(evs *[]Event) func(Event) { return func(e Event) { *evs = append(*evs, e) } }

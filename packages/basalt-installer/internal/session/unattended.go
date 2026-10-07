@@ -50,6 +50,7 @@ func (s *Session) UnattendedRequested() bool { return s.cmdline()["confirm"] != 
 func (s *Session) setAuto(state, errText string) {
 	s.mu.Lock()
 	s.auto.State, s.auto.Error = state, errText
+	s.notifyLocked()
 	s.mu.Unlock()
 }
 
@@ -71,6 +72,7 @@ func (s *Session) RunUnattended(ctx context.Context, planWait time.Duration) {
 	}
 	s.mu.Lock()
 	s.auto = AutoStatus{Requested: true, State: AutoWaiting, Plan: src, Confirm: confirm}
+	s.notifyLocked()
 	s.mu.Unlock()
 	if src == "" {
 		s.setAuto(AutoRefused, fmt.Sprintf(i18n.T("basalt.inst.confirm=%s names a disk but there is no plan: add basalt.inst.plan=PATH or URL to the boot line"), confirm))
@@ -109,11 +111,9 @@ func (s *Session) RunUnattended(ctx context.Context, planWait time.Duration) {
 	}
 	s.setAuto(AutoRunning, "")
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(time.Second):
-		}
+		// Wait for the end of the installation, then for the recovery key
+		// acknowledgement: woken up by each state change, no polling.
+		changed := s.changes()
 		st := s.Status()
 		switch {
 		case st.State == Failed:
@@ -126,6 +126,11 @@ func (s *Session) RunUnattended(ctx context.Context, planWait time.Duration) {
 			}
 			s.setAuto(AutoDone, "")
 			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-changed:
 		}
 	}
 }

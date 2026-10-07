@@ -49,7 +49,10 @@ func run(m *model, cmd tea.Cmd) {
 	if cmd == nil {
 		return
 	}
-	// Only the installer's own commands; cursor blinks would wait.
+	// Only the installer's own commands are applied. Their result is waited
+	// for (a slow runner must not drop it); a cursor blink, if one ever got
+	// here, returns within a second and is ignored. The bound is a hang
+	// guard only.
 	done := make(chan tea.Msg, 1)
 	go func() { done <- cmd() }()
 	select {
@@ -58,7 +61,8 @@ func run(m *model, cmd tea.Cmd) {
 		case candidatesMsg, inspectedMsg:
 			m.Update(msg)
 		}
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(30 * time.Second):
+		panic("a TUI command did not return in 30s")
 	}
 }
 
