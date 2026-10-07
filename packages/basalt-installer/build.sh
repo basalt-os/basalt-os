@@ -26,7 +26,7 @@ mkdir -p "$cache"
 tarball="$cache/go$GO_VERSION.linux-amd64.tar.gz"
 if ! echo "$GO_SHA256  $tarball" | sha256sum -c --quiet - 2>/dev/null; then
   log "downloading Go $GO_VERSION"
-  curl -fsSL -o "$tarball.part" "https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz"
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$tarball.part" "https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz"
   echo "$GO_SHA256  $tarball.part" | sha256sum -c --quiet - || die "Go $GO_VERSION checksum mismatch"
   mv "$tarball.part" "$tarball"
 fi
@@ -45,6 +45,12 @@ in_fedora -v "$work:/rpmbuild" -v "$tarball:/go.tar.gz:ro" -e MODE="$mode" -e VE
   tar -C /opt -xzf /go.tar.gz
   export PATH=/opt/go/bin:$PATH GOTOOLCHAIN=local GOFLAGS=-mod=mod GOPATH=/tmp/gopath GOCACHE=/tmp/gocache
   mkdir -p /src && tar -C /src -xzf /rpmbuild/SOURCES/basalt-installer-$VER.tar.gz && cd /src
+  # The module proxy is the one download here: retry it, then verify.
+  for try in 1 2 3; do
+    go mod download && break
+    [ "$try" = 3 ] && { echo "go mod download failed 3 times" >&2; exit 1; }
+    echo "go mod download failed (try $try of 3), retrying" >&2; sleep $((try * 10))
+  done
   go mod verify >/dev/null
   go mod vendor
   if [ "$MODE" = test ]; then
@@ -53,10 +59,9 @@ in_fedora -v "$work:/rpmbuild" -v "$tarball:/go.tar.gz:ro" -e MODE="$mode" -e VE
   fi
   tar --owner=0 --group=0 --sort=name -czf /rpmbuild/SOURCES/basalt-installer-vendor-$VER.tar.gz vendor
   unset GOFLAGS
-  rpmbuild --define "_topdir /rpmbuild" -ba /rpmbuild/SPECS/basalt-installer.spec >/rpmbuild/build.log 2>&1 ||
-    { tail -60 /rpmbuild/build.log; exit 1; }
+  rpmbuild --define "_topdir /rpmbuild" -ba /rpmbuild/SPECS/basalt-installer.spec >/rpmbuild/build.log 2>&1 || exit 1
   grep -E "^ok|^---|FAIL" /rpmbuild/build.log || true
-'
+' || rpmbuild_failed basalt-installer "$work/build.log"
 [[ "$mode" == test ]] && exit 0
 mkdir -p "$RPM_DIR"
 sudo find "$work/RPMS" "$work/SRPMS" -name "basalt-installer*.rpm" -exec cp {} "$RPM_DIR/" \;

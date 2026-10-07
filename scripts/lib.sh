@@ -60,8 +60,39 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 # Print a command, then run it. Secrets are never passed on a command line.
 run() { printf '  $ %s\n' "$*" >&2; "$@"; }
 
+# curl options for downloads from the network (mirrors, release pages):
+# transient errors are retried instead of failing a build.
+# shellcheck disable=SC2034  # used by the scripts that source this file
+CURL_RETRY=(--retry 5 --retry-all-errors --retry-delay 5)
+
 # Run a command in a throwaway Fedora container (host network: on some hosts
 # DNS does not resolve inside rootful podman's default network).
 in_fedora() {
   $PODMAN run --rm --network=host --security-opt label=disable "$@"
+}
+
+# rpmbuild_failed NAME LOG: explain why the container build of NAME failed,
+# then exit. LOG is rpmbuild's output as the host sees it. Failed Go tests
+# in %check are named with their output (and as a GitHub Actions error
+# annotation), so a test failure reads as one instead of rpm's opaque
+# "Bad exit status from ... (%check)".
+rpmbuild_failed() {
+  local name="$1" logf="$2" stage tests
+  [[ -r "$logf" ]] || die "$name: the container build failed before rpmbuild ran (see the output above)"
+  stage="$(grep -oE 'Bad exit status from [^ ]+ \(%[a-z]+\)' "$logf" | grep -oE '%[a-z]+' | tail -1 || true)"
+  tests="$(sed -nE 's/^[[:space:]]*--- FAIL: ([^ ]+).*/\1/p' "$logf" | sort -u | paste -sd' ' || true)"
+  if [[ -n "$tests" ]]; then
+    printf '\n' >&2
+    log "$name: Go tests failed in ${stage:-the build}: $tests"
+    # Each failure with its indented output, data races and panics, and the
+    # FAIL line of the package it belongs to.
+    awk '/^[[:space:]]*--- FAIL: |^WARNING: DATA RACE|^panic: / { p = 1 }
+         p && /^(ok|\?)[[:space:]]/ { p = 0 }
+         p { print } /^FAIL[[:space:]]/ { p = 0 }' "$logf" | head -200 >&2
+    [[ "${GITHUB_ACTIONS:-}" == true ]] && echo "::error title=$name: Go tests failed in ${stage:-the build}::$tests"
+    die "$name: Go tests failed in ${stage:-the build}: $tests"
+  fi
+  tail -60 "$logf" >&2
+  [[ "${GITHUB_ACTIONS:-}" == true ]] && echo "::error title=$name: rpmbuild failed::in ${stage:-an unknown stage} (log above)"
+  die "$name: rpmbuild failed in ${stage:-an unknown stage} (last lines above)"
 }

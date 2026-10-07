@@ -28,7 +28,7 @@ if [[ "${1:-}" == --container ]]; then
         { echo "dnf install failed" >&2; exit 1; }
       tmp=$(mktemp -d)
       url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-      if curl -fsSL -o "$tmp/a.tgz" "$url" && echo "$ACTIONLINT_SHA256  $tmp/a.tgz" | sha256sum -c --quiet -; then
+      if curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$tmp/a.tgz" "$url" && echo "$ACTIONLINT_SHA256  $tmp/a.tgz" | sha256sum -c --quiet -; then
         tar -xzf "$tmp/a.tgz" -C /usr/local/bin actionlint
       else
         echo "actionlint download or checksum failed" >&2; exit 1

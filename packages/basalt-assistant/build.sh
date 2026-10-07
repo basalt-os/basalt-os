@@ -29,10 +29,9 @@ in_fedora -v "$work:/rpmbuild" -v "$REPO_ROOT/eval/cases:/eval-cases:ro" -e BASA
     GOFLAGS=-mod=mod GOTOOLCHAIN=local GOPROXY=off go vet ./... && GOFLAGS=-mod=mod GOTOOLCHAIN=local GOPROXY=off go test ./...
     exit
   fi
-  rpmbuild --define "_topdir /rpmbuild" -ba /rpmbuild/SPECS/basalt-assistant.spec >/rpmbuild/build.log 2>&1 ||
-    { tail -60 /rpmbuild/build.log; exit 1; }
+  rpmbuild --define "_topdir /rpmbuild" -ba /rpmbuild/SPECS/basalt-assistant.spec >/rpmbuild/build.log 2>&1 || exit 1
   grep -E "^ok|^---|FAIL" /rpmbuild/build.log || true
-'
+' || rpmbuild_failed basalt-assistant "$work/build.log"
 [[ "$mode" == test ]] && exit 0
 mkdir -p "$RPM_DIR"
 sudo find "$work/RPMS" "$work/SRPMS" -name "basalt-assistant*.rpm" -exec cp {} "$RPM_DIR/" \;

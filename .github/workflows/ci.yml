@@ -63,6 +63,11 @@ jobs:
         with:
           path: build/iso-cache
           key: fedora-iso-${{ steps.fedora-iso.outputs.sha256 }}
+      - name: Go toolchain cache (the installer's pinned upstream Go)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/cache
+          key: go-toolchain-${{ hashFiles('packages/basalt-installer/build.sh') }}
       - name: Build (packages, unsigned repository, ISO, checksums)
         run: make ci-build
       - name: Summary
@@ -134,6 +139,12 @@ jobs:
         with:
           path: build/iso-cache
           key: fedora-iso-${{ steps.fedora-iso.outputs.sha256 }}
+      - name: Go toolchain cache (restore only; the build job saves it)
+        if: steps.kvm.outputs.available == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/cache
+          key: go-toolchain-${{ hashFiles('packages/basalt-installer/build.sh') }}
       - name: Prepare (throwaway keys, packages, signed test repository, test ISO)
         if: steps.kvm.outputs.available == 'true'
         run: scripts/ci/boot-test.sh prepare

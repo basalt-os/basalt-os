@@ -23,15 +23,20 @@ fetch() {
   mkdir -p "$ISO_CACHE"
   cd "$ISO_CACHE" || die "cannot enter $ISO_CACHE"
   local sums
-  sums="$(curl -fsSL "$FEDORA_ISO_BASE/" | grep -oE "Fedora-Everything-[0-9.]+-[0-9.]+-$ARCH-CHECKSUM" | head -1)"
+  sums="$(curl -fsSL "${CURL_RETRY[@]}" "$FEDORA_ISO_BASE/" | grep -oE "Fedora-Everything-[0-9.]+-[0-9.]+-$ARCH-CHECKSUM" | head -1)"
   [[ -n "$sums" ]] || die "no CHECKSUM file at $FEDORA_ISO_BASE"
-  curl -fsSLO "$FEDORA_ISO_BASE/$sums"
+  curl -fsSLO "${CURL_RETRY[@]}" "$FEDORA_ISO_BASE/$sums"
   # Fedora's signing keys, from the project's key page (fetched over HTTPS).
-  curl -fsSL -o fedora.gpg https://fedoraproject.org/fedora.gpg
+  curl -fsSL "${CURL_RETRY[@]}" -o fedora.gpg https://fedoraproject.org/fedora.gpg
   gpgv --keyring ./fedora.gpg "$sums" 2>&1 | grep -q 'Good signature' || die "bad signature on $sums"
   local iso
   iso="$(sed -n 's/^SHA256 (\(Fedora-Everything-netinst-[^)]*\.iso\)) = .*/\1/p' "$sums")"
-  [[ -f "$iso" ]] || curl -fSLO "$FEDORA_ISO_BASE/$iso"
+  # Downloaded under a temporary name: an interrupted transfer never
+  # passes for the cached ISO.
+  if [[ ! -f "$iso" ]]; then
+    curl -fSL "${CURL_RETRY[@]}" -o "$iso.part" "$FEDORA_ISO_BASE/$iso" && mv "$iso.part" "$iso" ||
+      { rm -f "$iso.part"; die "download of $iso failed"; }
+  fi
   grep -F "SHA256 ($iso)" "$sums" | sha256sum -c --quiet - 2>/dev/null ||
     (sed -n "s/^SHA256 ($iso) = \(.*\)/\1  $iso/p" "$sums" | sha256sum -c --quiet -) || die "checksum mismatch for $iso"
   log "verified $ISO_CACHE/$iso"
