@@ -47,6 +47,7 @@ Look (no changes, no confirmation):
   basalt updates                      the updates the last check found, grouped, the restart state, history
   basalt updates check                download the newest package lists (update.check; as root)
   basalt channels                     Basalt's channels, added software sources, their signing keys
+  basalt keyboard                     the system's keyboard (the login screen, the console, new accounts)
 
 Change (as root; you see the exact commands first and confirm them):
   basalt apply ID [--yes --confirm CODE]
@@ -70,6 +71,9 @@ Change (as root; you see the exact commands first and confirm them):
                   | custom --baseurl URL --key-url URL --name NAME
                                       a software source; its signing key becomes trusted (source.add)
   basalt channels remove SOURCE       remove a source added through Basalt (source.remove)
+  basalt keyboard set LAYOUTS [--options OPTIONS]
+                                      the keyboard of the login screen, the console and new accounts,
+                                      e.g. br,us(intl) (keyboard.system; people's own settings stay)
   basalt audit rotate [--force]       seal the audit log and continue in a new file
   basalt why UNIT --apply, basalt fix selinux --apply, basalt disk --apply
                                       store the proposal and go straight to the confirmation
@@ -118,7 +122,7 @@ type opts struct {
 // valueOpts are the options of basalt channels and basalt __source that
 // take a value (kept in opts.kv).
 var valueOpts = map[string]bool{"--consent": true, "--repo-url": true, "--baseurl": true, "--key-url": true, "--name": true,
-	"--id": true, "--url-type": true, "--url": true, "--fingerprint": true, "--repo-gpgcheck": true, "--catalog": true, "--group": true}
+	"--id": true, "--options": true, "--url-type": true, "--url": true, "--fingerprint": true, "--repo-gpgcheck": true, "--catalog": true, "--group": true}
 
 func parse(argv []string) (opts, error) {
 	o := opts{since: time.Hour, config: config.DefaultPath, kv: map[string]string{}}
@@ -304,6 +308,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.updates(ctx)
 	case "channels", "channel":
 		return a.channels(ctx)
+	case "keyboard":
+		return a.keyboard(ctx)
 	case "__source":
 		return a.sourceHelper(ctx)
 	case "__offline-finish":

@@ -18,8 +18,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/keymap"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
 )
@@ -44,6 +46,7 @@ const (
 	RepoDisable       = "repo.disable"       // dnf config-manager setopt REPO.enabled=0
 	SourceAdd         = "source.add"         // a new software source: its key becomes a trust root
 	SourceRemove      = "source.remove"      // remove a source Basalt added
+	KeyboardSystem    = "keyboard.system"    // localectl: the keyboard of the login screen, the console and new accounts
 )
 
 // SourcePaths are the files the software source actions check (tests
@@ -361,6 +364,8 @@ func (a Action) Validate() error {
 		if !sources.ReID.MatchString(p["id"]) || !sources.HasRecord(SourcePaths, p["id"]) {
 			return fmt.Errorf("%q is not a source Basalt added", p["id"])
 		}
+	case KeyboardSystem:
+		return keyboardParams(p)
 	default:
 		return fmt.Errorf("unknown action kind %q", a.Kind)
 	}
@@ -476,6 +481,15 @@ func (a Action) Commands() ([]runner.Command, error) {
 	case SourceRemove:
 		return []runner.Command{{Argv: []string{"basalt", "__source", "remove", "--id", p["id"]},
 			Description: "remove the source " + p["id"] + " (and its key, when no other repository of it is left)"}}, nil
+	case KeyboardSystem:
+		cs, _ := keymap.ParseLayouts(p["layouts"])
+		layout, variant := keymap.XKBLists(cs)
+		return []runner.Command{
+			{Argv: []string{"localectl", "set-x11-keymap", "--no-convert", layout, p["model"], variant, p["options"]},
+				Description: "make " + p["layouts"] + " the keyboard layouts of the login screen and of new accounts"},
+			{Argv: []string{"localectl", "set-keymap", "--no-convert", p["keymap"]},
+				Description: "use the keymap " + p["keymap"] + " in the text console"},
+		}, nil
 	}
 	return nil, fmt.Errorf("unknown action kind %q", a.Kind)
 }
@@ -663,6 +677,16 @@ func (a Action) verifyOther(since time.Time) []Check {
 			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
 				return sources.HasRecord(SourcePaths, sp.ID), SourcePaths.RecordPath(sp.ID)
 			}}}
+	case KeyboardSystem:
+		cs, _ := keymap.ParseLayouts(p["layouts"])
+		layout, variant := keymap.XKBLists(cs)
+		return []Check{{Description: "the system's keyboard is " + p["layouts"] + ", console keymap " + p["keymap"],
+			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
+				cur := keymap.ReadCurrent()
+				l, v := keymap.XKBLists(cur.Layouts)
+				ok := l == layout && v == variant && cur.Console == p["keymap"] && strings.Join(cur.Options, ",") == p["options"]
+				return ok, "X11 " + l + " (" + v + "), console " + cur.Console
+			}}}
 	case SourceRemove:
 		id := p["id"]
 		return []Check{{Description: "the source " + id + " is gone",
@@ -672,6 +696,64 @@ func (a Action) verifyOther(since time.Time) []Check {
 			}}}
 	}
 	return nil
+}
+
+// keyboardParams checks a keyboard.system: layouts, variants and options
+// the system's XKB registry lists, in their canonical form, a model name
+// and a console keymap kbd has.
+func keyboardParams(p map[string]string) error {
+	for k := range p {
+		switch k {
+		case "layouts", "options", "model", "keymap":
+		default:
+			return fmt.Errorf("keyboard.system takes no %q", k)
+		}
+	}
+	cs, err := keymap.ParseLayouts(p["layouts"])
+	if err != nil {
+		return err
+	}
+	if keymap.FormatLayouts(cs) != p["layouts"] {
+		return fmt.Errorf("the layouts %q are not in their canonical form", p["layouts"])
+	}
+	opts, err := keymap.ParseOptions(p["options"])
+	if err != nil {
+		return err
+	}
+	if err := keymap.CheckModel(p["model"]); err != nil {
+		return err
+	}
+	reg, err := keyboardRegistry()
+	if err != nil {
+		return err
+	}
+	if err := reg.Check(cs, opts); err != nil {
+		return err
+	}
+	if !keymap.KeymapExists(p["keymap"]) {
+		return fmt.Errorf("%q is not a console keymap of this system", p["keymap"])
+	}
+	return nil
+}
+
+// keyboardRegistry loads the XKB registry once per set of paths (tests
+// change them).
+var (
+	kbdRegMu  sync.Mutex
+	kbdRegKey string
+	kbdReg    *keymap.Registry
+	kbdRegErr error
+)
+
+func keyboardRegistry() (*keymap.Registry, error) {
+	kbdRegMu.Lock()
+	defer kbdRegMu.Unlock()
+	key := strings.Join(keymap.RegistryPaths, "\x00")
+	if kbdRegKey != key || (kbdReg == nil && kbdRegErr == nil) {
+		kbdReg, kbdRegErr = keymap.LoadRegistry()
+		kbdRegKey = key
+	}
+	return kbdReg, kbdRegErr
 }
 
 // portListHas reads "8080,8081-8090" style lists from semanage port -l.

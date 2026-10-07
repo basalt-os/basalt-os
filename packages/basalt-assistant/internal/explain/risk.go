@@ -80,6 +80,8 @@ func riskOf(a action.Action) (int, string) {
 		return RiskHigh, "software from " + a.Params["name"] + " can change the whole system: its signing key becomes trusted"
 	case action.SourceRemove:
 		return RiskLow, "no more software comes from " + a.Params["id"] + "; what is installed from it stays"
+	case action.KeyboardSystem:
+		return RiskLow, "the login screen and the console type with " + a.Params["layouts"] + "; people's own keyboard settings stay"
 	}
 	return RiskHigh, "unknown change"
 }
@@ -113,6 +115,9 @@ func Undo(acts []action.Action) (text string, rollbackCmd bool) {
 	}
 	if toggles {
 		return "turn the channel back the other way in Settings, Updates and channels, or with basalt channels; no snapshot is needed for one setting, and every update takes its own.", false
+	}
+	if len(acts) == 1 && acts[0].Kind == action.KeyboardSystem {
+		return "choose other layouts in Settings, Keyboard, or with basalt keyboard set; no snapshot is needed for one setting.", false
 	}
 	var caveats []string
 	rollback, reversible := false, false

@@ -493,6 +493,8 @@ func Effect(a action.Action) string {
 		return "add the software source " + p["name"] + " (" + p["url"] + ") and trust its signing key " + p["fingerprint"]
 	case action.SourceRemove:
 		return "remove the software source " + p["id"]
+	case action.KeyboardSystem:
+		return "make " + p["layouts"] + " the keyboard layouts of the login screen, the text console (" + p["keymap"] + ") and new accounts"
 	}
 	return a.Kind
 }

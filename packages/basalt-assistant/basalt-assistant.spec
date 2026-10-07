@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.12.1
+Version:        0.12.2
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -207,6 +207,14 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.2-1
+- basalt keyboard: the system's keyboard (the login screen, the text
+  console, new accounts), and the keyboard.system proposal (basalt keyboard
+  set LAYOUTS [--options OPTIONS]) that the desktop's Settings, Keyboard
+  stores through its read helper. Layouts, variants and options are checked
+  against the system's XKB registry; the executor runs localectl
+  set-x11-keymap and set-keymap (no snapshot: one setting).
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.1-1
 - An offline update no longer restarts the computer by itself: it stays
   staged until Settings' 60 second countdown ends (or Restart now), through

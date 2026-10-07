@@ -47,7 +47,7 @@ func TestShipped(t *testing.T) {
 		return n
 	}
 	all := func(*Action) bool { return true }
-	if n := count("assistant.json", all); n != 18 {
+	if n := count("assistant.json", all); n != 19 {
 		t.Errorf("assistant actions: %d", n)
 	}
 	if n := count("shell.json", func(a *Action) bool { return !a.PersonOnly && !a.AgentOnly }); n != 16 {
@@ -170,5 +170,35 @@ func TestBadFiles(t *testing.T) {
 	r = load(t)
 	if err := r.Add("dup", []byte(`{"registry": 1, "actions": [{"id": "unit.restart", "class": "C0", "args": {}, "executor": "basalt-gate"}]}`)); err == nil {
 		t.Error("an action defined twice (to lower its class) was accepted")
+	}
+}
+
+// keyboard.system: the system's keyboard, decided like any system change.
+func TestKeyboardSystemArgs(t *testing.T) {
+	r := load(t)
+	a, err := r.Lookup("keyboard.system")
+	if err != nil || a.Class != "C2" || !a.System {
+		t.Fatalf("%+v %v", a, err)
+	}
+	for _, good := range []map[string]any{
+		{"layouts": "br,us(intl)", "options": "grp:alt_shift_toggle,compose:ralt", "model": "pc105", "keymap": "br"},
+		{"layouts": "br", "options": "", "model": "pc105", "keymap": "br-abnt2"},
+		{"layouts": "de(nodeadkeys)", "model": "pc105", "keymap": "de-nodeadkeys"},
+	} {
+		if _, err := a.Validate(good); err != nil {
+			t.Errorf("%v: %v", good, err)
+		}
+	}
+	for _, bad := range []map[string]any{
+		{"layouts": "br; reboot", "model": "pc105", "keymap": "br"},
+		{"layouts": "br,us,de,fr,it", "model": "pc105", "keymap": "br"},
+		{"layouts": "br", "options": "x", "model": "pc105", "keymap": "br"},
+		{"layouts": "br", "model": "pc105", "keymap": "../shadow"},
+		{"layouts": "br", "model": "pc105"},
+		{"layouts": "br", "model": "pc105", "keymap": "br", "file": "/etc/passwd"},
+	} {
+		if _, err := a.Validate(bad); err == nil {
+			t.Errorf("accepted %v", bad)
+		}
 	}
 }

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xkbConfigRegistry SYSTEM "xkb.dtd">
+<!-- A trimmed copy of xkeyboard-config's rules/evdev.xml for the tests. -->
+<xkbConfigRegistry version="1.1">
+  <modelList>
+    <model>
+      <configItem>
+        <name>pc105</name>
+        <description>Generic 105-key PC</description>
+      </configItem>
+    </model>
+  </modelList>
+  <layoutList>
+    <layout>
+      <configItem>
+        <name>us</name>
+        <shortDescription>en</shortDescription>
+        <description>English (US)</description>
+      </configItem>
+      <variantList>
+        <variant>
+          <configItem>
+            <name>intl</name>
+            <description>English (US, intl., with dead keys)</description>
+          </configItem>
+        </variant>
+        <variant>
+          <configItem>
+            <name>alt-intl</name>
+            <description>English (US, alt. intl.)</description>
+          </configItem>
+        </variant>
+      </variantList>
+    </layout>
+    <layout>
+      <configItem>
+        <name>br</name>
+        <!-- Keyboard indicator for Portuguese layouts -->
+        <shortDescription>pt</shortDescription>
+        <description>Portuguese (Brazil)</description>
+      </configItem>
+      <variantList>
+        <variant>
+          <configItem>
+            <name>nodeadkeys</name>
+            <description>Portuguese (Brazil, no dead keys)</description>
+          </configItem>
+        </variant>
+        <variant>
+          <configItem>
+            <name>thinkpad</name>
+            <description>Portuguese (Brazil, IBM/Lenovo ThinkPad)</description>
+          </configItem>
+        </variant>
+      </variantList>
+    </layout>
+    <layout>
+      <configItem>
+        <name>de</name>
+        <shortDescription>de</shortDescription>
+        <description>German</description>
+      </configItem>
+      <variantList>
+        <variant>
+          <configItem>
+            <name>nodeadkeys</name>
+            <description>German (no dead keys)</description>
+          </configItem>
+        </variant>
+      </variantList>
+    </layout>
+  </layoutList>
+  <optionList>
+    <group allowMultipleSelection="true">
+      <configItem>
+        <name>grp</name>
+        <description>Switching to another layout</description>
+      </configItem>
+      <option><configItem><name>grp:alt_shift_toggle</name><description>Alt+Shift</description></configItem></option>
+      <option><configItem><name>grp:ctrl_shift_toggle</name><description>Ctrl+Shift</description></configItem></option>
+      <option><configItem><name>grp:alts_toggle</name><description>Both Alts together</description></configItem></option>
+    </group>
+    <group allowMultipleSelection="true">
+      <configItem>
+        <name>caps</name>
+        <description>Caps Lock behavior</description>
+      </configItem>
+      <option><configItem><name>caps:escape</name><description>Make Caps Lock an additional Esc</description></configItem></option>
+      <option><configItem><name>caps:swapescape</name><description>Swap Esc and Caps Lock</description></configItem></option>
+      <option><configItem><name>caps:none</name><description>Caps Lock is disabled</description></configItem></option>
+    </group>
+    <group allowMultipleSelection="true">
+      <configItem>
+        <name>ctrl</name>
+        <description>Ctrl position</description>
+      </configItem>
+      <option><configItem><name>ctrl:nocaps</name><description>Caps Lock as Ctrl</description></configItem></option>
+    </group>
+    <group allowMultipleSelection="true">
+      <configItem>
+        <name>Compose key</name>
+        <description>Position of Compose key</description>
+      </configItem>
+      <option><configItem><name>compose:ralt</name><description>Right Alt</description></configItem></option>
+      <option><configItem><name>compose:menu</name><description>Menu</description></configItem></option>
+      <option><configItem><name>compose:rctrl</name><description>Right Ctrl</description></configItem></option>
+    </group>
+    <group allowMultipleSelection="true">
+      <configItem>
+        <name>terminate</name>
+        <description>Key sequence to kill the X server</description>
+      </configItem>
+      <option><configItem><name>terminate:ctrl_alt_bksp</name><description>Ctrl+Alt+Backspace</description></configItem></option>
+    </group>
+  </optionList>
+</xkbConfigRegistry>

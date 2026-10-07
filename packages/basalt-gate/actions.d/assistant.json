@@ -13,7 +13,8 @@
     "selinux.fix": ["selinux.fcontext", "selinux.restorecon", "selinux.port", "selinux.boolean"],
     "system.cleanup": ["journal.vacuum", "dnf.clean"],
     "system.updates": ["update.install", "update.rollback"],
-    "system.channels": ["repo.enable", "repo.disable", "source.remove"]
+    "system.channels": ["repo.enable", "repo.disable", "source.remove"],
+    "system.keyboard": ["keyboard.system"]
   },
   "actions": [
     { "id": "selinux.fcontext", "class": "C2", "system": true, "snapshot": true, "reversible": "snapshot",
@@ -125,6 +126,16 @@
       "args": { "id": { "type": "string", "required": true, "pattern": "[a-z][a-z0-9._-]{1,62}" } },
       "resources": [ { "kind": "setting", "arg": "id" } ],
       "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
-      "preview": { "show": ["id"] } }
+      "preview": { "show": ["id"] } },
+    { "id": "keyboard.system", "class": "C2", "system": true, "reversible": "snapshot",
+      "description": "the keyboard of the login screen, the text console and new accounts (localectl); people's own keyboard settings stay",
+      "args": { "layouts": { "type": "string", "required": true,
+                             "pattern": "[a-z][a-z0-9_-]{0,31}(\\([A-Za-z0-9][A-Za-z0-9_.+-]{0,47}\\))?(,[a-z][a-z0-9_-]{0,31}(\\([A-Za-z0-9][A-Za-z0-9_.+-]{0,47}\\))?){0,3}" },
+                "options": { "type": "string", "pattern": "(|[a-z][a-z0-9_]{0,31}:[A-Za-z0-9_+.-]{1,48}(,[a-z][a-z0-9_]{0,31}:[A-Za-z0-9_+.-]{1,48}){0,15})" },
+                "model": { "type": "string", "required": true, "pattern": "[a-z0-9][a-z0-9_-]{0,31}" },
+                "keymap": { "type": "string", "required": true, "pattern": "[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}" } },
+      "resources": [ { "kind": "setting", "arg": "=keyboard" } ],
+      "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
+      "preview": { "show": ["layouts", "options", "keymap"] } }
   ]
 }

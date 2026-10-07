@@ -55,6 +55,9 @@ func TestReadHelperCommandsRunNoRPMOrDNF(t *testing.T) {
 		{"why", "nginx.service", "--json"},
 		{"fix", "selinux", "--json"},
 		{"audit", "20"},
+		{"keyboard", "--json"},
+		{"keyboard", "set", "br,us(intl)", "--json"},
+		{"keyboard", "set", "br", "--options", "grp:alt_shift_toggle", "--json"},
 	} {
 		g := &guard{}
 		o, err := parse(argv)
@@ -73,7 +76,9 @@ func TestReadHelperCommandsRunNoRPMOrDNF(t *testing.T) {
 			audit: audit.New(cfg.AuditPath, "basalt"), out: &bytes.Buffer{}}
 		_ = a.dispatch(context.Background())
 		for _, r := range g.ran {
-			if p := strings.Fields(r)[0]; p == "rpm" || p == "dnf" || p == "dnf5" || p == "rpmkeys" {
+			// Nor localectl: the system's keyboard changes only when the
+			// person applies the keyboard.system proposal (the executor).
+			if p := strings.Fields(r)[0]; p == "rpm" || p == "dnf" || p == "dnf5" || p == "rpmkeys" || p == "localectl" {
 				t.Errorf("basalt %s ran %q", strings.Join(argv, " "), r)
 			}
 		}

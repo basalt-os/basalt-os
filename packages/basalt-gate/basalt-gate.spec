@@ -12,7 +12,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-gate
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        Approval gate: one decision point for every side effect
 License:        Apache-2.0 AND (MIT OR Apache-2.0)
@@ -147,6 +147,11 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_gate.if
 
 %changelog
+* Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.1-1
+- Registry: keyboard.system (C2, a system change), the system assistant's
+  action that sets the keyboard of the login screen, the console and new
+  accounts (Settings, Keyboard: "Use my layouts there too").
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
 - Registry: the system assistant's update, channel and software source
   actions (source.add is Critical: a new trust root).
