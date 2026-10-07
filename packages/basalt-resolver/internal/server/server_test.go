@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -370,5 +371,20 @@ func TestUDPListener(t *testing.T) {
 	a, err := dnsmsg.ParseAnswer(buf[:n], dnsmsg.Question{Name: "api.example.com", Type: dnsmsg.TypeA, Class: 1}, 99)
 	if err != nil || len(a.Answers) != 1 {
 		t.Fatalf("%v %+v", err, a)
+	}
+}
+
+// A port of the range held by another program (here on TCP only) is
+// skipped, not a reason to refuse the session.
+func TestBusyPortIsSkipped(t *testing.T) {
+	s, _, _ := setup(t)
+	busy, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(s.cfg.PortFirst)))
+	if err != nil {
+		t.Skipf("port %d not free for the test: %v", s.cfg.PortFirst, err)
+	}
+	defer busy.Close()
+	ss := register(t, s, "api.example.com")
+	if ss.Port == s.cfg.PortFirst || ss.Port > s.cfg.PortLast {
+		t.Fatalf("session on port %d (range %d-%d, first one busy)", ss.Port, s.cfg.PortFirst, s.cfg.PortLast)
 	}
 }

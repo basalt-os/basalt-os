@@ -571,9 +571,18 @@ func (s *Server) register(peer Peer, req Request) (string, error) {
 		delete(s.byNft, ss.Nft)
 		s.mu.Unlock()
 	}
-	if err := s.listen(ss); err != nil {
-		undo()
-		return "", err
+	// A port of the range may be taken by another program (on either
+	// protocol): move on to the next free one instead of refusing.
+	for {
+		err := s.listen(ss)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) || !s.nextPort(ss) {
+			undo()
+			return "", err
+		}
+		s.logf("session %s: %v; trying port %d", ss.ID, err, ss.Port)
 	}
 	_ = s.fw.Remove(ss.Nft) // leftovers of an earlier session with the same id
 	if err := s.fw.Add(nft.Session{Name: ss.Nft, Cgroup: ss.Cgroup, DNSPort: ss.Port, Loopback: ss.Loopback, LogGroup: s.cfg.LogGroup}); err != nil {
@@ -590,6 +599,27 @@ func (s *Server) register(peer Peer, req Request) (string, error) {
 	s.record(ss, "egress.session.start", "ok", map[string]any{"cgroup": ss.Cgroup, "dns": addr,
 		"allow": ss.Allow, "loopback": ss.Loopback, "policy": "default-deny"})
 	return addr, nil
+}
+
+// nextPort moves a session that is being registered to the next port of
+// the range no other session holds. It reports false at the end of the
+// range.
+func (s *Server) nextPort(ss *session) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	used := map[int]bool{}
+	for _, o := range s.sessions {
+		if o != ss {
+			used[o.Port] = true
+		}
+	}
+	for p := ss.Port + 1; p <= s.cfg.PortLast; p++ {
+		if !used[p] {
+			ss.Port = p
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) save(ss *session) error {
