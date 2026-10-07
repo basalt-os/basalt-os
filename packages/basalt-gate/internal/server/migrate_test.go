@@ -20,20 +20,28 @@ var pGateExec = peer.Peer{UID: 0, PID: 950, Context: "system_u:system_r:basalt_g
 type units struct {
 	mu    sync.Mutex
 	names []string
+	// started is closed (and replaced) at each start, so waitFor wakes up
+	// at once instead of polling against a short deadline.
+	started chan struct{}
 }
 
 func (u *units) start(name string) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.names = append(u.names, name)
+	if u.started != nil {
+		close(u.started)
+	}
+	u.started = make(chan struct{})
 	return nil
 }
 
-// waitFor polls until the unit was started (startUnits runs it in the
-// background).
+// waitFor blocks until the unit was started (startUnits runs it in the
+// background). The deadline is a hang guard, not part of the expectation.
 func (u *units) waitFor(t *testing.T, name string) {
 	t.Helper()
-	for i := 0; i < 200; i++ {
+	deadline := time.After(time.Minute)
+	for {
 		u.mu.Lock()
 		for _, n := range u.names {
 			if n == name {
@@ -41,10 +49,19 @@ func (u *units) waitFor(t *testing.T, name string) {
 				return
 			}
 		}
+		if u.started == nil {
+			u.started = make(chan struct{})
+		}
+		next := u.started
 		u.mu.Unlock()
-		time.Sleep(5 * time.Millisecond)
+		select {
+		case <-next:
+		case <-deadline:
+			u.mu.Lock()
+			defer u.mu.Unlock()
+			t.Fatalf("unit %s was not started (%v)", name, u.names)
+		}
 	}
-	t.Fatalf("unit %s was not started (%v)", name, u.names)
 }
 
 func (u *units) count() int {
@@ -228,6 +245,9 @@ func TestCodeConfirmCanBeTurnedOff(t *testing.T) {
 	if e.pk.last() != "org.basalt-os.gate.decide-admin" {
 		t.Errorf("polkit: %s", e.pk.last())
 	}
+	// Each decision starts its unit from its own goroutine, in no set
+	// order: wait for both before counting.
+	u.waitFor(t, "basalt-gate-exec@"+rep.ID+".service")
 	u.waitFor(t, "basalt-gate-exec@"+rep2.ID+".service")
 	if n := u.count(); n != 2 {
 		t.Errorf("units started: %d", n)

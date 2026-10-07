@@ -1013,7 +1013,9 @@ func TestWaitWakes(t *testing.T) {
 	e := newEnv(t)
 	rep := e.propose(pTool, echo("wait"))
 	done := make(chan gate.Reply)
-	go func() { done <- e.do(pTool, gate.Request{Op: "wait", ID: rep.ID, Timeout: 30}) }()
+	go func() { done <- e.do(pTool, gate.Request{Op: "wait", ID: rep.ID, Timeout: 120}) }()
+	// Usually lets the waiter block first; when it does not, the wait
+	// sees the decision at once, which is the same answer.
 	time.Sleep(50 * time.Millisecond)
 	e.approve(pTTY, rep.ID)
 	select {
@@ -1021,7 +1023,8 @@ func TestWaitWakes(t *testing.T) {
 		if r.Decision != gate.Allowed || r.TimedOut {
 			t.Errorf("%+v", r)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(time.Minute):
+		// A hang guard: the waiter's own timeout (120 s) is longer.
 		t.Fatal("wait did not wake")
 	}
 }
