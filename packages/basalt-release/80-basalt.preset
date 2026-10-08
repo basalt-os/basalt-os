@@ -12,6 +12,9 @@ enable snapper-cleanup.timer
 disable snapper-timeline.timer
 enable basalt-snapshot-boot.service
 enable basalt-initial-snapshot.service
+# Sets snapshots up at boot when a system has none yet (Basalt packages
+# added to an installed Fedora); nothing to do on a Basalt OS install.
+enable basalt-snapshots-auto.service
 
 # Security (basalt-security): Basalt module signing certificates loaded at
 # boot. basalt-tpm-resume.service is enabled only by `basalt-tpm suspend`.

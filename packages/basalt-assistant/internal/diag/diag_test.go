@@ -461,3 +461,42 @@ func TestConfidentAnswerWithoutAFixProposesNothing(t *testing.T) {
 		}
 	}
 }
+
+// A system without snapper's root configuration says why snapshots are
+// off: btrfs (set up at the next boot), another file system (not
+// possible), nothing on a live system or when the configuration exists.
+func TestStatusSnapshotsOff(t *testing.T) {
+	te := newEnv(t)
+	te.SnapperConfig = "/etc/snapper/configs/root"
+	cases := []struct {
+		fs, want string
+		config   bool
+	}{
+		{"btrfs", "basalt-snapshots-auto", false},
+		{"ext4", "is ext4, not btrfs", false},
+		{"xfs", "is xfs, not btrfs", false},
+		{"overlay", "", false},
+		{"btrfs", "", true},
+	}
+	for _, c := range cases {
+		te.fake.Answers["findmnt -no FSTYPE /"] = runner.Result{Out: c.fs + "\n"}
+		te.Inode = func(p string) (uint64, bool) { return 7, c.config && p == "/etc/snapper/configs/root" }
+		st := te.GetStatus(context.Background(), 0)
+		if c.want == "" {
+			if st.SnapshotsOff != "" {
+				t.Errorf("%s config=%v: unexpected %q", c.fs, c.config, st.SnapshotsOff)
+			}
+			continue
+		}
+		if !strings.Contains(st.SnapshotsOff, c.want) {
+			t.Errorf("%s: %q does not say %q", c.fs, st.SnapshotsOff, c.want)
+		}
+		found := false
+		for _, p := range st.Problems {
+			found = found || p == st.SnapshotsOff
+		}
+		if !found {
+			t.Errorf("%s: not among the problems: %v", c.fs, st.Problems)
+		}
+	}
+}

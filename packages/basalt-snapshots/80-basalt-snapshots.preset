@@ -1,0 +1,7 @@
+# basalt-snapshots: set the snapshots up at boot on a system that has none
+# yet (a Fedora install that got the Basalt packages afterwards). Also in
+# basalt-release's 80-basalt.preset; here so it is on without it too.
+enable basalt-snapshots-auto.service
+enable basalt-snapshot-boot.service
+enable basalt-initial-snapshot.service
+enable snapper-cleanup.timer

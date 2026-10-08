@@ -1,0 +1,23 @@
+[Unit]
+Description=Set up Basalt OS snapshots on a system that has none yet
+Documentation=man:snapper(8) https://github.com/basalt-os/basalt-os
+# A Fedora system that got the Basalt packages after it was installed has no
+# snapper configuration: the Basalt OS installer is what normally runs
+# basalt-snapshots-setup. At the next boot this sets the snapshots up when
+# the root is a btrfs subvolume booted by GRUB, and otherwise writes why not
+# to the journal (exit status 3, not a failure; `basalt status` reports it).
+# A failed setup fails the unit, which the assistant reports.
+ConditionPathExists=!/etc/snapper/configs/root
+ConditionKernelCommandLine=!rd.live.image
+ConditionVirtualization=!container
+RequiresMountsFor=/boot
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=basalt-initial-snapshot.service basalt-snapshot-boot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/basalt-snapshots-setup --auto
+SuccessExitStatus=3
+
+[Install]
+WantedBy=multi-user.target

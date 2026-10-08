@@ -41,6 +41,7 @@ type Status struct {
 	Disk          FSStat    `json:"disk"`
 	DiskPct       float64   `json:"disk_pct"`
 	Snapshots     int       `json:"snapshots"`
+	SnapshotsOff  string    `json:"snapshots_off,omitempty"`
 	LastSnapshot  string    `json:"last_snapshot"`
 	OrphanPre     []int     `json:"unfinished_transactions,omitempty"`
 	RollbackState string    `json:"rollback_state"`
@@ -83,6 +84,10 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 		last := snaps[len(snaps)-1]
 		s.LastSnapshot = fmt.Sprintf("%d (%s, %s, %q)", last.Number, last.Date, last.Type, last.Description)
 	}
+	if off := e.SnapshotsOff(ctx); off != "" {
+		s.SnapshotsOff = off
+		s.Problems = append(s.Problems, off)
+	}
 	for _, o := range OrphanPre(snaps, e.now(), 10*time.Minute) {
 		s.OrphanPre = append(s.OrphanPre, o.Number)
 	}
@@ -103,6 +108,34 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 		s.Problems = append(s.Problems, fmt.Sprintf("%s waiting for your decision. See: basalt pending", plural(pending, "proposal is", "proposals are")))
 	}
 	return s
+}
+
+// SnapshotsOff says why package transactions take no snapshots of the
+// root, or "" when they do (or on a live system, which has nothing to
+// keep). A Fedora install that got the Basalt packages afterwards has no
+// snapper configuration: basalt-snapshots-auto.service sets it up at the
+// next boot when the root is a btrfs subvolume booted by GRUB.
+func (e *Env) SnapshotsOff(ctx context.Context) string {
+	if e.SnapperConfig == "" || e.Inode == nil {
+		return ""
+	}
+	if _, ok := e.Inode(e.SnapperConfig); ok {
+		return ""
+	}
+	fs := strings.TrimSpace(e.R.Read(ctx, "findmnt", "-no", "FSTYPE", "/").Out)
+	switch fs {
+	case "overlay", "squashfs", "tmpfs", "iso9660":
+		return "" // a live system
+	case "btrfs":
+		return "Snapshots are off: the root file system has no snapper configuration yet, so updates cannot be undone. " +
+			"They are set up at the next start (basalt-snapshots-auto.service), or now with: sudo basalt-snapshots-setup. " +
+			"If they still are not, see why: journalctl -u basalt-snapshots-auto"
+	case "":
+		return "Snapshots are off: the root file system has no snapper configuration, so updates cannot be undone. " +
+			"See why: journalctl -u basalt-snapshots-auto"
+	}
+	return fmt.Sprintf("Snapshots are off: the root file system is %s, not btrfs, so updates cannot be undone from a snapshot. "+
+		"Basalt OS snapshots need btrfs (a new install of Basalt OS sets it up)", fs)
 }
 
 func times(n int) string {

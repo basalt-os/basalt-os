@@ -282,6 +282,21 @@ state without losing unattended boots (`basalt-tpm suspend`, `reenroll`):
   dropped; no hourly timeline snapshots of the root. `snapper-cleanup.timer`
   runs daily.
 
+### Basalt packages added to an installed Fedora
+
+The installer runs `basalt-snapshots-setup`; a Fedora system that got the
+Basalt packages afterwards has no snapper configuration, so dnf
+transactions would take no snapshots and rollback would not work. Installing
+basalt-snapshots there says so at once, and at the next boot
+`basalt-snapshots-auto.service` (enabled by the package's own preset) runs
+`basalt-snapshots-setup --auto`: when the root is a btrfs subvolume booted
+by GRUB (Fedora's default layout) it sets the snapshots up as the installer
+would, with a first snapshot; otherwise it writes why not to the journal
+(`journalctl -u basalt-snapshots-auto`) and `basalt status` reports
+"Snapshots are off" with the reason. `SETUP=off` in
+`/etc/basalt/snapshots.conf` turns the automatic setup off;
+`basalt-snapshots-setup --auto --check` only reports.
+
 ### Rollback
 
 `snapper rollback` works by changing the btrfs default subvolume, so the root

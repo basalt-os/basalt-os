@@ -55,6 +55,10 @@ type Env struct {
 	Decide *decide.Layer
 	// SnapshotDir is /.snapshots.
 	SnapshotDir string
+	// SnapperConfig is snapper's configuration of the root
+	// (/etc/snapper/configs/root); empty skips the "snapshots are off"
+	// check.
+	SnapperConfig string
 	// HistoryPath stores disk usage samples for the forecast.
 	HistoryPath string
 	// Policy answers SELinux policy queries (retries, short cache); one is
@@ -90,17 +94,18 @@ func Real(confined bool, layer *decide.Layer) *Env {
 		Isolate: func(argv []string, replace map[string]string) []string {
 			return sandbox.Wrap(exe, argv, replace)
 		},
-		R:           r,
-		Confined:    confined,
-		Now:         time.Now,
-		Statfs:      statfs,
-		Label:       label,
-		Inode:       inode,
-		ReadFile:    os.ReadFile,
-		Glob:        glob,
-		Decide:      layer,
-		SnapshotDir: "/.snapshots",
-		HistoryPath: "/var/lib/basalt-assistant/disk-history.jsonl",
+		R:             r,
+		Confined:      confined,
+		Now:           time.Now,
+		Statfs:        statfs,
+		Label:         label,
+		Inode:         inode,
+		ReadFile:      os.ReadFile,
+		Glob:          glob,
+		Decide:        layer,
+		SnapshotDir:   "/.snapshots",
+		SnapperConfig: "/etc/snapper/configs/root",
+		HistoryPath:   "/var/lib/basalt-assistant/disk-history.jsonl",
 	}
 }
 

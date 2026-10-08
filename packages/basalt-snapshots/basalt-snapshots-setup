@@ -3,6 +3,17 @@
 #
 #   basalt-snapshots-setup [--no-grub-mkconfig] [--no-initial-snapshot]
 #   basalt-snapshots-setup --initial-snapshot   only step 5 (first boot service)
+#   basalt-snapshots-setup --auto [--check]     boot service: set up a system
+#                                               that has no snapper configuration
+#                                               yet, or say why it cannot be
+#
+# --auto is for a Fedora system that got the Basalt packages after it was
+# installed (the Basalt OS installer runs the setup itself): at the next boot
+# basalt-snapshots-auto.service sets the snapshots up when the root is a
+# btrfs subvolume booted by GRUB, and otherwise writes a warning to the
+# journal (`basalt status` says the same). SETUP=off in
+# /etc/basalt/snapshots.conf turns it off. --check only reports (exit 0: it
+# can be set up, 3: it cannot, 4: already set up) and changes nothing.
 #
 # Run once, as root, on an installed system (the Basalt OS kickstart runs it
 # at the end of the installation). What it changes:
@@ -29,20 +40,65 @@ set -euo pipefail
 mkconfig=1
 initial=1
 only_initial=0
+auto=0
+check=0
 for a in "$@"; do
   case "$a" in
     --no-grub-mkconfig) mkconfig=0 ;;
     --no-initial-snapshot) initial=0 ;;
     --initial-snapshot) only_initial=1 ;;
-    *) echo "usage: basalt-snapshots-setup [--no-grub-mkconfig] [--no-initial-snapshot] | --initial-snapshot" >&2; exit 2 ;;
+    --auto) auto=1 ;;
+    --check) check=1 ;;
+    *) echo "usage: basalt-snapshots-setup [--no-grub-mkconfig] [--no-initial-snapshot] | --initial-snapshot | --auto [--check]" >&2; exit 2 ;;
   esac
 done
 
 log() { printf 'basalt-snapshots-setup: %s\n' "$*" >&2; }
 die() { log "error: $*"; exit 1; }
 
+# why_not: prints why this system cannot get Basalt's snapshots (nothing
+# when it can). Basalt OS needs / on a btrfs subvolume (not the top level,
+# which snapper rollback cannot replace) and GRUB, which boots the default
+# subvolume and lists the snapshots.
+why_not() {
+  local fs
+  fs="$(findmnt -no FSTYPE / 2>/dev/null || true)"
+  if [[ "$fs" != btrfs ]]; then
+    echo "the root file system is ${fs:-unknown}, not btrfs; snapshots need btrfs"
+  elif [[ "$(btrfs subvolume show / 2>/dev/null | head -1)" == / ]]; then
+    echo "the root file system is the top-level btrfs subvolume; rollback needs the system in its own subvolume"
+  elif [[ ! -d /boot/grub2 ]]; then
+    echo "the boot loader is not GRUB (no /boot/grub2); the snapshot boot menu and rollback need it"
+  elif ! awk '$1 !~ /^#/ && $2 == "/" && $3 == "btrfs" {f = 1} END {exit !f}' /etc/fstab 2>/dev/null; then
+    echo "/etc/fstab has no btrfs entry for /"
+  fi
+}
+
 [[ $EUID -eq 0 ]] || die "run as root"
-[[ "$(findmnt -no FSTYPE /)" == btrfs ]] || die "/ is not btrfs"
+
+if [[ $auto == 1 ]]; then
+  [[ -r /etc/basalt/snapshots.conf ]] && . /etc/basalt/snapshots.conf
+  if snapper --no-dbus -c "$SNAPPER_CONFIG" get-config >/dev/null 2>&1; then
+    [[ $check == 1 ]] && exit 4
+    exit 0
+  fi
+  reason="$(why_not)"
+  if [[ -n "$reason" ]]; then
+    log "warning: snapshots are off on this system: $reason. Package updates cannot be undone from a snapshot."
+    exit 3
+  fi
+  [[ $check == 1 ]] && exit 0
+  if [[ "${SETUP:-auto}" == off ]]; then
+    log "warning: snapshots are not set up (SETUP=off in /etc/basalt/snapshots.conf); run basalt-snapshots-setup to set them up"
+    exit 0
+  fi
+  log "no snapper configuration for /: setting up snapshots (this system got the Basalt packages after it was installed)"
+  # Not inside an installer: this is a booted system, so the first snapshot
+  # (step 5) is taken right away.
+fi
+
+reason="$(why_not)"
+[[ -z "$reason" ]] || die "$reason"
 mountpoint -q /boot || log "warning: /boot is not a separate file system; snapshot boot entries need one"
 
 initial_snapshot() {
