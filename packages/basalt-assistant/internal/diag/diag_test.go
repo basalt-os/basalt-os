@@ -500,3 +500,34 @@ func TestStatusSnapshotsOff(t *testing.T) {
 		}
 	}
 }
+
+// As a normal user btrfs answers with an error: that must not read as a
+// waiting rollback, and an unreadable snapshot list is not "none".
+func TestStatusAsUser(t *testing.T) {
+	te := newEnv(t)
+	te.fake.Answers["btrfs subvolume get-default /"] = runner.Result{Out: "ERROR: can't perform the search: Operation not permitted\n", Code: 1}
+	te.fake.Answers["btrfs inspect-internal rootid /"] = runner.Result{Out: "ERROR: cannot open /: Operation not permitted\n", Code: 1}
+	te.CanList = func(string) bool { return false }
+	st := te.GetStatus(context.Background(), 0)
+	if st.RollbackState != "unknown" {
+		t.Errorf("rollback state %q, want unknown", st.RollbackState)
+	}
+	for _, p := range st.Problems {
+		if strings.Contains(p, "rollback") {
+			t.Errorf("false problem: %q", p)
+		}
+	}
+	if !st.SnapshotsUnreadable {
+		t.Error("snapshot list should be reported unreadable")
+	}
+
+	te.fake.Answers["btrfs subvolume get-default /"] = runner.Result{Out: "ID 256 gen 10 top level 5 path root\n"}
+	te.fake.Answers["btrfs inspect-internal rootid /"] = runner.Result{Out: "256\n"}
+	if st := te.GetStatus(context.Background(), 0); st.RollbackState != "none" {
+		t.Errorf("same root: %q", st.RollbackState)
+	}
+	te.fake.Answers["btrfs inspect-internal rootid /"] = runner.Result{Out: "300\n"}
+	if st := te.GetStatus(context.Background(), 0); !strings.HasPrefix(st.RollbackState, "pending") {
+		t.Errorf("other root: %q", st.RollbackState)
+	}
+}

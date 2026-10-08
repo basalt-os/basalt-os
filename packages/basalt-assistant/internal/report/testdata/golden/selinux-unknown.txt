@@ -1,8 +1,11 @@
 [p-1a2b3c] SELinux blocked myapp_t (getattr) on kcore: no known fix
 For your information, found by basalt on 2026-10-04 10:15 UTC
 
-  SELinux blocked myapp_t from using kcore, and there is no known safe fix.
-  SELinux denied myapp_t the getattr permission on kcore (labeled proc_t).
+  The security rules (SELinux) stopped a program from doing something they do
+  not allow. Nothing needs your action now: this is a note for whoever looks
+  after this computer. SELinux blocked myapp_t from using kcore, and there is
+  no known safe fix. SELinux denied myapp_t the getattr permission on kcore
+  (labeled proc_t).
 
 Nothing will be changed: this is a report for you to read.
 

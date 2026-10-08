@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"strconv"
@@ -428,14 +429,19 @@ func writeStatus(w io.Writer, s diag.Status, auditN int64, auditErr error) {
 		fmt.Fprintf(w, "  Denials     %d in the last 24 hours\n", s.Denials24h)
 	}
 	fmt.Fprintf(w, "  Disk /      %.1f %% used, %s free\n", s.DiskPct, diag.HumanBytes(int64(s.Disk.Free)))
-	if s.Snapshots == 0 {
+	if s.SnapshotsUnreadable {
+		fmt.Fprintln(w, "  Snapshots   only root can list them (sudo basalt status)")
+	} else if s.Snapshots == 0 {
 		fmt.Fprintln(w, "  Snapshots   none")
 	} else {
 		fmt.Fprintf(w, "  Snapshots   %d, newest %s\n", s.Snapshots, s.LastSnapshot)
 	}
 	rb := s.RollbackState
-	if rb == "none" {
+	switch rb {
+	case "none":
 		rb = "none waiting"
+	case "unknown":
+		rb = "only root can check (sudo basalt status)"
 	}
 	fmt.Fprintf(w, "  Rollback    %s\n", rb)
 	fmt.Fprintf(w, "  Assistant   background service %s, %s\n", orNone(s.Daemon), plural(s.Pending, "proposal waiting", "proposals waiting"))
@@ -647,6 +653,9 @@ func (a *app) snapshots(ctx context.Context) error {
 		if len(a.o.args) < 3 {
 			return errors.New("usage: basalt snapshots diff A [B]")
 		}
+		if !a.root {
+			return errors.New("comparing snapshots reads their package databases and files, which only root may: sudo basalt " + strings.Join(a.o.args, " "))
+		}
 		from, err := strconv.Atoi(a.o.args[2])
 		if err != nil {
 			return err
@@ -747,6 +756,9 @@ func (a *app) pending() error {
 	}
 	ps, err := a.store.List(st)
 	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return errors.New("the proposals are readable by root only: sudo basalt pending (the desktop shows them without it)")
+		}
 		return err
 	}
 	if a.o.json {

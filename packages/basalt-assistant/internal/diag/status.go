@@ -34,20 +34,23 @@ func (e *Env) FixSELinux(ctx context.Context, since time.Time) []SELinuxItem {
 
 // Status is the health summary.
 type Status struct {
-	OS            OSRelease `json:"os"`
-	SELinux       string    `json:"selinux"`
-	FailedUnits   []string  `json:"failed_units"`
-	Denials24h    int       `json:"denials_24h"`
-	Disk          FSStat    `json:"disk"`
-	DiskPct       float64   `json:"disk_pct"`
-	Snapshots     int       `json:"snapshots"`
-	SnapshotsOff  string    `json:"snapshots_off,omitempty"`
-	LastSnapshot  string    `json:"last_snapshot"`
-	OrphanPre     []int     `json:"unfinished_transactions,omitempty"`
-	RollbackState string    `json:"rollback_state"`
-	Daemon        string    `json:"daemon"`
-	Pending       int       `json:"pending"`
-	Problems      []string  `json:"problems"`
+	OS          OSRelease `json:"os"`
+	SELinux     string    `json:"selinux"`
+	FailedUnits []string  `json:"failed_units"`
+	Denials24h  int       `json:"denials_24h"`
+	Disk        FSStat    `json:"disk"`
+	DiskPct     float64   `json:"disk_pct"`
+	Snapshots   int       `json:"snapshots"`
+	// SnapshotsUnreadable: the snapshot list could not be read (a normal
+	// user cannot list /.snapshots); Snapshots is then not a count.
+	SnapshotsUnreadable bool     `json:"snapshots_unreadable,omitempty"`
+	SnapshotsOff        string   `json:"snapshots_off,omitempty"`
+	LastSnapshot        string   `json:"last_snapshot"`
+	OrphanPre           []int    `json:"unfinished_transactions,omitempty"`
+	RollbackState       string   `json:"rollback_state"`
+	Daemon              string   `json:"daemon"`
+	Pending             int      `json:"pending"`
+	Problems            []string `json:"problems"`
 }
 
 // GetStatus collects the summary (read-only, no root needed for most).
@@ -80,6 +83,9 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 	}
 	snaps := e.Snapshots(ctx)
 	s.Snapshots = len(snaps)
+	if len(snaps) == 0 && e.CanList != nil && e.SnapshotDir != "" && !e.CanList(e.SnapshotDir) {
+		s.SnapshotsUnreadable = true
+	}
 	if len(snaps) > 0 {
 		last := snaps[len(snaps)-1]
 		s.LastSnapshot = fmt.Sprintf("%d (%s, %s, %q)", last.Number, last.Date, last.Type, last.Description)
@@ -96,9 +102,9 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 	}
 	s.RollbackState = "none"
 	if !e.Confined {
-		def := e.R.Read(ctx, "btrfs", "subvolume", "get-default", "/").Out
-		root := strings.TrimSpace(e.R.Read(ctx, "btrfs", "inspect-internal", "rootid", "/").Out)
-		if f := strings.Fields(def); len(f) >= 2 && root != "" && f[1] != root {
+		if pending, known := e.rollbackPending(ctx); !known {
+			s.RollbackState = "unknown"
+		} else if pending {
 			s.RollbackState = "pending: reboot to use the rolled-back root"
 			s.Problems = append(s.Problems, "A rollback is waiting: it takes effect at the next boot")
 		}
@@ -108,6 +114,37 @@ func (e *Env) GetStatus(ctx context.Context, pending int) Status {
 		s.Problems = append(s.Problems, fmt.Sprintf("%s waiting for your decision. See: basalt pending", plural(pending, "proposal is", "proposals are")))
 	}
 	return s
+}
+
+// rollbackPending compares the default btrfs subvolume (the root used at
+// the next boot) with the running root. known is false when either query
+// failed: without root, btrfs answers with an error ("Operation not
+// permitted"), which must never read as a subvolume id.
+func (e *Env) rollbackPending(ctx context.Context) (pending, known bool) {
+	def := e.R.Read(ctx, "btrfs", "subvolume", "get-default", "/")
+	rid := e.R.Read(ctx, "btrfs", "inspect-internal", "rootid", "/")
+	if def.Err != nil || def.Code != 0 || rid.Err != nil || rid.Code != 0 {
+		return false, false
+	}
+	// "ID 256 gen 1234 top level 5 path root"
+	f := strings.Fields(def.Out)
+	root := strings.TrimSpace(rid.Out)
+	if len(f) < 2 || f[0] != "ID" || !allDigits(f[1]) || !allDigits(root) {
+		return false, false
+	}
+	return f[1] != root, true
+}
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // SnapshotsOff says why package transactions take no snapshots of the

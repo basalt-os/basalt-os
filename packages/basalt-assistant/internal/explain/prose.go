@@ -283,7 +283,10 @@ func selinuxText(f *Facts, p phraser) Text {
 		t.Next = p.pick("Do not loosen the policy. Find out why the program tried this.",
 			"Leave the policy as it is and find out why the program tried this.")
 	default:
-		t.Headline = p.pick("SELinux blocked "+d+" from using "+obj+", and there is no known safe fix.",
+		// Plain language first: what happened and whether the person must
+		// act; the technical sentence follows, the raw denial is evidence.
+		t.Headline = "The security rules (SELinux) stopped a program from doing something they do not allow. " +
+			"Nothing needs your action now: this is a note for whoever looks after this computer. " + p.pick("SELinux blocked "+d+" from using "+obj+", and there is no known safe fix.",
 			"SELinux denied "+d+" access to "+obj+", and no known fix applies.")
 		t.Next = p.pick("Please have someone review it before changing the policy. The assistant never writes policy modules on its own.",
 			"It needs a person to review it. The assistant never generates policy modules by itself.")

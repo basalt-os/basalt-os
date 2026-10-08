@@ -6,6 +6,8 @@ package diag
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,8 +53,11 @@ type Env struct {
 	// ReadFile reads a small file (snapshot metadata, configs).
 	ReadFile func(path string) ([]byte, error)
 	// Glob lists paths.
-	Glob   func(pattern string) []string
-	Decide *decide.Layer
+	Glob func(pattern string) []string
+	// CanList reports whether a directory can be listed (a normal user
+	// cannot list /.snapshots); nil: always.
+	CanList func(dir string) bool
+	Decide  *decide.Layer
 	// SnapshotDir is /.snapshots.
 	SnapshotDir string
 	// SnapperConfig is snapper's configuration of the root
@@ -102,6 +107,7 @@ func Real(confined bool, layer *decide.Layer) *Env {
 		Inode:         inode,
 		ReadFile:      os.ReadFile,
 		Glob:          glob,
+		CanList:       canList,
 		Decide:        layer,
 		SnapshotDir:   "/.snapshots",
 		SnapperConfig: "/etc/snapper/configs/root",
@@ -138,6 +144,16 @@ func inode(path string) (uint64, bool) {
 		return s.Ino, true
 	}
 	return 0, false
+}
+
+func canList(dir string) bool {
+	f, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	_, err = f.Readdirnames(1)
+	return err == nil || errors.Is(err, io.EOF)
 }
 
 func glob(pattern string) []string {
