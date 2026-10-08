@@ -42,4 +42,4 @@ in_fedora -v "$work:/rpmbuild" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
 mkdir -p "$out"
 sudo find "$work/RPMS" "$work/SRPMS" -name "basalt-audit-suite*.rpm" -exec cp {} "$out/" \;
 sudo chown -R "$(id -u):$(id -g)" "$out"
-find "$out" -name "basalt-audit-suite*.rpm" | xargs -r -n1 basename | sort
+find "$out" -name "basalt-audit-suite*.rpm" -printf "%f\n" | sort

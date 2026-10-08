@@ -5,7 +5,7 @@
 # basalt-audit with fake test data, never as root.
 #
 # Build: packages/basalt-audit-suite/build.sh (from the commit pinned in
-# source.conf; %{suite_version} is that commit's VERSION).
+# source.conf; the version is that commit's VERSION file).
 
 %{!?suite_version: %global suite_version 0.1.0}
 
