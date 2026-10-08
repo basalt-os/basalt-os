@@ -16,14 +16,19 @@ import (
 type Paths struct {
 	RepoDir     string // dnf repository definitions
 	OverrideDir string // dnf5 config-manager overrides (setopt)
-	KeyDir      string // repository keys
-	SourcesDir  string // Basalt's record of the sources it added
-	VarsDir     string // dnf variables (basalt_repo_url and the others)
-	Flatpak     string // the flatpak program ("" when not installed)
+	// VendorOverrideDir holds the overrides packages ship (basalt-release
+	// enforces the Basalt repositories' signature checks there); a file of
+	// the same name in OverrideDir replaces one here, as in dnf.
+	VendorOverrideDir string
+	KeyDir            string // repository keys
+	SourcesDir        string // Basalt's record of the sources it added
+	VarsDir           string // dnf variables (basalt_repo_url and the others)
+	Flatpak           string // the flatpak program ("" when not installed)
 }
 
 // System are the real paths.
-var System = Paths{RepoDir: "/etc/yum.repos.d", OverrideDir: "/etc/dnf/repos.override.d", KeyDir: "/etc/pki/rpm-gpg",
+var System = Paths{RepoDir: "/etc/yum.repos.d", OverrideDir: "/etc/dnf/repos.override.d",
+	VendorOverrideDir: "/usr/share/dnf5/repos.override.d", KeyDir: "/etc/pki/rpm-gpg",
 	SourcesDir: "/etc/basalt/sources.d", VarsDir: "/etc/dnf/vars", Flatpak: "/usr/bin/flatpak"}
 
 // ReleaseKey is the fingerprint of the OpenBasalt release key, which signs
@@ -64,7 +69,9 @@ type Section struct {
 }
 
 // ReadRepos reads every [section] of the .repo files and applies the
-// config-manager overrides (dnf5 writes `setopt` there), in dnf's order.
+// overrides in dnf's order: the vendor overrides and the administrator's
+// (dnf5 writes `setopt` there) together, sorted by file name, a file in
+// OverrideDir masking the vendor file of the same name.
 func ReadRepos(p Paths) map[string]*Section {
 	out := map[string]*Section{}
 	files, _ := filepath.Glob(filepath.Join(p.RepoDir, "*.repo"))
@@ -76,9 +83,7 @@ func ReadRepos(p Paths) map[string]*Section {
 			}
 		}
 	}
-	ovs, _ := filepath.Glob(filepath.Join(p.OverrideDir, "*.repo"))
-	sort.Strings(ovs)
-	for _, f := range ovs {
+	for _, f := range overrideFiles(p) {
 		for _, s := range parseINI(f) {
 			if base, ok := out[s.ID]; ok {
 				for k, v := range s.Keys {
@@ -86,6 +91,30 @@ func ReadRepos(p Paths) map[string]*Section {
 				}
 			}
 		}
+	}
+	return out
+}
+
+// overrideFiles lists the override files dnf applies, in its order.
+func overrideFiles(p Paths) []string {
+	byName := map[string]string{}
+	for _, dir := range []string{p.VendorOverrideDir, p.OverrideDir} {
+		if dir == "" {
+			continue
+		}
+		fs, _ := filepath.Glob(filepath.Join(dir, "*.repo"))
+		for _, f := range fs {
+			byName[filepath.Base(f)] = f
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for n := range byName {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		out = append(out, byName[n])
 	}
 	return out
 }

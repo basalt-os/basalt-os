@@ -29,6 +29,13 @@ The same key is published at https://obpkg.org/keys/openbasalt-release-key.asc
 and installed by basalt-release as `/etc/pki/rpm-gpg/RPM-GPG-KEY-basalt`.
 How the key is kept and used: [key-ceremony.md](../key-ceremony.md).
 
+These signature checks do not depend on the repository files in
+`/etc/yum.repos.d`, which an upgrade never replaces once they were edited:
+basalt-release (and basalt-nonfree-release) ship them as dnf vendor
+overrides in `/usr/share/dnf5/repos.override.d`, applied after those files
+and replaced by every upgrade. Only an administrator's own file under
+`/etc/dnf/repos.override.d` can change them.
+
 Fedora's repositories are signed with the Fedora key of each release,
 which Fedora publishes at https://fedoraproject.org/security/.
 

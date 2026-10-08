@@ -113,11 +113,11 @@ Signed packages and signed repository metadata.
 
 Status: implemented. Decided in: ADR 0005.
 
-Requirement: Every Basalt repository definition MUST set gpgcheck=1 and repo_gpgcheck=1 with the OpenBasalt release key shipped in the basalt-release package; dnf MUST refuse tampered metadata and packages signed by another key.
+Requirement: Every Basalt repository definition MUST set gpgcheck=1 and repo_gpgcheck=1 with the OpenBasalt release key shipped in the basalt-release package, enforced by a vendor override that an edited or older repository file cannot weaken; dnf MUST refuse tampered metadata and packages signed by another key.
 
 Rationale: Makes the hosting location irrelevant to integrity: a compromised CDN, mirror or bucket cannot serve modified packages.
 
-Implemented in: `packages/basalt-release/basalt.repo`, `packages/basalt-release/RPM-GPG-KEY-basalt`.
+Implemented in: `packages/basalt-release/basalt.repo`, `packages/basalt-release/20-basalt-signatures.repo`, `packages/basalt-nonfree-release/20-basalt-nonfree-signatures.repo`, `packages/basalt-release/RPM-GPG-KEY-basalt`.
 
 Verified by:
 

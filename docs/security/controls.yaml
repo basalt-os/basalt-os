@@ -147,8 +147,9 @@ controls:
     requirement: >-
       Every Basalt repository definition MUST set gpgcheck=1 and
       repo_gpgcheck=1 with the OpenBasalt release key shipped in the
-      basalt-release package; dnf MUST refuse tampered metadata and packages
-      signed by another key.
+      basalt-release package, enforced by a vendor override that an edited
+      or older repository file cannot weaken; dnf MUST refuse tampered
+      metadata and packages signed by another key.
     rationale: >-
       Makes the hosting location irrelevant to integrity: a compromised CDN,
       mirror or bucket cannot serve modified packages.
@@ -156,6 +157,8 @@ controls:
     adr: ["0005"]
     implemented_in:
       - packages/basalt-release/basalt.repo
+      - packages/basalt-release/20-basalt-signatures.repo
+      - packages/basalt-nonfree-release/20-basalt-nonfree-signatures.repo
       - packages/basalt-release/RPM-GPG-KEY-basalt
     verification:
       - {type: test, file: scripts/release/client-test.sh, match: "negative: a tampered repomd.xml must be refused"}

@@ -117,8 +117,9 @@ func TestCatalogPins(t *testing.T) {
 func tempPaths(t *testing.T) Paths {
 	d := t.TempDir()
 	p := Paths{RepoDir: filepath.Join(d, "yum.repos.d"), OverrideDir: filepath.Join(d, "override"), KeyDir: filepath.Join(d, "keys"),
-		SourcesDir: filepath.Join(d, "sources.d"), VarsDir: filepath.Join(d, "vars"), Flatpak: filepath.Join(d, "flatpak")}
-	for _, dir := range []string{p.RepoDir, p.OverrideDir, p.KeyDir, p.SourcesDir} {
+		VendorOverrideDir: filepath.Join(d, "vendor-override"),
+		SourcesDir:        filepath.Join(d, "sources.d"), VarsDir: filepath.Join(d, "vars"), Flatpak: filepath.Join(d, "flatpak")}
+	for _, dir := range []string{p.RepoDir, p.OverrideDir, p.VendorOverrideDir, p.KeyDir, p.SourcesDir} {
 		_ = os.MkdirAll(dir, 0o755)
 	}
 	return p
@@ -163,6 +164,34 @@ func TestChannelsReport(t *testing.T) {
 		if c.ID == "flathub" && c.Available {
 			t.Error("flathub available without flatpak")
 		}
+	}
+}
+
+// An older or hand-written basalt.repo without repo_gpgcheck (kept by
+// %config(noreplace)) is overridden by basalt-release's vendor override, as
+// dnf does; a file of the same name under /etc/dnf/repos.override.d masks
+// the vendor one, and config-manager's 99- file is applied last.
+func TestVendorOverrideEnforcesSignatures(t *testing.T) {
+	p := tempPaths(t)
+	_ = os.WriteFile(filepath.Join(p.RepoDir, "basalt.repo"),
+		[]byte("[basalt]\nname=bootstrap\nbaseurl=http://lab/\ngpgcheck=0\n"), 0o644)
+	vendor, err := os.ReadFile("../../../basalt-release/20-basalt-signatures.repo")
+	if err != nil {
+		// The package builds from its own directory only: keep a copy.
+		vendor = []byte("[basalt]\ngpgcheck=1\nrepo_gpgcheck=1\n")
+	}
+	_ = os.WriteFile(filepath.Join(p.VendorOverrideDir, "20-basalt-signatures.repo"), vendor, 0o644)
+	s := ReadRepos(p)["basalt"]
+	if s == nil || !truthy(s.Keys["gpgcheck"]) || !truthy(s.Keys["repo_gpgcheck"]) || s.Keys["baseurl"] != "http://lab/" {
+		t.Fatalf("vendor override not applied: %+v", s)
+	}
+	_ = os.WriteFile(filepath.Join(p.OverrideDir, "99-config_manager.repo"), []byte("[basalt]\nenabled=0\n"), 0o644)
+	if s := ReadRepos(p)["basalt"]; s.Keys["enabled"] != "0" || !truthy(s.Keys["repo_gpgcheck"]) {
+		t.Errorf("config-manager override: %+v", s)
+	}
+	_ = os.WriteFile(filepath.Join(p.OverrideDir, "20-basalt-signatures.repo"), []byte("[basalt]\nname=masked\n"), 0o644)
+	if s := ReadRepos(p)["basalt"]; truthy(s.Keys["gpgcheck"]) || s.Keys["name"] != "masked" {
+		t.Errorf("an /etc file of the same name must mask the vendor override: %+v", s)
 	}
 }
 

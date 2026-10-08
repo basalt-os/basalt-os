@@ -33,7 +33,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        8%{?dist}
+Release:        9%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -57,6 +57,7 @@ Source20:       10-basalt-hardening.conf
 Source21:       basalt.xml
 Source22:       firewalld-basalt.conf
 Source23:       10-basalt-resolved.conf
+Source24:       20-basalt-signatures.repo
 
 Provides:       basalt-release-identity = %{version}-%{release}
 Provides:       system-release
@@ -71,6 +72,9 @@ Conflicts:      generic-release
 Conflicts:      generic-release-common
 # Fedora's repository definitions and package signing keys stay in use.
 Requires:       fedora-repos(%{dist_version})
+# Owns /usr/share/dnf5/repos.override.d, where the signature checks of the
+# Basalt repositories are enforced.
+Requires:       libdnf5
 
 %description
 Basalt OS release files: /usr/lib/os-release and the other files that
@@ -165,7 +169,13 @@ cat >%{buildroot}%{_rpmconfigdir}/macros.d/macros.dist <<EOF
 EOF
 
 # --- repository ---------------------------------------------------------------
+# basalt.repo stays a configuration file (a mirror or a lab may change its
+# base URLs), so an upgrade never replaces an edited or older copy. The
+# signature checks are therefore not left to it: the vendor override below
+# sets gpgcheck, repo_gpgcheck and the key for every Basalt repository, and
+# dnf applies it after /etc/yum.repos.d.
 install -Dpm 0644 basalt.repo %{buildroot}%{_sysconfdir}/yum.repos.d/basalt.repo
+install -Dpm 0644 20-basalt-signatures.repo %{buildroot}%{_datadir}/dnf5/repos.override.d/20-basalt-signatures.repo
 install -Dpm 0644 RPM-GPG-KEY-basalt %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-basalt
 install -Dpm 0644 basalt_repo_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_repo_url
 install -Dpm 0644 basalt_tools_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_tools_url
@@ -225,6 +235,7 @@ fi
 %dir %{_sysconfdir}/issue.d
 %attr(0644,root,root) %{_rpmconfigdir}/macros.d/macros.dist
 %config(noreplace) %{_sysconfdir}/yum.repos.d/basalt.repo
+%{_datadir}/dnf5/repos.override.d/20-basalt-signatures.repo
 %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-basalt
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_repo_url
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_tools_url
@@ -249,6 +260,17 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Wed Oct 07 2026 Basalt OS project <noreply@basalt-os.org> - 44-9
+- The signature checks of the Basalt repositories (gpgcheck, repo_gpgcheck
+  and the OpenBasalt key for basalt, basalt-tools and basalt-testing) are
+  enforced by /usr/share/dnf5/repos.override.d/20-basalt-signatures.repo,
+  which dnf applies after /etc/yum.repos.d and every upgrade replaces. An
+  older or hand-written basalt.repo without repo_gpgcheck=1, which
+  %%config(noreplace) kept in effect with only a .rpmnew next to it, no
+  longer weakens them.
+- Preset: enable basalt-snapshots-auto.service (snapshots set up at boot
+  on a system that has none yet).
+
 * Mon Oct 05 2026 Basalt OS project <noreply@basalt-os.org> - 44-8
 - Version numbers of ADR 0015 (docs/versioning.md): VERSION_ID=44.0,
   VERSION "44.0 (dev)", PRETTY_NAME "Basalt OS 44.0 (dev)"; new fields

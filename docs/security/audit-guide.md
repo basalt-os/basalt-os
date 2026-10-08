@@ -122,15 +122,22 @@ a signed shim package exist.
 
 ```
 # rpm -V basalt-release; ls /etc/yum.repos.d/*.rpmnew 2>/dev/null
-# grep -E '^\[|gpgcheck|repo_gpgcheck|gpgkey' /etc/yum.repos.d/basalt*.repo
+# for r in basalt basalt-tools basalt-testing; do dnf --dump-repo-config=$r | grep -E '^(gpgcheck|repo_gpgcheck|gpgkey) '; done
+# ls /etc/dnf/repos.override.d/
 # rpm -q gpg-pubkey --qf '%{version} %{summary}\n' | grep -i basalt
 # rpm -Kv basalt-release | grep -i 'key id'
 ```
 
-Expected: no changed repository file and no `.rpmnew` (a local edit kept
-by the package manager can drop `repo_gpgcheck`), every Basalt repository
-with `gpgcheck=1` and `repo_gpgcheck=1`, the OpenBasalt release key
-imported, package signatures by key ID `aa27c62c36ccfc4b` (the packages
+Expected: every Basalt repository with `gpgcheck = 1`, `repo_gpgcheck = 1`
+and the shipped key in the configuration dnf uses. These come from
+`/usr/share/dnf5/repos.override.d/20-basalt-signatures.repo` (basalt-release,
+replaced by every upgrade), which dnf applies after the repository files, so
+an older or edited `basalt.repo` kept by the package manager (a changed
+file or a `.rpmnew` next to it) no longer drops `repo_gpgcheck`. A file
+named `20-basalt-signatures.repo` under `/etc/dnf/repos.override.d` masks
+it and a `99-config_manager.repo` there can change any option: both are
+deliberate administrator changes, so look at what they set. Also: the
+OpenBasalt release key imported, package signatures by key ID `aa27c62c36ccfc4b` (the packages
 subkey). In the repository: `scripts/release/client-test.sh` refuses a
 tampered `repomd.xml` and another key.
 
