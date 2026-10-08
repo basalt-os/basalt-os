@@ -137,7 +137,9 @@ if [[ "$stage" == modules ]]; then
     [[ -n "$rpm" ]] || die "no RPM for $k"
     mkdir -p "$out/$k" "$out/unsigned-rpms"
     sudo cp "$rpm" "$out/unsigned-rpms/"
-    (cd "$out/$k" && rpm2cpio "$rpm" | cpio -idm --quiet "./usr/lib/modules/$k/extra/nvidia-open/*.ko" &&
+    # cpio's status decides: rpm2cpio may die of SIGPIPE after the trailer
+    # (packages/nvidia/check-identical.sh).
+    (set +o pipefail; cd "$out/$k" && rpm2cpio "$rpm" | cpio -idm --quiet "./usr/lib/modules/$k/extra/nvidia-open/*.ko" &&
       mv "usr/lib/modules/$k/extra/nvidia-open/"*.ko . && rm -rf usr)
   done
   sudo chown -R "$(id -u):$(id -g)" "$out"

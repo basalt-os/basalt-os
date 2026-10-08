@@ -46,7 +46,18 @@ for r in "$dir"/*.rpm; do
   name="$(rpm -qp --qf '%{NAME}' "$r" 2>/dev/null)"
   case "$name" in nvidia-driver* | kmod-nvidia-open* | nvidia-modprobe | nvidia-persistenced | basalt-nvidia) ;; *) continue ;; esac
   mkdir -p "$work/rpm/$name"
-  (cd "$work/rpm/$name" && rpm2cpio "$r" | cpio -idm --quiet)
+  # cpio stops reading at the archive trailer, so rpm2cpio can die of
+  # SIGPIPE (status 141) while writing the padding after it, always for a
+  # package without files (kmod-nvidia-open) and at random for others;
+  # pipefail would turn that into a silent failure. Only cpio's status and
+  # a real rpm2cpio error count.
+  (
+    cd "$work/rpm/$name"
+    set +o pipefail
+    rpm2cpio "$r" | cpio -idm --quiet
+    st=("${PIPESTATUS[@]}")
+    [[ "${st[1]}" == 0 && ("${st[0]}" == 0 || "${st[0]}" == 141) ]]
+  ) || { echo "cannot unpack $(basename "$r")" >&2; exit 1; }
   tree[$name]="$work/rpm/$name"
 done
 [[ -n "${tree[nvidia-driver-libs]:-}" ]] || { echo "no nvidia-driver-libs RPM in $dir" >&2; exit 1; }
