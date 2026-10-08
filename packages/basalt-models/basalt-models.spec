@@ -4,7 +4,7 @@
 # basalt-voice-fetch and basalt-llm-fetch. Scripts and configuration only.
 
 Name:           basalt-models
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        One-click, consented downloads of the desktop's speech and assistant models
 License:        Apache-2.0
@@ -73,6 +73,13 @@ install -dm 0755 %{buildroot}/run/basalt-models
 %ghost %dir /run/basalt-models
 
 %changelog
+* Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.1-1
+- request starts the download service before it records the consent in
+  the audit ledger, not after: the ledger call may wait up to its 10 s
+  timeout, and the desktop showed "Waiting for the approval to download"
+  for about 12 s. The record is still written before the request returns,
+  and the service records the outcome with the same person.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0-1
 - First version: the desktop's consented model downloads (polkit action
   for active local sessions, administrator policy in models.conf, ledger

@@ -145,6 +145,7 @@ SH
 cat >"$tmp/bin/systemctl" <<SH
 #!/usr/bin/env bash
 echo "\$*" >>"$tmp/systemctl.log"
+[[ "\$1" == start ]] && echo start >>"$tmp/order.log"
 [[ "\$1" == is-active ]] && exit 3
 [[ "\$1" == show ]] && { echo max; exit 0; }
 exit 0
@@ -153,6 +154,7 @@ SH
 cat >"$tmp/bin/ledger" <<SH
 #!/usr/bin/env bash
 cat >>"$tmp/ledger.jsonl"
+echo ledger >>"$tmp/order.log"
 SH
 chmod +x "$tmp/bin/"*
 export BASALT_MODELS_CONF="$tmp/models.conf" BASALT_MODELS_RUN_DIR="$tmp/run"
@@ -189,7 +191,7 @@ has "administrators: allowed after an administrator's password" "rc=0 started vo
 printf 'downloads = everyone\n' >"$tmp/models.conf"
 
 # --- request: a download is queued and the service started -----------------------
-rm -f "$tmp/systemctl.log" "$tmp/ledger.jsonl" "$tmp/run/"*
+rm -f "$tmp/systemctl.log" "$tmp/ledger.jsonl" "$tmp/order.log" "$tmp/run/"*
 out="$(req download voice english)"
 has "request starts the service" "rc=0 started voice-english" "$out"
 has "service started without blocking" "start --no-block basalt-models-fetch@voice-english.service" "$(cat "$tmp/systemctl.log")"
@@ -200,6 +202,9 @@ eq "request file has the models" "ggml-base.en,ggml-silero-v5.1.2" "$(sv models 
 l="$(cat "$tmp/ledger.jsonl")"
 has "ledger: who consented" "\"uid\":$(id -u)" "$l"
 has "ledger: what and how much" '"what":"english","models":"ggml-base.en,ggml-silero-v5.1.2","size":"3004000"' "$l"
+# The ledger call may take up to its 10 s timeout: the download starts
+# before it, so the desktop does not wait on it.
+eq "the service starts before the consent record" "start ledger" "$(grep -v '^$' "$tmp/order.log" | tail -2 | paste -sd' ')"
 eq "progress file readable by everyone" 644 "$(stat -c %a "$tmp/run/voice-english.state")"
 
 # --- the service: download with progress, verify, done ----------------------------
