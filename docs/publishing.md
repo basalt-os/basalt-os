@@ -124,9 +124,21 @@ builds of the non-free drivers are published to `basalt-nonfree-testing`
 basalt-nonfree; never mixed into basalt-testing, so the license
 separation holds), tested on real hardware, and only then published to
 `basalt-nonfree`. The steps are the ones above with
-`OB_REPO=basalt-nonfree-testing`. Testers turn it on in Settings, Updates
-and channels (docs/updates.md), which asks for their consent to preview
-builds.
+`OB_REPO=basalt-nonfree-testing` (build-nonfree.sh records it in
+`BUILD-INFO.txt`):
+
+```sh
+scripts/release/build-nonfree.sh modules /tmp/nvidia-modules
+scripts/release/sign-modules.sh --op /tmp/nvidia-modules /tmp/nvidia-sigs
+OB_REPO=basalt-nonfree-testing scripts/release/build-nonfree.sh packages /tmp/nvidia-sigs /tmp/nonfree-testing-in
+OB_REPO=basalt-nonfree-testing scripts/release/merge-published.sh /tmp/nonfree-testing-in
+OB_REPO=basalt-nonfree-testing scripts/release/sign.sh --op /tmp/nonfree-testing-in /tmp/nonfree-testing-out
+OB_REPO=basalt-nonfree-testing CLIENT_TEST_DEPS_URL=https://obpkg.org/basalt scripts/release/client-test.sh /tmp/nonfree-testing-out packages/basalt-release/RPM-GPG-KEY-basalt nvidia-driver-compute
+scripts/release/upload.sh /tmp/nonfree-testing-out
+```
+
+Testers turn it on in Settings, Updates and channels (docs/updates.md),
+which asks for their consent to preview builds.
 
 ## Build
 

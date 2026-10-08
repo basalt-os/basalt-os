@@ -23,6 +23,11 @@
 #          binary and source RPMs, BUILD-INFO.txt and SHA256SUMS: the input of
 #          OB_REPO=basalt-nonfree scripts/release/sign.sh.
 #
+# OB_REPO names the repository the build is for: basalt-nonfree (default) or
+# basalt-nonfree-testing, where every new build goes first (docs/publishing.md).
+# The packages are the same; BUILD-INFO.txt records the repository, and the
+# same OB_REPO goes to merge-published.sh, sign.sh, client-test.sh.
+#
 # Kernels: every kernel-core of the release's fedora and updates
 # repositories (and updates-testing with NONFREE_TESTING_KERNELS=1, to have
 # the module ready before a kernel reaches updates), or NONFREE_KERNELS
@@ -47,10 +52,12 @@ nv="$REPO_ROOT/packages/nvidia"
 source "$nv/source.conf"
 : "${NONFREE_LAB:=0}"
 : "${NONFREE_TESTING_KERNELS:=0}"
+: "${OB_REPO:=basalt-nonfree}"
+case "$OB_REPO" in basalt-nonfree | basalt-nonfree-testing) ;; *) die "OB_REPO must be basalt-nonfree or basalt-nonfree-testing" ;; esac
 cache="$BUILD_DIR/nonfree/cache"
 KBUILD_IMAGE="localhost/basalt-kmod-build:$FEDORA_RELEASE-$NVIDIA_VERSION"
 
-usage() { sed -n '2,24p' "$0" >&2; exit 2; }
+usage() { sed -n '2,29p' "$0" >&2; exit 2; }
 stage="${1:-}"; [[ $# -gt 0 ]] && shift
 case "$stage" in modules | packages) ;; *) usage ;; esac
 
@@ -242,8 +249,8 @@ in_fedora -v "$out:/rpms:ro" -v "$REPO_ROOT/scripts/ci:/ci:ro" "$FEDORA_IMAGE" b
   rpmlint -c /ci/rpmlint-nonfree.toml /rpms/*.rpm' || die "rpmlint found errors in the built packages"
 
 cat >"$out/BUILD-INFO.txt" <<EOF
-Basalt OS non-free build (UNSIGNED packages, input for OB_REPO=basalt-nonfree scripts/release/sign.sh)
-repository:     basalt-nonfree
+Basalt OS non-free build (UNSIGNED packages, input for OB_REPO=$OB_REPO scripts/release/sign.sh)
+repository:     $OB_REPO
 $([[ "$NONFREE_LAB" == 1 ]] && echo "LAB BUILD:      never publish (signatures: $mode)")
 fedora release: $FEDORA_RELEASE
 architecture:   $ARCH
@@ -255,5 +262,5 @@ module signer:  $(openssl x509 -inform DER -in "$cert" -noout -subject -fingerpr
 built:          $(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 (cd "$out" && find . -maxdepth 1 -type f -name '*.rpm' -printf '%P\n' | sort | xargs -d '\n' sha256sum >SHA256SUMS)
-log "basalt-nonfree build in $out:"
+log "$OB_REPO build in $out:"
 find "$out" -maxdepth 1 -name '*.rpm' -printf '  %P  %s bytes\n' | sort >&2
