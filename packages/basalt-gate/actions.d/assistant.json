@@ -14,7 +14,8 @@
     "system.cleanup": ["journal.vacuum", "dnf.clean"],
     "system.updates": ["update.install", "update.rollback"],
     "system.channels": ["repo.enable", "repo.disable", "source.remove"],
-    "system.keyboard": ["keyboard.system"]
+    "system.keyboard": ["keyboard.system"],
+    "system.security": ["audit.run", "risk.accept", "risk.review"]
   },
   "actions": [
     { "id": "selinux.fcontext", "class": "C2", "system": true, "snapshot": true, "reversible": "snapshot",
@@ -136,6 +137,26 @@
                 "keymap": { "type": "string", "required": true, "pattern": "[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}" } },
       "resources": [ { "kind": "setting", "arg": "=keyboard" } ],
       "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
-      "preview": { "show": ["layouts", "options", "keymap"] } }
+      "preview": { "show": ["layouts", "options", "keymap"] } },
+    { "id": "audit.run", "class": "C2", "system": true, "reversible": "none",
+      "description": "run the public AI audit suite on this computer as its own unprivileged account (installing basalt-audit-suite from the Basalt repositories first when install is yes); results in /var/lib/basalt-audit/RUN",
+      "args": { "run": { "type": "string", "required": true, "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}" },
+                "install": { "type": "string", "required": true, "enum": ["yes", "no"] } },
+      "resources": [ { "kind": "package", "arg": "=basalt-audit-suite" } ],
+      "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
+      "preview": { "show": ["install", "run"] } },
+    { "id": "risk.accept", "class": "C2", "system": true, "reversible": "snapshot",
+      "description": "record that an administrator accepts a security warning (Security and Activity shows it as accepted, with who and when, and stops counting it; a problem is never hidden)",
+      "args": { "item": { "type": "string", "required": true, "enum": ["encryption", "secure_boot", "tpm", "audit", "ledger"] },
+                "by": { "type": "string", "required": true, "pattern": "[a-z_][a-z0-9_.-]{0,31}" } },
+      "resources": [ { "kind": "setting", "arg": "item" } ],
+      "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
+      "preview": { "show": ["item", "by"] } },
+    { "id": "risk.review", "class": "C2", "system": true, "reversible": "snapshot",
+      "description": "forget an accepted security risk: it counts as a warning again",
+      "args": { "item": { "type": "string", "required": true, "enum": ["encryption", "secure_boot", "tpm", "audit", "ledger"] } },
+      "resources": [ { "kind": "setting", "arg": "item" } ],
+      "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
+      "preview": { "show": ["item"] } }
   ]
 }

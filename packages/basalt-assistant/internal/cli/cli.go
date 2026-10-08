@@ -49,6 +49,7 @@ Look (no changes, no confirmation):
   basalt updates check                download the newest package lists (update.check; as root)
   basalt channels                     Basalt's channels, added software sources, their signing keys
   basalt keyboard                     the system's keyboard (the login screen, the console, new accounts)
+  basalt security risks               the security risks an administrator accepted (Security and Activity)
 
 Change (as root; you see the exact commands first and confirm them):
   basalt apply ID [--yes --confirm CODE]
@@ -75,6 +76,9 @@ Change (as root; you see the exact commands first and confirm them):
   basalt keyboard set LAYOUTS [--options OPTIONS]
                                       the keyboard of the login screen, the console and new accounts,
                                       e.g. br,us(intl) (keyboard.system; people's own settings stay)
+  basalt security audit               run the AI audit suite on this computer (audit.run; installs it first)
+  basalt security accept|review ITEM  accept the risk of a warning, or count it again (risk.accept,
+                                      risk.review; ITEM: encryption, secure_boot, tpm, audit, ledger)
   basalt audit rotate [--force]       seal the audit log and continue in a new file
   basalt why UNIT --apply, basalt fix selinux --apply, basalt disk --apply
                                       store the proposal and go straight to the confirmation
@@ -311,6 +315,10 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.channels(ctx)
 	case "keyboard":
 		return a.keyboard(ctx)
+	case "security":
+		return a.security(ctx)
+	case "__risk":
+		return a.riskHelper()
 	case "__source":
 		return a.sourceHelper(ctx)
 	case "__offline-finish":

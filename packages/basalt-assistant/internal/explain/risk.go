@@ -82,6 +82,15 @@ func riskOf(a action.Action) (int, string) {
 		return RiskLow, "no more software comes from " + a.Params["id"] + "; what is installed from it stays"
 	case action.KeyboardSystem:
 		return RiskLow, "the login screen and the console type with " + a.Params["layouts"] + "; people's own keyboard settings stay"
+	case action.AuditRun:
+		if a.Params["install"] == "yes" {
+			return RiskLow, "one package is installed; its tests run as their own unprivileged account and change none of your files"
+		}
+		return RiskLow, "the tests run as their own unprivileged account and change none of your files"
+	case action.RiskAccept:
+		return RiskLow, "Security and Activity stops counting " + a.Params["item"] + " as a warning; nothing else changes"
+	case action.RiskReview:
+		return RiskLow, a.Params["item"] + " counts as a warning again; nothing else changes"
 	}
 	return RiskHigh, "unknown change"
 }
@@ -118,6 +127,12 @@ func Undo(acts []action.Action) (text string, rollbackCmd bool) {
 	}
 	if len(acts) == 1 && acts[0].Kind == action.KeyboardSystem {
 		return "choose other layouts in Settings, Keyboard, or with basalt keyboard set; no snapshot is needed for one setting.", false
+	}
+	if len(acts) == 1 && acts[0].Kind == action.RiskAccept {
+		return "choose Review again in Security and Activity; no snapshot is needed for one setting.", false
+	}
+	if len(acts) == 1 && acts[0].Kind == action.RiskReview {
+		return "accept the risk again in Security and Activity; no snapshot is needed for one setting.", false
 	}
 	var caveats []string
 	rollback, reversible := false, false

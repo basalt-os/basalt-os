@@ -1,0 +1,3 @@
+# The account the AI audit suite runs as on a person's computer: never root,
+# so a probe that is not stopped cannot change the system (basalt-audit-suite).
+u basalt-audit - "Basalt OS AI audit suite" /var/lib/basalt-audit/home /sbin/nologin

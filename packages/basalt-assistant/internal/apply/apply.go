@@ -108,6 +108,8 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 		snapNote = "no extra snapshot: the rollback works on snapshots itself"
 	} else if len(p.Actions) > 0 && p.Actions[0].Kind == action.KeyboardSystem && toggleOnly(p.Actions) {
 		snapNote = "no snapshot: the system's keyboard is one setting, and choosing other layouts changes it back"
+	} else if len(p.Actions) > 0 && (p.Actions[0].Kind == action.RiskAccept || p.Actions[0].Kind == action.RiskReview) && toggleOnly(p.Actions) {
+		snapNote = "no snapshot: an accepted risk is one setting, and Review again changes it back"
 	} else if toggleOnly(p.Actions) {
 		snapNote = "no snapshot: turning a channel on or off changes one setting, and the next update takes its own snapshot"
 	}
@@ -339,7 +341,7 @@ func rollbackAction(as []action.Action) bool {
 // its own).
 func toggleOnly(as []action.Action) bool {
 	for _, a := range as {
-		if a.Kind == action.KeyboardSystem {
+		if a.Kind == action.KeyboardSystem || a.Kind == action.RiskAccept || a.Kind == action.RiskReview {
 			continue
 		}
 		if a.Kind != action.RepoEnable && a.Kind != action.RepoDisable {

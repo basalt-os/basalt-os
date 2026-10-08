@@ -18,7 +18,7 @@ var externalDirs = []string{"/usr/libexec/basalt", "/usr/bin"}
 var builtins = map[string]bool{"help": true, "version": true, "status": true, "why": true, "fix": true,
 	"snapshots": true, "snapshot": true, "disk": true, "pending": true, "show": true, "apply": true,
 	"ignore": true, "confirm": true, "submit": true, "audit": true, "ask": true, "feedback": true, "drivers": true,
-	"updates": true, "update": true, "channels": true, "channel": true, "keyboard": true, "__source": true, "__offline-finish": true}
+	"updates": true, "update": true, "channels": true, "channel": true, "keyboard": true, "security": true, "__risk": true, "__source": true, "__offline-finish": true}
 
 // internalHelpers live in /usr/libexec/basalt but are not commands for
 // people: the assistant's daemon and helpers its services run.

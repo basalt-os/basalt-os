@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/keymap"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/risks"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
 )
@@ -47,7 +49,23 @@ const (
 	SourceAdd         = "source.add"         // a new software source: its key becomes a trust root
 	SourceRemove      = "source.remove"      // remove a source Basalt added
 	KeyboardSystem    = "keyboard.system"    // localectl: the keyboard of the login screen, the console and new accounts
+	AuditRun          = "audit.run"          // run the AI audit suite on this computer (installing it first when asked)
+	RiskAccept        = "risk.accept"        // record that an administrator accepts a security risk (Security and Activity)
+	RiskReview        = "risk.review"        // forget an accepted risk: it is shown as a warning again
 )
+
+// AuditSuitePkg is the package of the AI audit suite, from the Basalt
+// repositories (signed with the OpenBasalt release key).
+const AuditSuitePkg = "basalt-audit-suite"
+
+// AuditSuiteBin is the suite's entry point on Basalt OS.
+var AuditSuiteBin = "/usr/bin/basalt-audit-suite"
+
+// AuditDir keeps the results Security and Activity shows.
+var AuditDir = "/var/lib/basalt-audit"
+
+// reRun names one audit run: its start time.
+var reRun = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}$`)
 
 // SourcePaths are the files the software source actions check (tests
 // point them at a temporary directory).
@@ -366,6 +384,27 @@ func (a Action) Validate() error {
 		}
 	case KeyboardSystem:
 		return keyboardParams(p)
+	case AuditRun:
+		if !reRun.MatchString(p["run"]) {
+			return fmt.Errorf("run %q is not a time like 2026-10-08-101500", p["run"])
+		}
+		if p["install"] != "yes" && p["install"] != "no" {
+			return errors.New("install must be yes or no")
+		}
+		return onlyParams(a.Kind, p, "run", "install")
+	case RiskAccept:
+		if !risks.ValidItem(p["item"]) {
+			return fmt.Errorf("%q is not a risk that can be accepted", p["item"])
+		}
+		if !risks.ValidUser(p["by"]) {
+			return fmt.Errorf("%q is not an account name", p["by"])
+		}
+		return onlyParams(a.Kind, p, "item", "by")
+	case RiskReview:
+		if !risks.ValidItem(p["item"]) {
+			return fmt.Errorf("%q is not a risk that can be accepted", p["item"])
+		}
+		return onlyParams(a.Kind, p, "item")
 	default:
 		return fmt.Errorf("unknown action kind %q", a.Kind)
 	}
@@ -490,6 +529,20 @@ func (a Action) Commands() ([]runner.Command, error) {
 			{Argv: []string{"localectl", "set-keymap", "--no-convert", p["keymap"]},
 				Description: "use the keymap " + p["keymap"] + " in the text console"},
 		}, nil
+	case AuditRun:
+		var out []runner.Command
+		if p["install"] == "yes" {
+			out = append(out, runner.Command{Argv: []string{"dnf", "-y", "install", AuditSuitePkg},
+				Description: "install the AI audit suite (" + AuditSuitePkg + ") from the Basalt repositories, checked against their signing key"})
+		}
+		return append(out, runner.Command{Argv: []string{AuditSuiteBin, "run", "--out", AuditDir + "/" + p["run"]},
+			Description: "run the AI audit suite on this computer, as its own unprivileged account, and keep the results in " + AuditDir + "/" + p["run"]}), nil
+	case RiskAccept:
+		return []runner.Command{{Argv: []string{"basalt", "__risk", "accept", p["item"], p["by"]},
+			Description: "record that " + p["by"] + " accepts the risk of " + p["item"] + " on this computer (" + risks.DefaultPath + ")"}}, nil
+	case RiskReview:
+		return []runner.Command{{Argv: []string{"basalt", "__risk", "clear", p["item"]},
+			Description: "forget the accepted risk of " + p["item"] + ": it shows as a warning again"}}, nil
 	}
 	return nil, fmt.Errorf("unknown action kind %q", a.Kind)
 }
@@ -656,6 +709,20 @@ func (a Action) InstalledChecks() []Check {
 func (a Action) verifyOther(since time.Time) []Check {
 	p := a.Params
 	switch a.Kind {
+	case AuditRun:
+		res := AuditDir + "/" + p["run"] + "/results.json"
+		return []Check{{Description: "the audit wrote its results (" + res + ")", Argv: []string{"test", "-s", res}}}
+	case RiskAccept, RiskReview:
+		want := a.Kind == RiskAccept
+		return []Check{{Description: fmt.Sprintf("the risk of %s is %s", p["item"], map[bool]string{true: "accepted", false: "no longer accepted"}[want]),
+			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
+				f, err := risks.Load()
+				if err != nil {
+					return false, err.Error()
+				}
+				_, ok := f.Risks[p["item"]]
+				return ok == want, risks.Path
+			}}}
 	case UpdateRollback:
 		return Action{Kind: SnapshotRollback, Params: map[string]string{"snapshot": p["snapshot"]}}.Verify(since)
 	case RepoEnable, RepoDisable:
@@ -771,6 +838,20 @@ func portListHas(list, port string) bool {
 		}
 	}
 	return false
+}
+
+// onlyParams refuses parameters a kind does not take.
+func onlyParams(kind string, p map[string]string, names ...string) error {
+	for k := range p {
+		ok := false
+		for _, n := range names {
+			ok = ok || k == n
+		}
+		if !ok {
+			return fmt.Errorf("%s takes no %q", kind, k)
+		}
+	}
+	return nil
 }
 
 // Describe is a one-line summary of an action.

@@ -498,6 +498,15 @@ func Effect(a action.Action) string {
 		return "remove the software source " + p["id"]
 	case action.KeyboardSystem:
 		return "make " + p["layouts"] + " the keyboard layouts of the login screen, the text console (" + p["keymap"] + ") and new accounts"
+	case action.AuditRun:
+		if p["install"] == "yes" {
+			return "install the AI audit suite from the Basalt repositories and run it on this computer"
+		}
+		return "run the AI audit suite on this computer"
+	case action.RiskAccept:
+		return "record that " + p["by"] + " accepts the risk of " + p["item"] + " on this computer"
+	case action.RiskReview:
+		return "show " + p["item"] + " as a warning again"
 	}
 	return a.Kind
 }

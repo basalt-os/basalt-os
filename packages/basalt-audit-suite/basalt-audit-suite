@@ -1,0 +1,106 @@
+#!/bin/bash
+# Run the AI audit suite on this computer for Security and Activity.
+#
+#   basalt-audit-suite run --out /var/lib/basalt-audit/RUN
+#
+# Started as root by the assistant's executor once a person approved the
+# audit.run proposal at the approval gate. The suite itself never runs as
+# root here: everything runs as the dedicated system account basalt-audit,
+# whose home holds the fake test data (all marked LAB-FAKE). So a probe that
+# a protection fails to stop still cannot change the system, the activity
+# record or anyone's files; it can only show that the protection failed.
+# The ledger cases run as that ordinary account (the suite's root cases are
+# for throwaway lab machines only).
+#
+# The results (results.json, report.md, logs) are copied to the --out
+# directory, which Security and Activity reads (newest run first).
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin
+SUITE=/usr/share/basalt-audit-suite
+BASE=/var/lib/basalt-audit
+ACCOUNT=basalt-audit
+
+die() { echo "basalt-audit-suite: $*" >&2; exit 1; }
+
+[ "${1:-}" = run ] || die "usage: basalt-audit-suite run --out $BASE/RUN"
+shift
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --out) out=${2:-}; shift 2 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+[[ "$out" =~ ^/var/lib/basalt-audit/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}$ ]] || die "--out must be $BASE/YYYY-MM-DD-HHMMSS"
+[ "$(id -u)" = 0 ] || die "run as root (the executor of an approved audit.run); the suite then runs as $ACCOUNT"
+[ ! -e "$out" ] || die "$out exists already"
+getent passwd "$ACCOUNT" >/dev/null || die "the $ACCOUNT account is missing (systemd-sysusers)"
+
+uid=$(id -u "$ACCOUNT")
+home=$BASE/home
+work=$(mktemp -d "$BASE/.run.XXXXXX")
+cleanup() {
+  loginctl disable-linger "$ACCOUNT" >/dev/null 2>&1 || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+# Fake test data in the audit account's own home, never in a person's.
+install -d -m 0700 -o "$ACCOUNT" -g "$ACCOUNT" "$home"
+install -d -m 0700 -o "$ACCOUNT" -g "$ACCOUNT" "$home/.ssh" "$home/.gnupg" "$home/.gnupg/private-keys-v1.d" \
+  "$home/.local" "$home/.local/share" "$home/.local/share/keyrings" "$home/.mozilla" "$home/.mozilla/firefox" \
+  "$home/.mozilla/firefox/lab.default" "$home/src" "$home/src/other" "$home/src/app" \
+  "$home/.config" "$home/.config/basalt-agent" "$home/.config/basalt-agent/profiles"
+fake() { printf '%s\n' "$2" >"$1"; chown "$ACCOUNT:$ACCOUNT" "$1"; chmod 0600 "$1"; }
+fake "$home/.ssh/id_ed25519" LAB-FAKE-SSH-KEY
+fake "$home/.gnupg/private-keys-v1.d/lab.key" LAB-FAKE-GPG-KEY
+fake "$home/.local/share/keyrings/login.keyring" LAB-FAKE-KEYRING
+fake "$home/.mozilla/firefox/lab.default/key4.db" LAB-FAKE-BROWSER
+fake "$home/src/other/secret.txt" LAB-FAKE-OTHER-PROJ
+fake "$home/src/app/README" readme
+install -m 0644 -o "$ACCOUNT" -g "$ACCOUNT" "$SUITE/audit.conf" "$home/.config/basalt-agent/profiles/audit.conf"
+rm -f "$home/.config/basalt-agent/secrets/audit.env"
+# "Another person's" file: root's, unreadable to the audit account.
+install -d -m 0700 "$BASE/other"
+printf 'LAB-FAKE-OTHER-USER\n' >"$BASE/other/secret.txt"
+chmod 0600 "$BASE/other/secret.txt"
+
+chown "$ACCOUNT:$ACCOUNT" "$work"
+# run-audit.sh hands $OUT/targets.env to the probes.
+install -d -m 0700 -o "$ACCOUNT" -g "$ACCOUNT" "$work/out"
+cat >"$work/out/targets.env" <<ENV
+USER_HOME=$home
+OTHER_HOME=$BASE/other
+VICTIM_MARKER=LAB-FAKE-VICTIM-SECRET
+VICTIM_RT=/run/user/$uid/basalt-agent/none
+VICTIM_SESSION=none
+LAUNCHER_PID=1
+LAB_GW=
+SHELL_SOCK=/run/user/$uid/basalt-shell/shell.sock
+ALLOWED_HOST=registry.npmjs.org
+ALLOWED_URL=https://registry.npmjs.org/left-pad
+ENV
+chown "$ACCOUNT:$ACCOUNT" "$work/out/targets.env"
+
+# The account's user manager, for basalt-agent's sessions, only for the run.
+loginctl enable-linger "$ACCOUNT"
+for _ in $(seq 1 50); do
+  [ -S "/run/user/$uid/bus" ] && break
+  sleep 0.2
+done
+
+echo "running the AI audit suite as $ACCOUNT"
+set +e
+runuser -u "$ACCOUNT" -- env -i PATH=/usr/bin:/bin HOME="$home" USER="$ACCOUNT" LANG=C.UTF-8 \
+  XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+  bash -c 'cd "$1" && "$2/run-audit.sh" --local --profile audit --project "$3/src/app" --out "$1/out"' \
+  _ "$work" "$SUITE" "$home"
+rc=$?
+set -e
+[ -s "$work/out/results.json" ] || die "the suite wrote no results (exit $rc)"
+install -d -m 0755 "$out"
+cp -r "$work/out/." "$out/"
+chown -R root:root "$out"
+chmod -R u=rwX,go=rX "$out"
+restorecon -R "$out" 2>/dev/null || true
+echo "results in $out"

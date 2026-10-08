@@ -47,7 +47,7 @@ func TestShipped(t *testing.T) {
 		return n
 	}
 	all := func(*Action) bool { return true }
-	if n := count("assistant.json", all); n != 19 {
+	if n := count("assistant.json", all); n != 22 {
 		t.Errorf("assistant actions: %d", n)
 	}
 	if n := count("shell.json", func(a *Action) bool { return !a.PersonOnly && !a.AgentOnly }); n != 16 {

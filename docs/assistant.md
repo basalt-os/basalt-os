@@ -171,6 +171,8 @@ Changes (root):
 | `basalt channels remove SOURCE [--apply]` | the `source.remove` proposal |
 | `basalt keyboard [--json]` | the system's keyboard: the layouts, model and options of the login screen and of new accounts, and the console keymap (localed's files, nothing runs) |
 | `basalt keyboard set LAYOUTS [--options OPTIONS] [--apply]` | the `keyboard.system` proposal, e.g. `br,us(intl)`: layouts, variants and options must be in the system's XKB registry (xkeyboard-config's evdev.xml); the console keymap is the one localed would pick (kbd's converted keymap of the first layout, then systemd's kbd-model-map); people's own keyboard settings (the desktop's Settings, Keyboard) stay |
+| `basalt security audit` | the `audit.run` proposal (Security and Activity, Run audit): run the AI audit suite on this computer as its own unprivileged account, results in /var/lib/basalt-audit/RUN; when `basalt-audit-suite` is not installed, it is installed first from the Basalt repositories (signed) |
+| `basalt security accept ITEM`, `basalt security review ITEM` | the `risk.accept` and `risk.review` proposals (Security and Activity, I accept this risk and Review again) for encryption, secure_boot, tpm, audit or ledger; the account that asked (PKEXEC_UID or SUDO_UID) is recorded with the time in /etc/basalt/security/accepted-risks.json. SELinux, updates and snapshots can never be accepted. `basalt security risks` lists them |
 
 Other Basalt tools through `basalt`: a first word that is not one of the
 commands above runs the program `basalt-<word>` with the rest of the
@@ -215,6 +217,8 @@ changes, with parameters that pass strict validators:
 | `source.add` | `basalt __source add ...`: download the key again, refuse another fingerprint, write the key, the repository file (or the Flatpak remote) and the record |
 | `source.remove` | `basalt __source remove --id ID` |
 | `keyboard.system` | `localectl set-x11-keymap --no-convert LAYOUTS MODEL VARIANTS OPTIONS`, `localectl set-keymap --no-convert KEYMAP` (no snapshot: one setting; checked afterwards in localed's files) |
+| `audit.run` | `dnf -y install basalt-audit-suite` (only when it is missing), `basalt-audit-suite run --out /var/lib/basalt-audit/RUN` (checked: results.json written) |
+| `risk.accept`, `risk.review` | `basalt __risk accept ITEM BY`, `basalt __risk clear ITEM` (no snapshot: one setting; checked in the file) |
 
 Each action also carries its verification: the label is the policy
 default (`matchpathcon -V`), the port or boolean has the new value, the

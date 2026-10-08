@@ -66,3 +66,37 @@ func TestValidationRejects(t *testing.T) {
 		}
 	}
 }
+
+func TestSecurityActions(t *testing.T) {
+	ok := []Action{
+		{Kind: AuditRun, Params: map[string]string{"run": "2026-10-08-101500", "install": "yes"}},
+		{Kind: AuditRun, Params: map[string]string{"run": "2026-10-08-101500", "install": "no"}},
+		{Kind: RiskAccept, Params: map[string]string{"item": "encryption", "by": "edimar"}},
+		{Kind: RiskReview, Params: map[string]string{"item": "tpm"}},
+	}
+	for _, a := range ok {
+		if _, err := a.Commands(); err != nil {
+			t.Errorf("%v: %v", a, err)
+		}
+	}
+	cmds, _ := ok[0].Commands()
+	if len(cmds) != 2 || cmds[0].Argv[3] != AuditSuitePkg || cmds[1].Argv[0] != AuditSuiteBin {
+		t.Errorf("audit.run with install: %v", cmds)
+	}
+	if cmds, _ := ok[1].Commands(); len(cmds) != 1 {
+		t.Errorf("audit.run without install: %v", cmds)
+	}
+	bad := []Action{
+		{Kind: AuditRun, Params: map[string]string{"run": "../../etc", "install": "no"}},
+		{Kind: AuditRun, Params: map[string]string{"run": "2026-10-08-101500", "install": "maybe"}},
+		{Kind: AuditRun, Params: map[string]string{"run": "2026-10-08-101500", "install": "no", "extra": "x"}},
+		{Kind: RiskAccept, Params: map[string]string{"item": "selinux", "by": "edimar"}},
+		{Kind: RiskAccept, Params: map[string]string{"item": "encryption", "by": "a b"}},
+		{Kind: RiskReview, Params: map[string]string{"item": "updates"}},
+	}
+	for _, a := range bad {
+		if err := a.Validate(); err == nil {
+			t.Errorf("%v: accepted", a)
+		}
+	}
+}

@@ -44,9 +44,9 @@ lint: ## Shell and Python syntax checks (shellcheck when installed)
 	          packages/basalt-snapshots/basalt-snapshots-setup packages/basalt-snapshots/basalt-rollback \
 	          packages/basalt-security/basalt-tpm packages/basalt-security/basalt-secureboot \
 	          packages/basalt-snapshots/42_basalt_snapshots packages/basalt-logos/06_basalt_theme \
-	          packages/basalt-logos/tree/usr/libexec/basalt/basalt-grub-theme-sync; do bash -n "$$f" || exit 1; done
+	          packages/basalt-logos/tree/usr/libexec/basalt/basalt-grub-theme-sync packages/basalt-audit-suite/basalt-audit-suite packages/basalt-audit-suite/build.sh; do bash -n "$$f" || exit 1; done
 	@python3 -m py_compile $(L)/console-unlock.py $(L)/grub-console.py $(L)/mok-console.py $(L)/serial-watch.py && rm -rf $(L)/__pycache__
-	@if command -v shellcheck >/dev/null; then shellcheck -x -S warning $(S)/*.sh $(L)/*.sh packages/basalt-snapshots/basalt-snapshot-dnf packages/basalt-snapshots/basalt-snapshot-boot packages/basalt-snapshots/basalt-snapshots-setup packages/basalt-snapshots/basalt-rollback packages/basalt-security/basalt-tpm packages/basalt-security/basalt-secureboot packages/basalt-logos/06_basalt_theme packages/basalt-logos/tree/usr/libexec/basalt/basalt-grub-theme-sync; else echo "shellcheck not installed, syntax only"; fi
+	@if command -v shellcheck >/dev/null; then shellcheck -x -S warning $(S)/*.sh $(L)/*.sh packages/basalt-snapshots/basalt-snapshot-dnf packages/basalt-snapshots/basalt-snapshot-boot packages/basalt-snapshots/basalt-snapshots-setup packages/basalt-snapshots/basalt-rollback packages/basalt-security/basalt-tpm packages/basalt-security/basalt-secureboot packages/basalt-logos/06_basalt_theme packages/basalt-logos/tree/usr/libexec/basalt/basalt-grub-theme-sync packages/basalt-audit-suite/basalt-audit-suite packages/basalt-audit-suite/build.sh; else echo "shellcheck not installed, syntax only"; fi
 	@if command -v ksvalidator >/dev/null; then ksvalidator -v F44 kickstart/basalt-server.ks; fi
 	@echo lint ok
 
