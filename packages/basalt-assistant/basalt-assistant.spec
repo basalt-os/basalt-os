@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.12.3
+Version:        0.13.0
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -207,6 +207,23 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.0-1
+- basalt security audit, accept ITEM, review ITEM and risks: the
+  audit.run, risk.accept and risk.review proposals behind Security and
+  Activity's Run audit, I accept this risk and Review again. The audit
+  runs the AI audit suite as the unprivileged account basalt-audit
+  (basalt-audit-suite, installed from the Basalt repositories when
+  missing); accepted risks (encryption, Secure Boot, TPM, audit, ledger;
+  never SELinux, updates or snapshots) go to
+  /etc/basalt/security/accepted-risks.json with who and when.
+- basalt status as a normal user: no more "A rollback is waiting" and
+  "Snapshots none" from btrfs and /.snapshots errors without root; it
+  says only root can check. basalt snapshots diff and basalt pending say
+  they need root instead of raw permission errors.
+- Reports of an SELinux denial with no known fix open with a plain
+  sentence (what happened, nothing to do now) before the SELinux terms
+  and the raw AVC.
+
 * Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.3-1
 - MCP basalt_drivers (and basalt_propose_driver) in the confined server
   read the report root wrote (basalt drivers refresh, Settings) instead of

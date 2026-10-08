@@ -12,7 +12,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-gate
-Version:        0.3.1
+Version:        0.3.2
 Release:        1%{?dist}
 Summary:        Approval gate: one decision point for every side effect
 License:        Apache-2.0 AND (MIT OR Apache-2.0)
@@ -147,6 +147,13 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_gate.if
 
 %changelog
+* Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.2-1
+- Registry: audit.run, risk.accept and risk.review (C2, group
+  system.security), Security and Activity's actions through the system
+  assistant: run the AI audit suite as its own unprivileged account
+  (installing basalt-audit-suite first when missing), and accept or
+  review a known security risk.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.1-1
 - Registry: keyboard.system (C2, a system change), the system assistant's
   action that sets the keyboard of the login screen, the console and new
