@@ -108,6 +108,13 @@ type Sys struct {
 	ReadFile  func(string) ([]byte, error)
 	Kernel    func() string // uname -r
 	Graphical func() bool   // the default target is graphical.target
+	// Confined: the report is built inside the assistant's SELinux domain
+	// (the MCP server), which runs no rpm, dnf or mokutil: it has no rights
+	// on the package database, dnf's cache or the kernel's key rings, and
+	// is not given them. The driver's state, the repository and Secure Boot
+	// then come from the report root wrote (LoadCache); without one only
+	// the GPUs are reported.
+	Confined bool
 }
 
 // Real is the running system.
@@ -421,8 +428,44 @@ type Report struct {
 	Docs           string         `json:"docs"`
 }
 
+// NotCheckedHere is the blocker of a report built in the confined domain
+// without root's report.
+const NotCheckedHere = "the installed driver, the basalt-nonfree repository and Secure Boot are checked by root: open Settings, Additional drivers, or run `sudo basalt drivers refresh`, then ask again"
+
+// LoadCache reads the report root wrote (basalt drivers refresh,
+// basalt-drivers-refresh.service) and says how old it is.
+func LoadCache(path string, now time.Time) (Report, error) {
+	var r Report
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return r, err
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return r, fmt.Errorf("%s: %v", path, err)
+	}
+	r.License.Text = ""
+	if !r.Time.IsZero() {
+		r.Notices = append(r.Notices, fmt.Sprintf("Report written by root %s ago (%s); `sudo basalt drivers refresh` or Settings, Additional drivers, updates it.",
+			now.Sub(r.Time).Round(time.Second), r.Time.Format(time.RFC3339)))
+	}
+	return r, nil
+}
+
 // Build looks at the system.
 func Build(ctx context.Context, s Sys, withLicense bool) Report {
+	if s.Confined {
+		// Only what the confined domain may read: the GPUs (sysfs).
+		r := Report{Time: time.Now().UTC(), GPUs: Detect(s), Docs: Docs, State: State{Mode: "none"},
+			License: License{Name: "NVIDIA Driver License Agreement", SHA256: LicenseSHA256()}}
+		// No NVIDIA GPU needs no more than the GPUs; anything else depends
+		// on what root checks.
+		r.Recommendation = Recommend(r.GPUs, r.State, SecureBoot{}, s.Kernel(), s.Graphical())
+		if r.Recommendation.Action != "none" {
+			r.Recommendation = Recommendation{Action: "unknown", Kernel: s.Kernel(), Blockers: []string{NotCheckedHere}}
+		}
+		r.Notices = append(notices(r), "Not checked here: "+NotCheckedHere+".")
+		return r
+	}
 	r := Report{Time: time.Now().UTC(), GPUs: Detect(s), State: state(ctx, s), SecureBoot: secureBoot(ctx, s), Docs: Docs,
 		License: License{Name: "NVIDIA Driver License Agreement", SHA256: LicenseSHA256()}}
 	if withLicense {

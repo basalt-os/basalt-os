@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -290,5 +291,47 @@ func TestActionValidation(t *testing.T) {
 	checks := (action.Action{Kind: action.DriverInstall, Params: ok}).Verify(time.Time{})
 	if len(checks) != 5 {
 		t.Errorf("%d checks", len(checks))
+	}
+}
+
+// The confined MCP server runs no rpm, dnf or mokutil: it reports the GPUs
+// and says what root checks; root's report, when there is one, is read
+// with its age.
+func TestConfinedReport(t *testing.T) {
+	s := fakeSys(t, []dev{rtx4090}, nil, nil)
+	s.Confined = true
+	r := Build(context.Background(), s, false)
+	if asked := s.R.(*runner.Fake).Asked; len(asked) != 0 {
+		t.Errorf("the confined report ran %v", asked)
+	}
+	if len(r.GPUs) != 1 || r.Recommendation.Action != "unknown" || len(r.Recommendation.Blockers) != 1 {
+		t.Errorf("confined report: %+v", r.Recommendation)
+	}
+	if _, err := InstallProposal(r, "mcp", ""); err == nil {
+		t.Error("an install proposal without root's report")
+	}
+
+	vm := fakeSys(t, []dev{{slot: "0000:00:02.0", class: "0x030000", vendor: "1af4", device: "1050", driver: "virtio-pci", boot: true}}, nil, nil)
+	vm.Confined = true
+	if a := Build(context.Background(), vm, false).Recommendation.Action; a != "none" {
+		t.Errorf("no NVIDIA GPU, confined: %s", a)
+	}
+
+	root := Build(context.Background(), fakeSys(t, []dev{rtx4090}, nil, nil), true)
+	b, _ := json.Marshal(root)
+	path := filepath.Join(t.TempDir(), "drivers.json")
+	must(t, os.WriteFile(path, b, 0o600))
+	c, err := LoadCache(path, root.Time.Add(90*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Recommendation.Action != root.Recommendation.Action || c.License.Text != "" {
+		t.Errorf("cached: %+v", c.Recommendation)
+	}
+	if !strings.Contains(strings.Join(c.Notices, "\n"), "1m30s ago") {
+		t.Errorf("no age in %v", c.Notices)
+	}
+	if _, err := LoadCache(filepath.Join(t.TempDir(), "none.json"), time.Now()); err == nil {
+		t.Error("a missing report must be an error")
 	}
 }

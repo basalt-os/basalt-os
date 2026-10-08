@@ -1,4 +1,4 @@
-policy_module(basalt_assistant, 0.3.0)
+policy_module(basalt_assistant, 0.3.1)
 
 # Basalt OS system assistant.
 #
@@ -114,6 +114,12 @@ fs_search_all(basalt_assistant_t)
 
 auth_read_passwd(basalt_assistant_t)
 miscfiles_read_localization(basalt_assistant_t)
+# The PCI id database (/usr/share/hwdata/pci.ids, hwdata_t): GPU names in
+# the Additional drivers report of the MCP server (basalt_drivers). Public
+# data, read only. The confined report runs no rpm, dnf or mokutil: it has
+# no rights on the package database, dnf's cache or the kernel key rings,
+# and reads root's report (drivers.json in its state directory) instead.
+miscfiles_read_hwdata(basalt_assistant_t)
 
 # Journal: journalctl runs in this domain and reads the journal files.
 journalctl_exec(basalt_assistant_t)

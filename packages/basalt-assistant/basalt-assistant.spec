@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.12.2
+Version:        0.12.3
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -207,6 +207,22 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.3-1
+- MCP basalt_drivers (and basalt_propose_driver) in the confined server
+  read the report root wrote (basalt drivers refresh, Settings) instead of
+  running rpm, dnf and mokutil in basalt_assistant_t, which has no rights
+  on the package database, dnf's cache or the kernel's key rings: every
+  call was denied (and mokutil's key ring walk flooded the audit log),
+  and the driver showed as unavailable. Without root's report the server
+  lists the GPUs and says how to get the rest. SELinux: read the PCI id
+  database (hwdata_t) for GPU names (basalt_assistant 0.3.1).
+- basalt status: "Snapshots are off" when the root has no snapper
+  configuration, with the reason (not btrfs; or btrfs and set up at the
+  next boot by basalt-snapshots-auto.service).
+- basalt channels reads dnf's vendor overrides
+  (/usr/share/dnf5/repos.override.d, where basalt-release enforces the
+  signature checks) as dnf does, so it shows the settings in effect.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.12.2-1
 - basalt keyboard: the system's keyboard (the login screen, the text
   console, new accounts), and the keyboard.system proposal (basalt keyboard

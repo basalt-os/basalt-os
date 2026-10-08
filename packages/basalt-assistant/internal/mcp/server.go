@@ -36,6 +36,23 @@ type Server struct {
 	Decide  *decide.Layer
 	Disk    diag.DiskThresholds
 	Version string
+	// DriversCache is the Additional drivers report root writes
+	// (/var/lib/basalt-assistant/drivers.json); the confined server reads
+	// it instead of running rpm, dnf or mokutil.
+	DriversCache string
+}
+
+// driversReport is root's report when the server is confined and one
+// exists, else the report this process may build.
+func (s *Server) driversReport(ctx context.Context) drivers.Report {
+	sys := drivers.Real(s.Env.R)
+	sys.Confined = s.Env.Confined
+	if sys.Confined && s.DriversCache != "" {
+		if r, err := drivers.LoadCache(s.DriversCache, time.Now()); err == nil {
+			return r
+		}
+	}
+	return drivers.Build(ctx, sys, false)
 }
 
 type rpcReq struct {
@@ -288,7 +305,7 @@ func (s *Server) disk(ctx context.Context, _ map[string]any) (string, any, error
 }
 
 func (s *Server) drivers(ctx context.Context, _ map[string]any) (string, any, error) {
-	r := drivers.Build(ctx, drivers.Real(s.Env.R), false)
+	r := s.driversReport(ctx)
 	var b strings.Builder
 	for _, g := range r.GPUs {
 		fmt.Fprintf(&b, "%s %s (%s:%s), driver %s\n", g.Slot, g.Name, g.VendorID, g.DeviceID, g.Driver)
@@ -303,7 +320,7 @@ func (s *Server) drivers(ctx context.Context, _ map[string]any) (string, any, er
 }
 
 func (s *Server) proposeDriver(ctx context.Context, args map[string]any) (string, any, error) {
-	r := drivers.Build(ctx, drivers.Real(s.Env.R), false)
+	r := s.driversReport(ctx)
 	p, err := drivers.InstallProposal(r, "mcp", strArg(args, "variant"))
 	if err != nil {
 		return err.Error() + "\nNothing was stored.\n", map[string]any{"stored": false}, nil

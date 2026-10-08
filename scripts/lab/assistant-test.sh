@@ -273,11 +273,13 @@ step_confine() {
 
 step_mcp() {
   log "mcp: tools over stdio"
+  local t; t="$(now_ts)"
   vm 'printf "%s\n" \
    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"lab\",\"version\":\"1\"}}}" \
    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}" \
    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"basalt_why_unit\",\"arguments\":{\"unit\":\"nginx\"}}}" \
    "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"basalt_propose_action\",\"arguments\":{\"kind\":\"selinux.boolean\",\"params\":{\"name\":\"httpd_can_network_connect\",\"value\":\"on\"},\"reason\":\"lab test\"}}}" \
+   "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"basalt_drivers\",\"arguments\":{}}}" \
    | basalt-mcp | python3 -c "
 import json, sys
 for line in sys.stdin:
@@ -291,6 +293,12 @@ for line in sys.stdin:
         print(\"init\", res.get(\"serverInfo\"))
 "'
   vm 'getsebool httpd_can_network_connect; basalt pending | grep action'
+  # basalt_drivers in the confined server runs no rpm, dnf or mokutil (it
+  # reads root's report when there is one): no denial.
+  local n
+  n="$(vm "ausearch --input-logs -m AVC,USER_AVC -ts $t 2>/dev/null | grep -c 'scontext=[^ ]*:basalt_assistant_t' || true")"
+  log "mcp: denials of basalt_assistant_t during the calls: $n (expected 0)"
+  [[ "$n" == 0 ]] || die "mcp: basalt_assistant_t was denied something"
 }
 
 step_audit() {

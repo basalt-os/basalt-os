@@ -34,7 +34,7 @@ func main() {
 	env := diag.Real(true, layer)
 	env.HistoryPath = cfg.StateDir + "/disk-history.jsonl"
 	s := &mcp.Server{Env: env, Store: proposal.Store{Dir: cfg.StateDir + "/proposals"}, Audit: al,
-		Decide: layer, Disk: cfg.Disk, Version: version}
+		Decide: layer, Disk: cfg.Disk, Version: version, DriversCache: cfg.StateDir + "/drivers.json"}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := s.Serve(ctx, os.Stdin, os.Stdout); err != nil {
