@@ -7,6 +7,10 @@ Filters = [
     'spelling-error',
     # libdnf5-plugin-actions is a dnf5 plugin, not a shared library.
     'explicit-lib-dependency libdnf5-plugin-actions',
+    # basalt-release and basalt-nonfree-release (44-9, 1-3) require libdnf5
+    # for the directory it owns, /usr/share/dnf5/repos.override.d, where
+    # they enforce the signature checks; no library is linked.
+    'explicit-lib-dependency libdnf5$',
     # basalt-desktop (basalt-shell 0.9) requires libfuse 2 for AppImages built
     # with the older runtime: they load it at run time, so rpm cannot find
     # the dependency by itself.
