@@ -49,6 +49,9 @@ Activity.
 install -d %{buildroot}%{_datadir}/basalt-audit-suite
 cp -pr run-audit.sh VERSION lib cases schema agents %{buildroot}%{_datadir}/basalt-audit-suite/
 find %{buildroot}%{_datadir}/basalt-audit-suite -name __pycache__ -prune -exec rm -rf {} +
+# Scripts with an interpreter line are programs: make them executable
+# (the suite's archive keeps some, like the mock endpoint, at 0644).
+find %{buildroot}%{_datadir}/basalt-audit-suite -type f -exec sh -c 'for f; do [ "$(head -c 2 "$f")" = "#!" ] && chmod 0755 "$f"; done; true' sh {} +
 install -pm 0644 %{SOURCE3} %{buildroot}%{_datadir}/basalt-audit-suite/audit.conf
 install -Dpm 0755 %{SOURCE1} %{buildroot}%{_bindir}/basalt-audit-suite
 install -Dpm 0644 %{SOURCE2} %{buildroot}%{_sysusersdir}/basalt-audit-suite.conf
