@@ -84,7 +84,7 @@ jobs:
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
       - name: Upload repository (unsigned)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: basalt-os-repo-unsigned-${{ github.sha }}
           path: |
@@ -94,7 +94,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Upload ISO (unsigned)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: basalt-os-iso-unsigned-${{ github.sha }}
           path: |
@@ -156,7 +156,7 @@ jobs:
         run: scripts/ci/boot-test.sh run
       - name: Upload boot test logs
         if: always() && steps.kvm.outputs.available == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: boot-test-logs-${{ github.sha }}
           path: build/ci-boot/vm/logs/
