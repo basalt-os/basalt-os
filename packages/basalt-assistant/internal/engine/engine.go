@@ -413,11 +413,49 @@ func (g *Engine) handleUnit(ctx context.Context, ev Event) {
 		g.covered[rep.Domain] = time.Now()
 		g.mu.Unlock()
 	}
+	if report.ExecutorUnit(ev.Subject) {
+		g.handleExecutor(ctx, rep)
+		return
+	}
 	p := report.FromUnit("daemon", rep)
 	if g.dedup(p.Key) {
 		return
 	}
 	g.publish(ctx, p, map[string]bool{"unit_failed": true})
+}
+
+// handleExecutor handles a failed executor unit of the assistant itself
+// (basalt-apply@ or basalt-gate-exec@): never a unit proposal named after
+// it. The proposal's record speaks when it has the outcome; an apply that
+// was interrupted (a package upgrade, a reboot) leaves the proposal
+// waiting; anything else is a plain report about the change that did not
+// finish.
+func (g *Engine) handleExecutor(ctx context.Context, rep *diag.UnitReport) {
+	id := report.ExecutorProposalID(rep)
+	var orig *proposal.Proposal
+	if id != "" {
+		orig, _ = g.Store.Load(id)
+	}
+	switch {
+	case report.ExecutorRecorded(orig):
+		g.logf("%s ended; proposal %s records the outcome (%s)", rep.Unit, id, orig.Status)
+		return
+	case report.ExecutorInterrupted(rep):
+		g.logf("%s was interrupted (%s); proposal %s still waits", rep.Unit, rep.State["Result"], orDash(id))
+		return
+	}
+	p := report.FromExecutor("daemon", rep, orig)
+	if g.dedup(p.Key) {
+		return
+	}
+	g.publish(ctx, p, map[string]bool{"unit_failed": true})
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func (g *Engine) handleAVCs(ctx context.Context, avcs []selinux.AVC) {
@@ -495,6 +533,16 @@ func (g *Engine) checkDnf(ctx context.Context) {
 func (g *Engine) resolveUnits(ctx context.Context) {
 	ps, _ := g.Store.List(proposal.Pending)
 	for _, p := range ps {
+		if p.Kind == "unit" && report.ExecutorUnit(p.Subject) {
+			// Filed by an older assistant about its own executor unit
+			// ("basalt-apply@...service stopped: cause unknown"): the
+			// applied proposal's record tells the outcome instead.
+			p.Status = proposal.Resolved
+			if g.Store.Save(p) == nil && g.Audit != nil {
+				_, _ = g.Audit.Append("resolve", p.ID+": "+p.Subject+" is the assistant's own executor; proposal closed", map[string]any{"proposal": p.ID})
+			}
+			continue
+		}
 		if p.Kind != "unit" || time.Since(p.LastSeen) < 30*time.Second {
 			continue
 		}

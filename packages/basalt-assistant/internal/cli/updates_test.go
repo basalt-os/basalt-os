@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
 )
 
@@ -26,5 +28,27 @@ func TestSourceHelperArgvRoundTrip(t *testing.T) {
 	}
 	if err := sourceParams(o).Validate(); err != nil {
 		t.Error(err)
+	}
+}
+
+// Turning basalt-nonfree-testing on is proposed only when its definition
+// can be installed: no proposal for a change that cannot work.
+func TestNonfreeTestingDefinition(t *testing.T) {
+	offered := &runner.Fake{Prefixes: map[string]runner.Result{
+		"dnf -q --cacheonly repoquery": {Out: "basalt-nonfree-release\n"}}}
+	missing := &runner.Fake{Prefixes: map[string]runner.Result{
+		"dnf -q --cacheonly repoquery": {Out: ""}}}
+	broken := &runner.Fake{} // no dnf cache: exit 127
+	ctx := t.Context()
+	if def, err := nonfreeTestingDefinition(ctx, missing, true); def != "" || err != nil {
+		t.Errorf("already defined: %q %v", def, err)
+	}
+	if def, err := nonfreeTestingDefinition(ctx, offered, false); def != "install" || err != nil {
+		t.Errorf("offered: %q %v", def, err)
+	}
+	for name, r := range map[string]runner.Reader{"missing": missing, "no cache": broken, "nil": nil} {
+		if def, err := nonfreeTestingDefinition(ctx, r, false); def != "" || !errors.Is(err, ErrNonfreeTestingUnavailable) {
+			t.Errorf("%s: %q %v", name, def, err)
+		}
 	}
 }

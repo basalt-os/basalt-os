@@ -327,7 +327,7 @@ func state(ctx context.Context, s Sys) State {
 		}
 	}
 	st.RepoEnabled = repoEnabled(s)
-	st.NonfreeAvailable = st.ReleasePackage || releaseOffered(ctx, s)
+	st.NonfreeAvailable = st.ReleasePackage || ReleaseOffered(ctx, s.R)
 	kv := keyValues(s.read(StateFile))
 	if kv["mode"] != "" {
 		st.Mode = kv["mode"]
@@ -342,11 +342,11 @@ func state(ctx context.Context, s Sys) State {
 	return st
 }
 
-// releaseOffered asks dnf, from its cached metadata only (no network, no
+// ReleaseOffered asks dnf, from its cached metadata only (no network, no
 // metadata refresh), whether an enabled repository offers
 // basalt-nonfree-release. No cache, an error or no match all mean no.
-func releaseOffered(ctx context.Context, s Sys) bool {
-	res := s.R.Read(ctx, "dnf", "-q", "--cacheonly", "repoquery", "--available", "--queryformat", "%{name}\n", "basalt-nonfree-release")
+func ReleaseOffered(ctx context.Context, r runner.Reader) bool {
+	res := r.Read(ctx, "dnf", "-q", "--cacheonly", "repoquery", "--available", "--queryformat", "%{name}\n", "basalt-nonfree-release")
 	if !res.OK() {
 		return false
 	}
