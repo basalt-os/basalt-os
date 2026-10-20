@@ -241,22 +241,22 @@ install -pm 0644 LICENSE LICENSE.presets licenses/
 %post -p <lua>
 local link = "%{_prefix}/lib/os-release"
 local target = posix.readlink(link)
-if not (target and target:match("^os%-release%.d/os%-release%-")) then
+if not (target and target:find("os-release.d/os-release-", 1, true) == 1) then
   os.remove(link)
   posix.symlink("os-release.d/os-release-server", link)
 end
 
-# basalt-desktop installed (or this package installed or upgraded while it
-# is): the desktop edition.
 %triggerin -p <lua> -- basalt-desktop
+-- basalt-desktop installed (or this package installed or upgraded while
+-- it is): the desktop edition.
 local link = "%{_prefix}/lib/os-release"
 if posix.readlink(link) ~= "os-release.d/os-release-desktop" then
   os.remove(link)
   posix.symlink("os-release.d/os-release-desktop", link)
 end
 
-# basalt-desktop removed (no instance left): a server again.
 %triggerpostun -p <lua> -- basalt-desktop
+-- basalt-desktop removed (no instance left): a server again.
 if tonumber(arg[3]) == 0 then
   local link = "%{_prefix}/lib/os-release"
   os.remove(link)
