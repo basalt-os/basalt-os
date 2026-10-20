@@ -104,7 +104,10 @@ who or which rule decided each past action, and rules such as "tidy my
 Downloads folder every Friday and tell me". It will also have a stop button
 that halts all automation at once, and a short list of things no rule can
 ever allow (turning protection off, deleting the audit record, removing
-disk encryption). The gate is planned, not in place yet.
+disk encryption). The gate is being built and already handles some requests:
+the approval paths move to it one by one ([gate.md](../gate.md)), each keeps
+its own confirmation until the gate enforces it, and the gate is not in the
+default install yet. The Approvals app is planned.
 
 ### 5. An audit record you can trust
 
