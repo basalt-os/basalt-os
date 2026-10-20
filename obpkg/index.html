@@ -254,7 +254,7 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
                 <td><code>/basalt-tools/</code></td>
                 <td>
                   Official OpenBasalt tools for Basalt OS and other Fedora-based systems where they apply.
-                  Currently: Samba Conductor.
+                  Currently: Samba Conductor 0.2.0.
                   Release 44: <code>/basalt-tools/44/x86_64/</code>.
                 </td>
                 <td class="live">Available</td>
@@ -263,7 +263,8 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
                 <td><code>/basalt-testing/</code></td>
                 <td>
                   Packages on their way to <code>/basalt/</code>. Opt-in, off by default.
-                  Currently: the Basalt desktop shell preview.
+                  Currently: the Basalt desktop shell preview, newer Basalt OS packages and Samba
+                  Conductor packages before their stable release.
                   Release 44: <code>/basalt-testing/44/x86_64/</code>.
                 </td>
                 <td class="live">Available</td>
@@ -272,8 +273,9 @@ gpg --show-keys --with-fingerprint openbasalt-release-key.asc</code></pre>
                 <td><code>/apt/</code></td>
                 <td>
                   OpenBasalt packages for Debian and Ubuntu: Debian 13, Ubuntu 26.04 and Ubuntu 24.04, amd64 and
-                  arm64. Currently: Samba Conductor.
-                  Suite <code>stable</code>, component <code>main</code>.
+                  arm64. Currently: Samba Conductor 0.2.0 in the <code>stable</code> suite.
+                  Suite <code>stable</code>, component <code>main</code>; a <code>testing</code> suite
+                  carries packages before their stable release, opt-in.
                 </td>
                 <td class="live">Available</td>
               </tr>
@@ -325,8 +327,9 @@ metadata_expire=6h</code></pre>
           Currently:
           <a href="https://github.com/openbasalt/samba-conductor">Samba Conductor</a>
           (<a href="https://github.com/openbasalt/samba-conductor-docs">docs</a>), as <code>conductor</code>,
-          <code>conductor-idp</code>, <code>conductor-sync</code>, <code>conductor-backup</code> and
-          <code>conductor-files</code>, each with its <code>-selinux</code> policy package.
+          <code>conductor-idp</code>, <code>conductor-sync</code>, <code>conductor-backup</code>,
+          <code>conductor-provisioner</code> and <code>conductor-files</code>, each with its
+          <code>-selinux</code> policy package. The latest release is 0.2.0.
         </p>
         <p>
           On Basalt OS this repository is enabled by default, since <code>basalt-release</code> 44-7. Install a tool
@@ -361,7 +364,10 @@ metadata_expire=6h</code></pre>
         <p>
           Currently: the Basalt desktop shell preview, as <code>basalt-shell</code> with its
           <code>basalt-shell-selinux</code> policy package
-          (<a href="https://github.com/basalt-os/basalt-shell">source</a>).
+          (<a href="https://github.com/basalt-os/basalt-shell">source</a>), newer versions of Basalt OS
+          packages before they reach <code>/basalt/</code>, and
+          <a href="https://github.com/openbasalt/samba-conductor">Samba Conductor</a> packages before they
+          are promoted to <code>/basalt-tools/</code>.
         </p>
         <p>
           On Basalt OS, <code>basalt-release</code> already defines the repository. Enable it, then install the

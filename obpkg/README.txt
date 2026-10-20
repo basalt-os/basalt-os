@@ -19,9 +19,9 @@ Basalt OS installs come with /basalt/, /basalt-tools/ (on) and
 basalt-tools: official OpenBasalt tools for Basalt OS and other
 Fedora-based systems where they apply, signed by the packages subkey
 above. More tools will be added over time.
-Currently: Samba Conductor (conductor, conductor-idp, conductor-sync,
-conductor-backup, conductor-files and their -selinux packages),
-https://github.com/openbasalt/samba-conductor
+Currently: Samba Conductor 0.2.0 (conductor, conductor-idp, conductor-sync,
+conductor-backup, conductor-provisioner, conductor-files and their -selinux
+packages), https://github.com/openbasalt/samba-conductor
 
 On Basalt OS it is enabled by default since basalt-release 44-7:
   sudo dnf install conductor
@@ -43,7 +43,9 @@ Then install a tool, for example: sudo dnf install conductor
 
 basalt-testing: packages on their way to /basalt/, opt-in and off by
 default. Currently: the Basalt desktop shell preview (basalt-shell and
-basalt-shell-selinux), https://github.com/basalt-os/basalt-shell
+basalt-shell-selinux), https://github.com/basalt-os/basalt-shell, newer
+Basalt OS packages before they reach /basalt/, and Samba Conductor packages
+before they are promoted to /basalt-tools/.
 On Basalt OS:
   sudo dnf config-manager setopt basalt-testing.enabled=1
   sudo dnf install basalt-shell
@@ -52,9 +54,10 @@ Or for a single command: sudo dnf --enablerepo=basalt-testing install basalt-she
 
 apt: OpenBasalt packages for Debian 13, Ubuntu 26.04 and Ubuntu 24.04
 (amd64, arm64), one suite (stable) for all of them, component main,
-metadata signed by the packages subkey above.
-Currently: Samba Conductor (conductor, conductor-idp, conductor-sync,
-conductor-backup, conductor-files).
+metadata signed by the packages subkey above. An opt-in testing suite
+carries packages before their stable release.
+Currently: Samba Conductor 0.2.0 (conductor, conductor-idp, conductor-sync,
+conductor-backup, conductor-provisioner, conductor-files).
 
   curl -fsSLO https://obpkg.org/keys/openbasalt-release-key.asc
   gpg --show-keys --with-fingerprint openbasalt-release-key.asc
