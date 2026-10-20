@@ -19,7 +19,7 @@ cp -p "$pkg/basalt-ledger.spec" "$work/SPECS/"
 mode="${1:-build}"
 log "basalt-ledger $ver: $mode in $FEDORA_IMAGE"
 in_fedora -v "$work:/rpmbuild" -e MODE="$mode" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
-  dnf -q -y install rpm-build systemd-rpm-macros golang gcc selinux-policy-devel make bzip2 >/dev/null 2>&1 ||
+  dnf -q -y install rpm-build systemd-rpm-macros systemd-devel golang gcc selinux-policy-devel make bzip2 >/dev/null 2>&1 ||
     { echo "dnf install failed"; exit 1; }
   if [ "$MODE" = test ]; then
     mkdir -p /src && tar -C /src -xzf /rpmbuild/SOURCES/basalt-ledger-$VER.tar.gz && cd /src
