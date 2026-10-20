@@ -135,7 +135,11 @@ qemu_start() {
     -device virtio-blk-pci,drive=disk0,serial=basalt-disk,bootindex=2
     -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22" -device virtio-net-pci,netdev=net0
     -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-pci,rng=rng0
-    -display none -monitor none -serial "file:$LOGS/serial-$phase.log"
+    -display none -monitor none
+    # The serial console goes to a log file and to a socket nobody reads
+    # unless the installer fails (installer_dump writes to it then).
+    -chardev "socket,id=ser0,path=$S/serial-$phase.sock,server=on,wait=off,logfile=$LOGS/serial-$phase.log"
+    -serial chardev:ser0
   )
   if [[ "$with_iso" == 1 ]]; then
     # shellcheck disable=SC2054
@@ -154,11 +158,52 @@ serial_tail() {
 
 PROMPT_RE='Please enter passphrase for disk|Enter passphrase for|recovery key for disk'
 
+# Anaconda's text UI after a fatal error: it waits for an answer forever.
+INSTALLER_ERROR_RE='An unknown error has occurred|What do you want to do now\?'
+
+# installer_dump SOCKET LOGFILE: answer Anaconda's error menu with "Run
+# shell" over the serial socket and print the installer's own error lines
+# (dnf and rpm scriptlet errors, tracebacks) to the serial console, so the
+# real cause lands in the job log instead of only Anaconda's summary.
+installer_dump() {
+  local sock="$1" logf="$2"
+  python3 - "$sock" <<'PY' || true
+import socket, sys, time
+s = socket.socket(socket.AF_UNIX)
+s.connect(sys.argv[1])
+s.settimeout(1)
+s.sendall(b"2\n")
+time.sleep(3)
+# The end marker is computed by the shell, so it only shows up in the
+# output, never in the echo of the command line.
+s.sendall(b"grep -a ERROR /tmp/dnf.log | tail -n 30;"
+          b" grep -aE 'ERROR|Error' /tmp/packaging.log | tail -n 15;"
+          b" echo BASALT-DUMP-$((40+2))-END\n")
+seen, end = b"", time.time() + 90
+while b"BASALT-DUMP-42-END" not in seen and time.time() < end:
+    try:
+        seen += s.recv(65536)
+    except socket.timeout:
+        pass
+PY
+  log "installer error; Anaconda's dnf and packaging errors:"
+  sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\r//g' "$logf" | grep -a '[[:alnum:]]' | tail -60 >&2
+}
+
+# wait_qemu_exit TIMEOUT LOGFILE [installer]: wait for QEMU to exit.
+# Returns 1 on timeout and, with "installer", 3 as soon as Anaconda reports
+# a fatal error (instead of waiting out the whole timeout at its menu).
 wait_qemu_exit() {
-  local timeout="$1" logf="$2" t0 last=0 now
+  local timeout="$1" logf="$2" mode="${3:-}" t0 last=0 now
   t0=$(date +%s)
   while kill -0 "$qemu_pid" 2>/dev/null; do
     now=$(date +%s)
+    if [[ "$mode" == installer ]] && grep -aqE "$INSTALLER_ERROR_RE" "$logf" 2>/dev/null; then
+      installer_dump "$S/serial-install.sock" "$logf"
+      kill "$qemu_pid" 2>/dev/null || true
+      qemu_pid=""
+      return 3
+    fi
     if (( now - t0 > timeout )); then
       kill "$qemu_pid" 2>/dev/null || true
       log "QEMU still running after ${timeout}s; last serial lines:"
@@ -230,7 +275,9 @@ else
 log "install: ${VM_VCPUS} vCPU, ${VM_MEMORY_MB} MiB, ${VM_DISK_GB} GiB disk, timeout ${INSTALL_TIMEOUT}s"
 t0=$(date +%s)
 qemu_start install 1
-wait_qemu_exit "$INSTALL_TIMEOUT" "$LOGS/serial-install.log" || { result FAIL "install" "not finished in ${INSTALL_TIMEOUT}s"; die "install timed out"; }
+rc=0; wait_qemu_exit "$INSTALL_TIMEOUT" "$LOGS/serial-install.log" installer || rc=$?
+if [[ $rc == 3 ]]; then result FAIL "install" "Anaconda error after $(( $(date +%s) - t0 ))s"; die "install failed (installer errors above)"; fi
+[[ $rc == 0 ]] || { result FAIL "install" "not finished in ${INSTALL_TIMEOUT}s"; die "install timed out"; }
 t_install=$(( $(date +%s) - t0 ))
 log "TIMING install: ${t_install}s"
 grep -aq 'basalt-post: done' "$LOGS/serial-install.log" ||

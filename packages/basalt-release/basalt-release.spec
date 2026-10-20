@@ -33,7 +33,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        9%{?dist}
+Release:        10%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -72,9 +72,14 @@ Conflicts:      generic-release
 Conflicts:      generic-release-common
 # Fedora's repository definitions and package signing keys stay in use.
 Requires:       fedora-repos(%{dist_version})
-# Owns /usr/share/dnf5/repos.override.d, where the signature checks of the
-# Basalt repositories are enforced.
-Requires:       libdnf5
+# No dependency on libdnf5 for /usr/share/dnf5/repos.override.d: this
+# package owns that directory itself (see %%files). system-release is pulled
+# in by setup, so anything required here lands in the earliest part of the
+# install ordering; libdnf5 brought crypto-policies there, closing a loop
+# (glibc, filesystem, setup, system-release, libdnf5 and its libraries,
+# crypto-policies, /bin/sh, glibc) that rpm broke by running
+# crypto-policies' %%pre before glibc was installed, which failed the
+# Anaconda install.
 
 %description
 Basalt OS release files: /usr/lib/os-release and the other files that
@@ -235,6 +240,7 @@ fi
 %dir %{_sysconfdir}/issue.d
 %attr(0644,root,root) %{_rpmconfigdir}/macros.d/macros.dist
 %config(noreplace) %{_sysconfdir}/yum.repos.d/basalt.repo
+%dir %{_datadir}/dnf5/repos.override.d
 %{_datadir}/dnf5/repos.override.d/20-basalt-signatures.repo
 %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-basalt
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_repo_url
@@ -260,6 +266,12 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 44-10
+- Own /usr/share/dnf5/repos.override.d instead of requiring libdnf5. The
+  requirement put libdnf5 and its dependencies (crypto-policies among
+  them) before glibc in the install ordering, and Anaconda failed running
+  crypto-policies' %%pre without a working /bin/sh.
+
 * Wed Oct 07 2026 Basalt OS project <noreply@basalt-os.org> - 44-9
 - The signature checks of the Basalt repositories (gpgcheck, repo_gpgcheck
   and the OpenBasalt key for basalt, basalt-tools and basalt-testing) are

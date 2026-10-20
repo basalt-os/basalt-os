@@ -8,7 +8,7 @@
 
 Name:           basalt-nonfree-release
 Version:        1
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Basalt OS non-free drivers repository (off by default)
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
@@ -23,8 +23,9 @@ Source5:        20-basalt-nonfree-signatures.repo
 
 # The repository key and the other repositories.
 Requires:       basalt-release
-# Owns /usr/share/dnf5/repos.override.d (the enforced signature checks).
-Requires:       libdnf5
+# /usr/share/dnf5/repos.override.d is owned here (see %%files), not taken
+# from libdnf5: see basalt-release.spec on why the release packages keep
+# their dependencies out of the early install ordering.
 
 %description
 Defines the basalt-nonfree repository, off by default: drivers that are
@@ -54,11 +55,17 @@ install -d licenses && install -pm 0644 LICENSE licenses/
 %license licenses/LICENSE
 %doc README
 %config(noreplace) %{_sysconfdir}/yum.repos.d/basalt-nonfree.repo
+%dir %{_datadir}/dnf5
+%dir %{_datadir}/dnf5/repos.override.d
 %{_datadir}/dnf5/repos.override.d/20-basalt-nonfree-signatures.repo
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_nonfree_url
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_nonfree_testing_url
 
 %changelog
+* Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 1-4
+- Own /usr/share/dnf5/repos.override.d instead of requiring libdnf5
+  (same change as basalt-release 44-10).
+
 * Wed Oct 07 2026 Basalt OS project <noreply@basalt-os.org> - 1-3
 - The signature checks of basalt-nonfree, basalt-nonfree-source and
   basalt-nonfree-testing are enforced by a vendor override
