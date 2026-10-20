@@ -1,0 +1,54 @@
+#!/bin/sh
+# basalt-dnf-user-keys: let dnf run without root verify the Basalt
+# repositories, without a question.
+#
+# repo_gpgcheck=1 (enforced for every Basalt repository) makes dnf check
+# the signed repository metadata against a keyring kept per repository and
+# per user: root's in /var/cache/libdnf5/<repo>-<hash>/pubring, a normal
+# user's in ~/.cache/libdnf5. A user's keyring starts empty, so the first
+# `dnf repoquery` or `dnf makecache` without sudo asks to import the key,
+# and without a terminal the answer is no ("Signing key not found").
+#
+# This copies, into the user's keyring of the same repository, the keys
+# root's dnf already imported for the Basalt repositories (from the key
+# basalt-release ships). Only root-owned keyrings and key files are read,
+# only Basalt repositories, and existing files are never replaced: the
+# user trusts what the system trusts for that repository, nothing more.
+# Run by basalt-dnf-keys.service at login and when the system's dnf cache
+# changes (basalt-dnf-keys.path). Never fails a login: problems are
+# skipped.
+#
+# Tests (tests/dnf-user-keys-test.sh) point it at a fake system cache
+# (BASALT_DNF_SYSTEM_CACHE) owned by another uid (BASALT_DNF_KEYS_OWNER);
+# a person setting them only copies files they can already read into
+# their own keyring.
+set -u
+sys_cache="${BASALT_DNF_SYSTEM_CACHE:-/var/cache/libdnf5}"
+owner="${BASALT_DNF_KEYS_OWNER:-0}"
+# root's keyrings are the system's own.
+[ "$(id -u)" -ne 0 ] || [ -n "${BASALT_DNF_SYSTEM_CACHE:-}" ] || exit 0
+dest_root="${XDG_CACHE_HOME:-$HOME/.cache}/libdnf5"
+for src in "$sys_cache"/basalt*/pubring; do
+  [ -d "$src" ] || continue
+  repo=$(basename "$(dirname "$src")")
+  # The cache directory name is the repository id and a 16 digit hash.
+  printf '%s\n' "$repo" | grep -Eq '^basalt(-tools|-testing|-nonfree|-nonfree-testing)?-[0-9a-f]{16}$' || continue
+  [ "$(stat -c %u "$src" 2>/dev/null)" = "$owner" ] || continue
+  for key in "$src"/*.pub; do
+    if [ ! -f "$key" ] || [ -L "$key" ]; then
+      continue
+    fi
+    [ "$(stat -c %u "$key" 2>/dev/null)" = "$owner" ] || continue
+    # Not writable by group or others.
+    case "$(stat -c %a "$key" 2>/dev/null)" in
+      644|444|640|600|400) ;;
+      *) continue ;;
+    esac
+    dst="$dest_root/$repo/pubring"
+    [ -e "$dst/${key##*/}" ] && continue
+    if mkdir -p "$dst" 2>/dev/null; then
+      cp "$key" "$dst/" 2>/dev/null
+    fi
+  done
+done
+exit 0

@@ -33,7 +33,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        10%{?dist}
+Release:        11%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -58,6 +58,9 @@ Source21:       basalt.xml
 Source22:       firewalld-basalt.conf
 Source23:       10-basalt-resolved.conf
 Source24:       20-basalt-signatures.repo
+Source25:       basalt-dnf-user-keys
+Source26:       basalt-dnf-keys.service
+Source27:       basalt-dnf-keys.path
 
 Provides:       basalt-release-identity = %{version}-%{release}
 Provides:       system-release
@@ -118,8 +121,20 @@ cp -p %{sources} .
 # Fedora release itself for dnf and for tools that need it. BASALT_STAGE
 # (dev, alpha.N, beta.N, rc.N, final) and BASALT_BUILD (date) say which
 # build of that version this is.
-install -d %{buildroot}%{_prefix}/lib %{buildroot}%{_sysconfdir}
-cat >%{buildroot}%{_prefix}/lib/os-release <<EOF
+#
+# VARIANT: the same system is a server or, with basalt-desktop, the
+# desktop edition. Both identities ship in os-release.d and
+# /usr/lib/os-release is a symlink to one of them, chosen by the
+# scriptlets below (desktop while basalt-desktop is installed), as Fedora
+# did with its variants before identity packages. No Conflicts are needed,
+# so installing or removing basalt-desktop never needs --allowerasing.
+install -d %{buildroot}%{_prefix}/lib/os-release.d %{buildroot}%{_sysconfdir}
+for variant in server desktop; do
+  case $variant in
+    server) variant_name=Server ;;
+    desktop) variant_name=Desktop ;;
+  esac
+  cat >%{buildroot}%{_prefix}/lib/os-release.d/os-release-$variant <<EOF
 NAME="Basalt OS"
 VERSION="%{basalt_version_text}"
 RELEASE_TYPE=%{basalt_release_type}
@@ -132,8 +147,8 @@ BASALT_VERSION=%{basalt_version}
 BASALT_STAGE=%{basalt_stage}
 BASALT_BUILD=%{basalt_build}
 PRETTY_NAME="Basalt OS %{basalt_version_text}"
-VARIANT="Server"
-VARIANT_ID=server
+VARIANT="$variant_name"
+VARIANT_ID=$variant
 ANSI_COLOR="0;38;2;163;71;46"
 LOGO=basalt-logo-icon
 CPE_NAME="cpe:/o:basalt-os:basalt-os:%{basalt_version}"
@@ -141,6 +156,9 @@ DEFAULT_HOSTNAME="basalt"
 HOME_URL="https://basalt-os.org/"
 BUG_REPORT_URL="https://github.com/basalt-os/basalt-os/issues"
 EOF
+done
+# %%ghost: the scriptlets own its target; this link only gives rpm its type.
+ln -s os-release.d/os-release-server %{buildroot}%{_prefix}/lib/os-release
 ln -s ../usr/lib/os-release %{buildroot}%{_sysconfdir}/os-release
 
 # Several tools read these names; keep them, with Basalt content.
@@ -186,6 +204,16 @@ install -Dpm 0644 basalt_repo_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_rep
 install -Dpm 0644 basalt_tools_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_tools_url
 install -Dpm 0644 basalt_testing_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_testing_url
 install -Dpm 0644 20-basalt-defaults.conf %{buildroot}%{_datadir}/dnf5/libdnf.conf.d/20-basalt-defaults.conf
+# dnf without root: each person's session copies the keys root's dnf trusts
+# for the Basalt repositories into their own keyring (the script says why).
+# Enabled statically for every user session, at login and when the system's
+# dnf cache changes; no scriptlet (see the note on the install ordering).
+install -Dpm 0755 basalt-dnf-user-keys %{buildroot}%{_libexecdir}/basalt-release/basalt-dnf-user-keys
+install -Dpm 0644 basalt-dnf-keys.service %{buildroot}%{_prefix}/lib/systemd/user/basalt-dnf-keys.service
+install -Dpm 0644 basalt-dnf-keys.path %{buildroot}%{_prefix}/lib/systemd/user/basalt-dnf-keys.path
+install -d %{buildroot}%{_prefix}/lib/systemd/user/default.target.wants
+ln -s ../basalt-dnf-keys.service %{buildroot}%{_prefix}/lib/systemd/user/default.target.wants/basalt-dnf-keys.service
+ln -s ../basalt-dnf-keys.path %{buildroot}%{_prefix}/lib/systemd/user/default.target.wants/basalt-dnf-keys.path
 
 # --- presets --------------------------------------------------------------------
 install -d %{buildroot}%{_prefix}/lib/systemd/system-preset %{buildroot}%{_prefix}/lib/systemd/user-preset
@@ -203,6 +231,37 @@ install -Dpm 0644 10-basalt-resolved.conf %{buildroot}%{_prefix}/lib/systemd/res
 
 install -d licenses
 install -pm 0644 LICENSE LICENSE.presets licenses/
+
+# The os-release link, in Lua: system-release sits at the very start of
+# the install ordering, before coreutils and even /bin/sh exist (see the
+# note on libdnf5 above), and rpm's Lua needs neither.
+# %%post: create the link on a fresh install, or replace the plain file
+# that 44-10 and older shipped; an existing link (desktop or server) is
+# kept, so an upgrade never flips the variant.
+%post -p <lua>
+local link = "%{_prefix}/lib/os-release"
+local target = posix.readlink(link)
+if not (target and target:match("^os%-release%.d/os%-release%-")) then
+  os.remove(link)
+  posix.symlink("os-release.d/os-release-server", link)
+end
+
+# basalt-desktop installed (or this package installed or upgraded while it
+# is): the desktop edition.
+%triggerin -p <lua> -- basalt-desktop
+local link = "%{_prefix}/lib/os-release"
+if posix.readlink(link) ~= "os-release.d/os-release-desktop" then
+  os.remove(link)
+  posix.symlink("os-release.d/os-release-desktop", link)
+end
+
+# basalt-desktop removed (no instance left): a server again.
+%triggerpostun -p <lua> -- basalt-desktop
+if tonumber(arg[3]) == 0 then
+  local link = "%{_prefix}/lib/os-release"
+  os.remove(link)
+  posix.symlink("os-release.d/os-release-server", link)
+end
 
 %posttrans server
 # Make the "basalt" zone the default on first install. firewalld chooses
@@ -225,7 +284,10 @@ fi
 
 %files
 %license licenses/LICENSE licenses/LICENSE.presets
-%{_prefix}/lib/os-release
+%dir %{_prefix}/lib/os-release.d
+%{_prefix}/lib/os-release.d/os-release-server
+%{_prefix}/lib/os-release.d/os-release-desktop
+%ghost %{_prefix}/lib/os-release
 %{_sysconfdir}/os-release
 %{_prefix}/lib/fedora-release
 %{_prefix}/lib/system-release-cpe
@@ -249,6 +311,12 @@ fi
 %dir %{_datadir}/dnf5
 %dir %{_datadir}/dnf5/libdnf.conf.d
 %{_datadir}/dnf5/libdnf.conf.d/20-basalt-defaults.conf
+%dir %{_libexecdir}/basalt-release
+%{_libexecdir}/basalt-release/basalt-dnf-user-keys
+%{_prefix}/lib/systemd/user/basalt-dnf-keys.service
+%{_prefix}/lib/systemd/user/basalt-dnf-keys.path
+%{_prefix}/lib/systemd/user/default.target.wants/basalt-dnf-keys.service
+%{_prefix}/lib/systemd/user/default.target.wants/basalt-dnf-keys.path
 %dir %{_prefix}/lib/systemd/system-preset
 %dir %{_prefix}/lib/systemd/user-preset
 %{_prefix}/lib/systemd/system-preset/80-basalt.preset
@@ -266,6 +334,19 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 44-11
+- os-release names the edition: VARIANT="Desktop", VARIANT_ID=desktop
+  while basalt-desktop is installed, VARIANT="Server", VARIANT_ID=server
+  otherwise (the desktop edition reported Server). Both files ship in
+  /usr/lib/os-release.d; /usr/lib/os-release links to one of them,
+  switched by triggers on basalt-desktop.
+- dnf without root verifies the Basalt repositories without asking: a
+  user service (basalt-dnf-keys, at login and when the system's dnf cache
+  changes) copies the keys root's dnf trusts for the Basalt repositories
+  into the person's own per-repository keyring. Without it, `dnf
+  repoquery` or `dnf makecache` without sudo stopped at a key import
+  question, and failed with "Signing key not found" without a terminal.
+
 * Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 44-10
 - Own /usr/share/dnf5/repos.override.d instead of requiring libdnf5. The
   requirement put libdnf5 and its dependencies (crypto-policies among
