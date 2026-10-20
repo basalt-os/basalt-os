@@ -28,7 +28,8 @@ func executorEngine(t *testing.T, result, code string) (*Engine, proposal.Store)
 	show := "Id=" + applyUnit + "\nLoadState=loaded\nActiveState=failed\nSubState=failed\nResult=" + result +
 		"\nExecMainCode=" + code + "\nExecMainStatus=1\nNRestarts=0\nFragmentPath=/usr/lib/systemd/system/basalt-apply@.service\n"
 	fake := &runner.Fake{Default: &runner.Result{}, Prefixes: map[string]runner.Result{
-		"systemctl show --timestamp=unix": {Out: show},
+		"systemctl show --timestamp=unix":                                   {Out: show},
+		"journalctl --no-pager -q -o cat -n 20 _SYSTEMD_UNIT=basalt-apply@": {Out: "basalt: applying p-f3604a\nbasalt: dnf failed: No match for argument: basalt-nonfree-release\n"},
 	}}
 	al := audit.New(dir+"/audit.jsonl", "basalt-assistantd")
 	al.Journal = false
@@ -101,6 +102,9 @@ func TestExecutorNeverRawUnitProposal(t *testing.T) {
 			}
 			if tc.original == "" && p.Title != "Applying the change p-f3604a did not finish" {
 				t.Errorf("title %q", p.Title)
+			}
+			if !strings.Contains(p.Report, "The log says: dnf failed: No match for argument: basalt-nonfree-release.") {
+				t.Errorf("no reason in %q", p.Report)
 			}
 			if !strings.Contains(p.Report, "p-f3604a") || !strings.Contains(p.Report, "Nothing will be changed") {
 				t.Errorf("report text %q", p.Report)

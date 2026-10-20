@@ -444,11 +444,30 @@ func (g *Engine) handleExecutor(ctx context.Context, rep *diag.UnitReport) {
 		g.logf("%s was interrupted (%s); proposal %s still waits", rep.Unit, rep.State["Result"], orDash(id))
 		return
 	}
+	// The executor's own words (basalt apply's error): the unit diagnosis
+	// keeps only warnings and errors of the journal, and a program's
+	// output is logged at info.
+	if l := g.executorLastLine(ctx, rep.Unit); l != "" {
+		rep.Journal = append([]string{l}, rep.Journal...)
+	}
 	p := report.FromExecutor("daemon", rep, orig)
 	if g.dedup(p.Key) {
 		return
 	}
 	g.publish(ctx, p, map[string]bool{"unit_failed": true})
+}
+
+// executorLastLine is the last line the executor program itself wrote
+// (its _SYSTEMD_UNIT, not systemd's messages about the unit).
+func (g *Engine) executorLastLine(ctx context.Context, unit string) string {
+	res := g.Env.R.Read(ctx, "journalctl", "--no-pager", "-q", "-o", "cat", "-n", "20", "_SYSTEMD_UNIT="+unit)
+	lines := strings.Split(strings.TrimSpace(res.Out), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if l := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[i]), "basalt: ")); l != "" {
+			return l
+		}
+	}
+	return ""
 }
 
 func orDash(s string) string {
