@@ -25,7 +25,7 @@ ln -s "$sys/basalt-0123456789abcdef/pubring/E4EED5ECA395B302.pub" "$sys/basalt-t
 home=$t/home
 mkdir -p "$home/.cache/libdnf5/basalt-testing-fedcba9876543210/pubring"
 echo mine >"$home/.cache/libdnf5/basalt-testing-fedcba9876543210/pubring/E4EED5ECA395B302.pub"
-run() { HOME=$home XDG_CACHE_HOME= BASALT_DNF_SYSTEM_CACHE=$sys BASALT_DNF_KEYS_OWNER=$(id -u) "$here/basalt-dnf-user-keys"; }
+run() { HOME=$home XDG_CACHE_HOME='' BASALT_DNF_SYSTEM_CACHE=$sys BASALT_DNF_KEYS_OWNER=$(id -u) "$here/basalt-dnf-user-keys"; }
 run
 u=$home/.cache/libdnf5
 check "basalt keyring seeded" '[ "$(cat "$u/basalt-0123456789abcdef/pubring/E4EED5ECA395B302.pub")" = key1 ]'
@@ -34,9 +34,9 @@ check "symlinks are not followed" '[ ! -e "$u/basalt-testing-fedcba9876543210/pu
 check "other repositories are left alone" '[ ! -e "$u/fedora-0123456789abcdef" ]'
 check "names other than a Basalt channel are left alone" '[ ! -e "$u/basalt-install-basalt-0123456789abcdef" ]'
 check "a key others can write is not copied" '[ ! -e "$u/basalt-tools-0123456789abcdef/pubring/CCCC.pub" ]'
-HOME=$home XDG_CACHE_HOME= BASALT_DNF_SYSTEM_CACHE=$sys BASALT_DNF_KEYS_OWNER=999999 "$here/basalt-dnf-user-keys"
+HOME=$home XDG_CACHE_HOME='' BASALT_DNF_SYSTEM_CACHE=$sys BASALT_DNF_KEYS_OWNER=999999 "$here/basalt-dnf-user-keys"
 rm -rf "$u/basalt-0123456789abcdef"
-HOME=$home XDG_CACHE_HOME= BASALT_DNF_SYSTEM_CACHE=$sys BASALT_DNF_KEYS_OWNER=999999 "$here/basalt-dnf-user-keys"
+HOME=$home XDG_CACHE_HOME='' BASALT_DNF_SYSTEM_CACHE=$sys BASALT_DNF_KEYS_OWNER=999999 "$here/basalt-dnf-user-keys"
 check "keyrings of another owner are not trusted" '[ ! -e "$u/basalt-0123456789abcdef" ]'
 run
 check "a second run is quiet and idempotent" '[ "$(cat "$u/basalt-0123456789abcdef/pubring/E4EED5ECA395B302.pub")" = key1 ]'
