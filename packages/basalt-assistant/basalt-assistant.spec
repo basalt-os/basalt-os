@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.13.0
+Version:        0.13.1
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -207,6 +207,25 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.1-1
+- The assistant's own executor units (basalt-apply@ID_CODE,
+  basalt-gate-exec@REQUEST) never get a unit proposal named after them
+  ("basalt-apply@p-..._....service stopped: cause unknown"). When one
+  fails, the applied proposal's record tells the outcome; an apply that
+  was interrupted (a package upgrade or a restart stopped it) leaves the
+  proposal waiting; anything else is a report in plain words: which
+  change did not finish, the log's reason when it gives one, and that
+  the change still waits. Such proposals filed by older versions are
+  closed.
+- basalt channels enable basalt-nonfree-testing stores no proposal while
+  its definition (basalt-nonfree-release) is in no enabled repository:
+  it says so and how to get it, instead of a proposal whose first
+  command fails.
+- A package transaction that runs longer than two minutes (a large
+  upgrade) was reported as "package transaction failed" while it was
+  still running and stayed so afterwards. The proposal is closed once the
+  transaction's post snapshot appears.
+
 * Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.0-1
 - basalt security audit, accept ITEM, review ITEM and risks: the
   audit.run, risk.accept and risk.review proposals behind Security and

@@ -89,6 +89,10 @@ shellcheck -x -S warning scripts/release/tests/upload-test.sh || fail=1
 python3 -m py_compile scripts/release/tests/fake-s3.py && rm -rf scripts/release/tests/__pycache__ || fail=1
 scripts/release/tests/upload-test.sh || fail=1
 
+step "basalt-release: ShellCheck, the dnf keys of a session without root"
+shellcheck -x -S warning packages/basalt-release/basalt-dnf-user-keys packages/basalt-release/tests/dnf-user-keys-test.sh || fail=1
+packages/basalt-release/tests/dnf-user-keys-test.sh || fail=1
+
 step "basalt-voice: ShellCheck, speech model manifest (pinned, checksummed, public-domain Piper voices only)"
 shellcheck -x -S warning packages/basalt-voice/build.sh packages/basalt-voice/basalt-voice-fetch packages/basalt-voice/tests/manifest-test.sh || fail=1
 packages/basalt-voice/tests/manifest-test.sh || fail=1

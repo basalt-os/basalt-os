@@ -413,11 +413,68 @@ func (g *Engine) handleUnit(ctx context.Context, ev Event) {
 		g.covered[rep.Domain] = time.Now()
 		g.mu.Unlock()
 	}
+	if report.ExecutorUnit(ev.Subject) {
+		g.handleExecutor(ctx, rep)
+		return
+	}
 	p := report.FromUnit("daemon", rep)
 	if g.dedup(p.Key) {
 		return
 	}
 	g.publish(ctx, p, map[string]bool{"unit_failed": true})
+}
+
+// handleExecutor handles a failed executor unit of the assistant itself
+// (basalt-apply@ or basalt-gate-exec@): never a unit proposal named after
+// it. The proposal's record speaks when it has the outcome; an apply that
+// was interrupted (a package upgrade, a reboot) leaves the proposal
+// waiting; anything else is a plain report about the change that did not
+// finish.
+func (g *Engine) handleExecutor(ctx context.Context, rep *diag.UnitReport) {
+	id := report.ExecutorProposalID(rep)
+	var orig *proposal.Proposal
+	if id != "" {
+		orig, _ = g.Store.Load(id)
+	}
+	switch {
+	case report.ExecutorRecorded(orig):
+		g.logf("%s ended; proposal %s records the outcome (%s)", rep.Unit, id, orig.Status)
+		return
+	case report.ExecutorInterrupted(rep):
+		g.logf("%s was interrupted (%s); proposal %s still waits", rep.Unit, rep.State["Result"], orDash(id))
+		return
+	}
+	// The executor's own words (basalt apply's error): the unit diagnosis
+	// keeps only warnings and errors of the journal, and a program's
+	// output is logged at info.
+	if l := g.executorLastLine(ctx, rep.Unit); l != "" {
+		rep.Journal = append([]string{l}, rep.Journal...)
+	}
+	p := report.FromExecutor("daemon", rep, orig)
+	if g.dedup(p.Key) {
+		return
+	}
+	g.publish(ctx, p, map[string]bool{"unit_failed": true})
+}
+
+// executorLastLine is the last line the executor program itself wrote
+// (its _SYSTEMD_UNIT, not systemd's messages about the unit).
+func (g *Engine) executorLastLine(ctx context.Context, unit string) string {
+	res := g.Env.R.Read(ctx, "journalctl", "--no-pager", "-q", "-o", "cat", "-n", "20", "_SYSTEMD_UNIT="+unit)
+	lines := strings.Split(strings.TrimSpace(res.Out), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if l := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[i]), "basalt: ")); l != "" {
+			return l
+		}
+	}
+	return ""
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func (g *Engine) handleAVCs(ctx context.Context, avcs []selinux.AVC) {
@@ -482,11 +539,44 @@ func (g *Engine) checkDnf(ctx context.Context) {
 	for _, at := range g.newDnfFailures() {
 		g.handleDnf(ctx, 0, at)
 	}
-	for _, s := range diag.OrphanPre(g.Env.Snapshots(ctx), time.Now(), g.Cfg.DnfMinAge) {
+	snaps := g.Env.Snapshots(ctx)
+	g.resolveFinished(snaps)
+	for _, s := range diag.OrphanPre(snaps, time.Now(), g.Cfg.DnfMinAge) {
 		if s.Userdata["basalt"] != "dnf" {
 			continue // only dnf transactions (not basalt apply)
 		}
 		g.handleDnf(ctx, s.Number, s.Time)
+	}
+}
+
+// resolveFinished closes a pending "unfinished transaction" proposal
+// (key dnf:<pre snapshot>) once that pre snapshot has its post: the
+// transaction was only long (a large upgrade runs for more than
+// DnfMinAge), not interrupted, and nothing needs to be rolled back.
+func (g *Engine) resolveFinished(snaps []diag.Snapshot) {
+	posts := map[int]bool{}
+	for _, s := range snaps {
+		if s.Type == "post" {
+			posts[s.Pre] = true
+		}
+	}
+	if len(posts) == 0 {
+		return
+	}
+	ps, _ := g.Store.List(proposal.Pending)
+	for _, p := range ps {
+		n, err := strconv.Atoi(strings.TrimPrefix(p.Key, "dnf:"))
+		if p.Kind != "dnf" || !strings.HasPrefix(p.Key, "dnf:") || err != nil || !posts[n] {
+			continue
+		}
+		p.Status = proposal.Resolved
+		if err := g.Store.Save(p); err != nil {
+			continue
+		}
+		if g.Audit != nil {
+			_, _ = g.Audit.Append("resolve", fmt.Sprintf("%s: the transaction of snapshot %d finished after all; proposal closed", p.ID, n), map[string]any{"proposal": p.ID})
+		}
+		g.logf("%s: the transaction of snapshot %d finished after all; proposal closed", p.ID, n)
 	}
 }
 
@@ -495,6 +585,16 @@ func (g *Engine) checkDnf(ctx context.Context) {
 func (g *Engine) resolveUnits(ctx context.Context) {
 	ps, _ := g.Store.List(proposal.Pending)
 	for _, p := range ps {
+		if p.Kind == "unit" && report.ExecutorUnit(p.Subject) {
+			// Filed by an older assistant about its own executor unit
+			// ("basalt-apply@...service stopped: cause unknown"): the
+			// applied proposal's record tells the outcome instead.
+			p.Status = proposal.Resolved
+			if g.Store.Save(p) == nil && g.Audit != nil {
+				_, _ = g.Audit.Append("resolve", p.ID+": "+p.Subject+" is the assistant's own executor; proposal closed", map[string]any{"proposal": p.ID})
+			}
+			continue
+		}
 		if p.Kind != "unit" || time.Since(p.LastSeen) < 30*time.Second {
 			continue
 		}

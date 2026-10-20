@@ -1,0 +1,11 @@
+[Unit]
+Description=Trust new Basalt repository keys for dnf without root
+Documentation=https://github.com/basalt-os/basalt-os/blob/main/docs/security/updates.md
+
+[Path]
+# A repository turned on (or its cache rebuilt) adds a directory here.
+PathChanged=/var/cache/libdnf5
+Unit=basalt-dnf-keys.service
+
+[Install]
+WantedBy=default.target

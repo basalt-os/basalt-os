@@ -36,6 +36,16 @@ overrides in `/usr/share/dnf5/repos.override.d`, applied after those files
 and replaced by every upgrade. Only an administrator's own file under
 `/etc/dnf/repos.override.d` can change them.
 
+dnf keeps the keys for the package list check per repository and per
+person: root's after the install, and a separate, empty one for each
+person who runs dnf without sudo (`dnf repoquery`, `dnf makecache`). So
+that such a run does not stop at a question about importing the key (or
+fail with "Signing key not found" where nobody can answer it), a small
+service in each person's session, `basalt-dnf-keys`, copies into their own
+keyring the keys root's dnf already trusts for the Basalt channels. It
+reads only keyrings and key files that belong to root and only those of
+the Basalt channels, and it never replaces a key the person already has.
+
 Fedora's repositories are signed with the Fedora key of each release,
 which Fedora publishes at https://fedoraproject.org/security/.
 

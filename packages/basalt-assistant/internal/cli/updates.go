@@ -11,6 +11,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/apply"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/drivers"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
@@ -296,8 +297,14 @@ func (a *app) channels(ctx context.Context) error {
 			if sources.Testing(repo) {
 				params["consent"] = a.o.kv["--consent"]
 			}
-			if repo == sources.ChanNonfreeTesting && !sources.Build(paths).NonfreeTestingDefined {
-				params["definition"] = "install"
+			if repo == sources.ChanNonfreeTesting {
+				def, err := nonfreeTestingDefinition(ctx, a.env.R, sources.Build(paths).NonfreeTestingDefined)
+				if err != nil {
+					return err
+				}
+				if def != "" {
+					params["definition"] = def
+				}
 			}
 		}
 		act := action.Action{Kind: kind, Params: params}
@@ -343,6 +350,29 @@ func (a *app) channels(ctx context.Context) error {
 		return a.storeAndPresent(ctx, p)
 	}
 	return fmt.Errorf("unknown: basalt channels %s (basalt help)", sub)
+}
+
+// ErrNonfreeTestingUnavailable: turning basalt-nonfree-testing on needs
+// its definition (basalt-nonfree-release), and no enabled repository
+// offers it. No proposal is stored for a change that cannot work.
+var ErrNonfreeTestingUnavailable = errors.New("the basalt-nonfree-testing channel cannot be turned on yet: " +
+	"its definition, the basalt-nonfree-release package, is not offered by any repository that is on. " +
+	"Turn the basalt-testing channel on first (or wait until the package reaches the basalt channel), " +
+	"check for updates, and try again")
+
+// nonfreeTestingDefinition decides how turning basalt-nonfree-testing on
+// gets its repository definition: nothing to do when it is already
+// defined, "install" when an enabled repository offers
+// basalt-nonfree-release (dnf's cached metadata), else
+// ErrNonfreeTestingUnavailable.
+func nonfreeTestingDefinition(ctx context.Context, r runner.Reader, defined bool) (string, error) {
+	if defined {
+		return "", nil
+	}
+	if r == nil || !drivers.ReleaseOffered(ctx, r) {
+		return "", ErrNonfreeTestingUnavailable
+	}
+	return "install", nil
 }
 
 func newProposal(kind, subject, key, title string) *proposal.Proposal {
