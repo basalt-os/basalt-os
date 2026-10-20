@@ -19,3 +19,18 @@ RPM-GPG-KEY-*-lab
 # Model files (downloaded by basalt-llm-fetch, never committed).
 *.gguf
 *.safetensors
+
+# Binaries left by a plain `go build` inside a cmd/ directory.
+packages/basalt-agent/cmd/basalt-agent/basalt-agent
+packages/basalt-assistant/cmd/basalt/basalt
+packages/basalt-assistant/cmd/basalt-apply-exec/basalt-apply-exec
+packages/basalt-assistant/cmd/basalt-assistantd/basalt-assistantd
+packages/basalt-assistant/cmd/basalt-gate-exec/basalt-gate-exec
+packages/basalt-assistant/cmd/basalt-mcp/basalt-mcp
+packages/basalt-assistant/cmd/basalt-notify/basalt-notify
+packages/basalt-gate/cmd/basalt-gate/basalt-gate
+packages/basalt-gate/cmd/basalt-gated/basalt-gated
+packages/basalt-gate/cmd/basalt-gate-tty/basalt-gate-tty
+packages/basalt-installer/cmd/basalt-installer/basalt-installer
+packages/basalt-ledger/cmd/basalt-ledger/basalt-ledger
+packages/basalt-resolver/cmd/basalt-resolver/basalt-resolver
