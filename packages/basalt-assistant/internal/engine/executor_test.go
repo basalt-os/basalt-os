@@ -1,7 +1,11 @@
 package engine
 
 import (
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -121,5 +125,48 @@ func TestExecutorOldProposalClosed(t *testing.T) {
 	}
 	if p.Status != proposal.Resolved {
 		t.Errorf("status %s, want resolved", p.Status)
+	}
+}
+
+// A long transaction is not a failed one: once the pre snapshot has its
+// post, the "unfinished transaction" proposal is closed.
+func TestLongTransactionResolvedByItsPost(t *testing.T) {
+	g, st := executorEngine(t, "exit-code", "1")
+	dir := t.TempDir()
+	info := func(num int, typ string, pre int) {
+		d := filepath.Join(dir, strconv.Itoa(num))
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		x := fmt.Sprintf("<snapshot><type>%s</type><num>%d</num><date>2026-10-20 21:51:44</date><pre_num>%d</pre_num><description>dnf</description></snapshot>", typ, num, pre)
+		if err := os.WriteFile(filepath.Join(d, "info.xml"), []byte(x), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info(10, "pre", 0)
+	g.Env.SnapshotDir = dir
+	g.Env.Glob = func(p string) []string { m, _ := filepath.Glob(p); return m }
+	g.Env.ReadFile = os.ReadFile
+	now := time.Now().UTC()
+	open := &proposal.Proposal{ID: "p-14bac3", Created: now, Updated: now, LastSeen: now, Source: "daemon", Kind: "dnf",
+		Subject: "dnf -y upgrade --refresh", Key: "dnf:10", Title: "package transaction failed: dnf -y upgrade --refresh", Status: proposal.Pending}
+	other := &proposal.Proposal{ID: "p-0c0c0c", Created: now, Updated: now, LastSeen: now, Source: "daemon", Kind: "dnf",
+		Subject: "dnf", Key: "dnf:2026-10-20T21:00:00Z", Title: "x", Status: proposal.Pending}
+	for _, p := range []*proposal.Proposal{open, other} {
+		if err := st.Save(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g.resolveFinished(g.Env.Snapshots(t.Context()))
+	if p, _ := st.Load("p-14bac3"); p.Status != proposal.Pending {
+		t.Fatalf("closed before the post snapshot: %s", p.Status)
+	}
+	info(11, "post", 10)
+	g.resolveFinished(g.Env.Snapshots(t.Context()))
+	if p, _ := st.Load("p-14bac3"); p.Status != proposal.Resolved {
+		t.Errorf("status %s, want resolved", p.Status)
+	}
+	if p, _ := st.Load("p-0c0c0c"); p.Status != proposal.Pending {
+		t.Errorf("a failure found in dnf's log was closed: %s", p.Status)
 	}
 }

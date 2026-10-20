@@ -520,11 +520,44 @@ func (g *Engine) checkDnf(ctx context.Context) {
 	for _, at := range g.newDnfFailures() {
 		g.handleDnf(ctx, 0, at)
 	}
-	for _, s := range diag.OrphanPre(g.Env.Snapshots(ctx), time.Now(), g.Cfg.DnfMinAge) {
+	snaps := g.Env.Snapshots(ctx)
+	g.resolveFinished(snaps)
+	for _, s := range diag.OrphanPre(snaps, time.Now(), g.Cfg.DnfMinAge) {
 		if s.Userdata["basalt"] != "dnf" {
 			continue // only dnf transactions (not basalt apply)
 		}
 		g.handleDnf(ctx, s.Number, s.Time)
+	}
+}
+
+// resolveFinished closes a pending "unfinished transaction" proposal
+// (key dnf:<pre snapshot>) once that pre snapshot has its post: the
+// transaction was only long (a large upgrade runs for more than
+// DnfMinAge), not interrupted, and nothing needs to be rolled back.
+func (g *Engine) resolveFinished(snaps []diag.Snapshot) {
+	posts := map[int]bool{}
+	for _, s := range snaps {
+		if s.Type == "post" {
+			posts[s.Pre] = true
+		}
+	}
+	if len(posts) == 0 {
+		return
+	}
+	ps, _ := g.Store.List(proposal.Pending)
+	for _, p := range ps {
+		n, err := strconv.Atoi(strings.TrimPrefix(p.Key, "dnf:"))
+		if p.Kind != "dnf" || !strings.HasPrefix(p.Key, "dnf:") || err != nil || !posts[n] {
+			continue
+		}
+		p.Status = proposal.Resolved
+		if err := g.Store.Save(p); err != nil {
+			continue
+		}
+		if g.Audit != nil {
+			_, _ = g.Audit.Append("resolve", fmt.Sprintf("%s: the transaction of snapshot %d finished after all; proposal closed", p.ID, n), map[string]any{"proposal": p.ID})
+		}
+		g.logf("%s: the transaction of snapshot %d finished after all; proposal closed", p.ID, n)
 	}
 }
 

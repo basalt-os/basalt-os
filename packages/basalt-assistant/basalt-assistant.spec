@@ -221,6 +221,10 @@ fi
   its definition (basalt-nonfree-release) is in no enabled repository:
   it says so and how to get it, instead of a proposal whose first
   command fails.
+- A package transaction that runs longer than two minutes (a large
+  upgrade) was reported as "package transaction failed" while it was
+  still running and stayed so afterwards. The proposal is closed once the
+  transaction's post snapshot appears.
 
 * Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.0-1
 - basalt security audit, accept ITEM, review ITEM and risks: the
