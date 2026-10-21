@@ -18,7 +18,7 @@ import (
 )
 
 // go test ./internal/i18n -update rewrites po/basalt-assistant.pot from
-// the T and N calls in the sources.
+// the T, M and N calls in the sources.
 var update = flag.Bool("update", false, "rewrite the catalog template")
 
 const (
@@ -43,7 +43,8 @@ type msg struct {
 	refs       []string
 }
 
-// extract finds every i18n.T("...") and i18n.N("...", "...", n) call.
+// extract finds every i18n.T("..."), i18n.M("...") and
+// i18n.N("...", "...", n) call.
 func extract(t *testing.T) []*msg {
 	t.Helper()
 	byID := map[string]*msg{}
@@ -72,7 +73,7 @@ func extract(t *testing.T) []*msg {
 				return true
 			}
 			x, ok := sel.X.(*ast.Ident)
-			if !ok || x.Name != "i18n" || (sel.Sel.Name != "T" && sel.Sel.Name != "N") {
+			if !ok || x.Name != "i18n" || (sel.Sel.Name != "T" && sel.Sel.Name != "N" && sel.Sel.Name != "M") {
 				return true
 			}
 			lit := func(i int) string {
