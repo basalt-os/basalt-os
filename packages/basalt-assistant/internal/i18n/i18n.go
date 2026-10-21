@@ -6,7 +6,8 @@
 //
 // Every user-facing string goes through T or N (whole sentences, with
 // placeholders for values, never concatenated pieces); logs, audit records
-// and machine output (--json) stay English. The sources of the catalogs
+// and machine output (--json) stay English. Text that is stored in English
+// and translated when it is shown (proposal titles) is marked with M. The sources of the catalogs
 // are po/basalt-assistant.pot and po/<lang>.po in the package; a test
 // checks that every T and N call is in the template and translated.
 package i18n
@@ -47,6 +48,13 @@ func get() *Catalog {
 	return current
 }
 
+// Use makes c the loaded catalog (tests of the packages that translate).
+func Use(c *Catalog) {
+	mu.Lock()
+	current = c
+	mu.Unlock()
+}
+
 // Reset forgets the loaded catalog (tests, or after a locale change).
 func Reset() {
 	mu.Lock()
@@ -61,6 +69,16 @@ func T(msgid string) string {
 	}
 	return msgid
 }
+
+// M marks msgid as a message of the catalog and returns it untranslated:
+// for text that is written in English (stored, logged) and translated only
+// where a person reads it, with T. The catalog template collects M calls
+// like T calls.
+func M(msgid string) string { return msgid }
+
+// Marked translates a message that M marked, where the text is held in a
+// variable (T takes literals only, so the template sees every message).
+func Marked(msgid string) string { return T(msgid) }
 
 // N returns the singular or plural form for n, translated with the
 // catalog's plural rule (English: one for 1, other otherwise).

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: basalt-assistant\n"
-"PO-Revision-Date: 2026-10-04 19:00-0300\n"
+"PO-Revision-Date: 2026-10-21 00:30-0300\n"
 "Last-Translator: Basalt OS project <feedback@basalt-os.org>\n"
 "Language-Team: Brazilian Portuguese <feedback@basalt-os.org>\n"
 "Language: pt_BR\n"
@@ -303,3 +303,369 @@ msgstr "Mais: %s"
 #: internal/cli/drivers.go:74
 msgid "No snapshot from before the NVIDIA driver install is known on this system."
 msgstr "Nenhum snapshot de antes da instalação do driver NVIDIA é conhecido neste sistema."
+
+#: internal/titles/titles.go:100
+msgid "crashed"
+msgstr "travou"
+
+#: internal/titles/titles.go:101
+msgid "keeps crashing"
+msgstr "trava repetidamente"
+
+#: internal/titles/titles.go:102
+msgid "out of memory"
+msgstr "sem memória"
+
+#: internal/titles/titles.go:103
+msgid "file permissions"
+msgstr "permissões de arquivo"
+
+#: internal/titles/titles.go:104
+msgid "no such unit"
+msgstr "unidade inexistente"
+
+#: internal/titles/titles.go:105
+msgid "cause unknown"
+msgstr "causa desconhecida"
+
+#: internal/titles/titles.go:106
+msgid "wrong file label"
+msgstr "rótulo de arquivo errado"
+
+#: internal/titles/titles.go:107
+msgid "no label rule for this place"
+msgstr "nenhuma regra de rótulo para este lugar"
+
+#: internal/titles/titles.go:108
+msgid "port not labeled for it"
+msgstr "porta sem rótulo para ele"
+
+#: internal/titles/titles.go:109
+msgid "a boolean is off"
+msgstr "um booleano está desligado"
+
+#: internal/titles/titles.go:110
+msgid "no known fix"
+msgstr "nenhuma correção conhecida"
+
+#: internal/titles/titles.go:111
+msgid "looks deliberate"
+msgstr "parece proposital"
+
+#: internal/titles/titles.go:112
+msgid "snapshots hold the space"
+msgstr "os snapshots ocupam o espaço"
+
+#: internal/titles/titles.go:113
+msgid "large journal"
+msgstr "journal grande"
+
+#: internal/titles/titles.go:114
+msgid "large package cache"
+msgstr "cache de pacotes grande"
+
+#: internal/titles/titles.go:115
+msgid "data"
+msgstr "dados"
+
+#: internal/titles/titles.go:116
+#, c-format
+msgid "%s updates"
+msgstr "%s atualizações"
+
+#: internal/titles/titles.go:117
+#, c-format
+msgid "%s security updates"
+msgstr "%s atualizações de segurança"
+
+#: internal/titles/titles.go:30
+#, c-format
+msgid "%s stopped: %s"
+msgstr "%s parou: %s"
+
+#: internal/titles/titles.go:31
+#, c-format
+msgid "%s is running"
+msgstr "%s está rodando"
+
+#: internal/titles/titles.go:32
+#, c-format
+msgid "SELinux blocked %s (%s) on %s: %s"
+msgstr "O SELinux bloqueou %s (%s) em %s: %s"
+
+#: internal/titles/titles.go:33
+#, c-format
+msgid "root file system %.0f %% full: %s"
+msgstr "sistema de arquivos raiz %.0f %% cheio: %s"
+
+#: internal/titles/titles.go:34
+#, c-format
+msgid "root file system %.0f %% full"
+msgstr "sistema de arquivos raiz %.0f %% cheio"
+
+#: internal/titles/titles.go:35
+#, c-format
+msgid "package transaction failed: %s"
+msgstr "a transação de pacotes falhou: %s"
+
+#: internal/titles/titles.go:36
+#, c-format
+msgid "roll back to snapshot %d (%s, \"%s\")"
+msgstr "voltar ao snapshot %d (%s, \"%s\")"
+
+#: internal/titles/titles.go:37
+#, c-format
+msgid "Applying \"%s\" did not finish"
+msgstr "Aplicar \"%s\" não terminou"
+
+#: internal/titles/titles.go:38
+msgid "Applying a change you confirmed did not finish"
+msgstr "Aplicar uma mudança que você confirmou não terminou"
+
+#: internal/titles/titles.go:39
+#, c-format
+msgid "Applying the change %s did not finish"
+msgstr "Aplicar a mudança %s não terminou"
+
+#: internal/titles/titles.go:41
+#, c-format
+msgid "install %d updates (%s to download)"
+msgstr "instalar %d atualizações (%s para baixar)"
+
+#: internal/titles/titles.go:42
+#, c-format
+msgid "install %d security updates (%s to download)"
+msgstr "instalar %d atualizações de segurança (%s para baixar)"
+
+#: internal/titles/titles.go:43
+#, c-format
+msgid "restart and install %d updates (%s to download)"
+msgstr "reiniciar e instalar %d atualizações (%s para baixar)"
+
+#: internal/titles/titles.go:44
+#, c-format
+msgid "restart and install %d security updates (%s to download)"
+msgstr "reiniciar e instalar %d atualizações de segurança (%s para baixar)"
+
+#: internal/titles/titles.go:45
+#, c-format
+msgid "undo the update %s: back to snapshot %d"
+msgstr "desfazer a atualização %s: voltar ao snapshot %d"
+
+#: internal/titles/titles.go:46
+#, c-format
+msgid "install the NVIDIA driver %s for %s"
+msgstr "instalar o driver NVIDIA %s para %s"
+
+#: internal/titles/titles.go:48
+#, c-format
+msgid "turn the %s channel on"
+msgstr "ligar o canal %s"
+
+#: internal/titles/titles.go:49
+#, c-format
+msgid "turn the %s channel off"
+msgstr "desligar o canal %s"
+
+#: internal/titles/titles.go:50
+#, c-format
+msgid "add the software source %s"
+msgstr "adicionar a fonte de software %s"
+
+#: internal/titles/titles.go:51
+#, c-format
+msgid "remove the software source %s"
+msgstr "remover a fonte de software %s"
+
+#: internal/titles/titles.go:52
+#, c-format
+msgid "use %s for the login screen, the console and new accounts"
+msgstr "usar %s na tela de login, no console e nas contas novas"
+
+#: internal/titles/titles.go:53
+msgid "run the AI audit suite on this computer"
+msgstr "rodar a suíte de auditoria de IA neste computador"
+
+#: internal/titles/titles.go:54
+#, c-format
+msgid "accept the risk of %s"
+msgstr "aceitar o risco de %s"
+
+#: internal/titles/titles.go:55
+#, c-format
+msgid "review the risk of %s again"
+msgstr "rever o risco de %s"
+
+#: internal/titles/titles.go:57
+#, c-format
+msgid "label %s and everything below it %s (persistent rule)"
+msgstr "rotular %s e tudo abaixo dele como %s (regra permanente)"
+
+#: internal/titles/titles.go:58
+msgid "apply the rule to the existing files"
+msgstr "aplicar a regra aos arquivos existentes"
+
+#: internal/titles/titles.go:59
+#, c-format
+msgid "reset the label of %s to the policy default"
+msgstr "restaurar o rótulo de %s para o padrão da política"
+
+#: internal/titles/titles.go:60
+#, c-format
+msgid "label %s port %s %s"
+msgstr "rotular a porta %s %s como %s"
+
+#: internal/titles/titles.go:61
+#, c-format
+msgid "set the boolean %s %s (persistent)"
+msgstr "definir o booleano %s como %s (permanente)"
+
+#: internal/titles/titles.go:62
+#, c-format
+msgid "restart %s"
+msgstr "reiniciar %s"
+
+#: internal/titles/titles.go:63
+#, c-format
+msgid "restore %s from snapshot %s"
+msgstr "restaurar %s do snapshot %s"
+
+#: internal/titles/titles.go:64
+msgid "label the restored file"
+msgstr "rotular o arquivo restaurado"
+
+#: internal/titles/titles.go:65
+#, c-format
+msgid "make snapshot %s the root at the next boot (data subvolumes untouched)"
+msgstr "fazer do snapshot %s a raiz na próxima inicialização (subvolumes de dados intactos)"
+
+#: internal/titles/titles.go:66
+#, c-format
+msgid "delete snapshot %s and free the space only it holds"
+msgstr "apagar o snapshot %s e liberar o espaço que só ele ocupa"
+
+#: internal/titles/titles.go:67
+#, c-format
+msgid "shrink archived journal files to %s"
+msgstr "reduzir os arquivos arquivados do journal para %s"
+
+#: internal/titles/titles.go:68
+msgid "remove cached package files"
+msgstr "remover os pacotes guardados em cache"
+
+#: internal/titles/titles.go:69
+msgid "install the definition of the basalt-nonfree repository (it comes off)"
+msgstr "instalar a definição do repositório basalt-nonfree (ele vem desligado)"
+
+#: internal/titles/titles.go:70
+msgid "turn the basalt-nonfree repository on"
+msgstr "ligar o repositório basalt-nonfree"
+
+#: internal/titles/titles.go:71
+#, c-format
+msgid "install %s (NVIDIA's userspace, unmodified, and the signed open kernel modules; nouveau goes off) and the module for the running kernel %s"
+msgstr "instalar %s (o espaço de usuário da NVIDIA, sem modificações, e os módulos abertos do kernel assinados; o nouveau é desligado) e o módulo para o kernel em uso %s"
+
+#: internal/titles/titles.go:72
+msgid "make the next start a trial: it checks the driver and goes back to nouveau if it fails"
+msgstr "fazer da próxima inicialização um teste: ela confere o driver e volta ao nouveau se ele falhar"
+
+#: internal/titles/titles.go:73
+msgid "download the newest list of packages from every enabled repository (nothing is installed)"
+msgstr "baixar a lista mais nova de pacotes de cada repositório ligado (nada é instalado)"
+
+#: internal/titles/titles.go:74
+#, c-format
+msgid "download %s (checked against the repositories' signing keys) and prepare them to install at the next start"
+msgstr "baixar %s (conferidas com as chaves de assinatura dos repositórios) e preparar a instalação na próxima inicialização"
+
+#: internal/titles/titles.go:75
+msgid "restart into them (after the desktop's countdown, or sudo basalt updates restart): they install before the desktop starts"
+msgstr "reiniciar para elas (depois da contagem regressiva da área de trabalho, ou sudo basalt updates restart): elas se instalam antes de a área de trabalho abrir"
+
+#: internal/titles/titles.go:76
+#, c-format
+msgid "download %s (checked against the repositories' signing keys)"
+msgstr "baixar %s (conferidas com as chaves de assinatura dos repositórios)"
+
+#: internal/titles/titles.go:77
+#, c-format
+msgid "install %s, exactly the versions shown"
+msgstr "instalar %s, exatamente as versões mostradas"
+
+#: internal/titles/titles.go:78
+#, c-format
+msgid "undo the update %s: make snapshot %s, taken just before it, the root at the next boot (your files untouched)"
+msgstr "desfazer a atualização %s: fazer do snapshot %s, tirado logo antes dela, a raiz na próxima inicialização (seus arquivos intactos)"
+
+#: internal/titles/titles.go:79
+msgid "install the definition of the basalt-nonfree channels (they come off)"
+msgstr "instalar a definição dos canais basalt-nonfree (eles vêm desligados)"
+
+#: internal/titles/titles.go:80
+msgid "bring that definition up to date (it gains the testing channel)"
+msgstr "atualizar essa definição (ela ganha o canal de testes)"
+
+#: internal/titles/titles.go:81
+#, c-format
+msgid "add the source %s (%s), trusting its signing key %s after checking it again"
+msgstr "adicionar a fonte %s (%s), confiando na chave de assinatura %s depois de conferi-la de novo"
+
+#: internal/titles/titles.go:82
+#, c-format
+msgid "remove the source %s (and its key, when no other repository of it is left)"
+msgstr "remover a fonte %s (e a chave dela, quando não sobrar outro repositório dela)"
+
+#: internal/titles/titles.go:83
+#, c-format
+msgid "make %s the keyboard layouts of the login screen and of new accounts"
+msgstr "fazer de %s os layouts de teclado da tela de login e das contas novas"
+
+#: internal/titles/titles.go:84
+#, c-format
+msgid "use the keymap %s in the text console"
+msgstr "usar o mapa de teclas %s no console de texto"
+
+#: internal/titles/titles.go:85
+#, c-format
+msgid "install the AI audit suite (%s) from the Basalt repositories, checked against their signing key"
+msgstr "instalar a suíte de auditoria de IA (%s) dos repositórios do Basalt, conferida com a chave de assinatura deles"
+
+#: internal/titles/titles.go:86
+#, c-format
+msgid "run the AI audit suite on this computer, as its own unprivileged account, and keep the results in %s"
+msgstr "rodar a suíte de auditoria de IA neste computador, com a conta sem privilégios dela, e guardar os resultados em %s"
+
+#: internal/titles/titles.go:87
+#, c-format
+msgid "record that %s accepts the risk of %s on this computer (%s)"
+msgstr "registrar que %s aceita o risco de %s neste computador (%s)"
+
+#: internal/titles/titles.go:88
+#, c-format
+msgid "forget the accepted risk of %s: it shows as a warning again"
+msgstr "esquecer o risco aceito de %s: ele volta a aparecer como aviso"
+
+#: internal/titles/titles.go:94
+msgid "configuration error"
+msgstr "erro de configuração"
+
+#: internal/titles/titles.go:95
+msgid "blocked by SELinux"
+msgstr "bloqueado pelo SELinux"
+
+#: internal/titles/titles.go:96
+msgid "port already in use"
+msgstr "porta já em uso"
+
+#: internal/titles/titles.go:97
+msgid "a unit it needs failed"
+msgstr "uma unidade de que ela precisa falhou"
+
+#: internal/titles/titles.go:98
+msgid "disk full"
+msgstr "disco cheio"
+
+#: internal/titles/titles.go:99
+msgid "missing file"
+msgstr "arquivo faltando"

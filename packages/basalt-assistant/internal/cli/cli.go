@@ -25,6 +25,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/titles"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/updates"
 )
 
@@ -770,7 +771,11 @@ func (a *app) pending() error {
 		return err
 	}
 	if a.o.json {
-		return a.printJSON(ps)
+		out := make([]shown, len(ps))
+		for i, p := range ps {
+			out[i] = localized(p)
+		}
+		return a.printJSON(out)
 	}
 	if len(ps) == 0 {
 		if a.o.all {
@@ -788,6 +793,23 @@ func (a *app) pending() error {
 	return nil
 }
 
+// shown is a proposal as pending --json and show --json print it: the
+// stored proposal and, when the reader's language translates it, its
+// title in that language (title_local, for the desktop to show; title
+// stays the English reference text).
+type shown struct {
+	*proposal.Proposal
+	TitleLocal string `json:"title_local,omitempty"`
+}
+
+func localized(p *proposal.Proposal) shown {
+	s := shown{Proposal: p}
+	if t := titles.Local(p.Title); t != p.Title {
+		s.TitleLocal = t
+	}
+	return s
+}
+
 func (a *app) load() (*proposal.Proposal, error) {
 	if len(a.o.args) < 2 {
 		return nil, fmt.Errorf("usage: basalt %s ID", a.o.args[0])
@@ -801,7 +823,7 @@ func (a *app) show() error {
 		return err
 	}
 	if a.o.json {
-		return a.printJSON(p)
+		return a.printJSON(localized(p))
 	}
 	a.render(context.Background(), p)
 	if r := p.Result; r != nil {

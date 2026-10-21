@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.13.1
+Version:        0.13.2
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -207,6 +207,17 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.2-1
+- Proposal titles in the reader's language: titles stay stored, logged
+  and audited in English, and basalt pending --json and basalt show
+  --json add title_local, the title translated with the person's
+  catalog, which the desktop shows. internal/titles knows every title
+  the daemon, the command line and the typed actions write (forms with
+  their values, causes translated too, an action's commands part by
+  part); text it does not know stays English. pt_BR translates all of
+  them; tests check every form, and that every action's command
+  description is a known form.
+
 * Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.1-1
 - The assistant's own executor units (basalt-apply@ID_CODE,
   basalt-gate-exec@REQUEST) never get a unit proposal named after them
