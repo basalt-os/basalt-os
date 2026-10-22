@@ -8,7 +8,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-resolver
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        Per-session default-deny egress with DNS-aware allowlists
 License:        Apache-2.0
@@ -119,6 +119,11 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_resolver.if
 
 %changelog
+* Wed Oct 21 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.2-1
+- SELinux: basalt_resolver_t may read cgroup files (read only), so the Go
+  runtime reads the service's cpu.max at start to size GOMAXPROCS without
+  a denial (same rule as basalt_llm_t and basalt_agent_proxy_t).
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.1-1
 - A resolver port that another program holds (UDP or TCP) is skipped:
   the session gets the next free port of the range instead of being

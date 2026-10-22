@@ -1,4 +1,4 @@
-policy_module(basalt_resolver, 0.1.0)
+policy_module(basalt_resolver, 0.1.1)
 
 # basalt-resolver: per-session default-deny egress (docs/network.md). A
 # root service in its own domain that
@@ -8,7 +8,7 @@ policy_module(basalt_resolver, 0.1.0)
 #   - forwards allowed names to the system stub resolver,
 #   - changes its own nftables table through nft (iptables_t) and reads
 #     the session drop log over nflog (netlink),
-#   - checks that a session's cgroup exists,
+#   - checks that a session's cgroup exists and reads its own CPU limit,
 #   - sends records to basalt-ledger.
 # Nothing else: no home directories, no other sockets, no exec besides nft.
 
@@ -68,6 +68,9 @@ allow basalt_resolver_t iptables_t:process2 { nnp_transition nosuid_transition }
 fs_getattr_cgroup(basalt_resolver_t)
 fs_list_cgroup_dirs(basalt_resolver_t)
 fs_search_cgroup_dirs(basalt_resolver_t)
+# The Go runtime reads the service's own CPU limit (cpu.max) at start to
+# size GOMAXPROCS: read only, like basalt_llm_t and basalt_agent_proxy_t.
+fs_read_cgroup_files(basalt_resolver_t)
 
 kernel_read_system_state(basalt_resolver_t)
 kernel_read_net_sysctls(basalt_resolver_t)
