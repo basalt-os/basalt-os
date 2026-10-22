@@ -7,7 +7,8 @@ Waiting for confirmation as root, found by the background service on 2026-10-04 
   applying it would make snapshot 41 the root from the next boot.
 
 Suggested change (a hint, not yet a proposal you can apply)
-  Why: snapshot 41 was taken just before the failed transaction.
+  Why: snapshot 41 was taken just before the failed transaction "dnf install
+  basalt-lab-postfail".
   $ basalt-rollback --yes 41
 
 Next step

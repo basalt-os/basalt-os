@@ -8,15 +8,18 @@ import (
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/explain"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/llm"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 )
 
 // humanizer returns the configured humanize layer, or nil when it is off
-// or cannot be set up (the template is used, with a note on stderr).
+// or cannot be set up (the template is used, with a note on stderr). The
+// model writes English: a reader of another language gets the template in
+// that language instead.
 func (a *app) humanizer() *explain.Humanizer {
-	if !a.cfg.Humanize || a.o.json || a.o.plain {
+	if !a.cfg.Humanize || a.o.json || a.o.plain || !i18n.Local().English() {
 		return nil
 	}
 	c := &llm.Client{Endpoint: a.cfg.HumanizeEndpoint, Model: a.cfg.HumanizeModel,
@@ -64,7 +67,7 @@ func indentBlock(s, ind string) string {
 // model's prose between the template's head and tail. Accepted sentences
 // are streamed to a terminal as they arrive.
 func (a *app) render(ctx context.Context, p *proposal.Proposal) {
-	parts := report.RenderWith(p, report.Options{Verbose: a.o.verbose})
+	parts := report.RenderWith(p, report.Options{Verbose: a.o.verbose, Tr: i18n.Local()})
 	h := a.humanizer()
 	if h == nil || parts.Facts == nil {
 		fmt.Fprint(a.out, parts.String())

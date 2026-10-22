@@ -345,8 +345,7 @@ func (a *app) channels(ctx context.Context) error {
 			p.Actions = append(p.Actions, action.Action{Kind: action.SourceRemove, Params: map[string]string{"id": r.ID}})
 			p.Evidence = append(p.Evidence, fmt.Sprintf("%s: %s, key %s (%s), added %s", r.ID, r.URL, sources.Spaced(r.Fingerprint), r.KeyOwner, r.Added))
 		}
-		p.Report = "Remove " + recs[0].Name + ": no more software comes from it, and its signing key is no longer trusted. " +
-			"Programs already installed from it stay; they no longer get updates."
+		p.Report = sourceRemoveReport(recs[0].Name)
 		return a.storeAndPresent(ctx, p)
 	}
 	return fmt.Errorf("unknown: basalt channels %s (basalt help)", sub)
@@ -379,6 +378,28 @@ func newProposal(kind, subject, key, title string) *proposal.Proposal {
 	now := time.Now().UTC()
 	return &proposal.Proposal{ID: proposal.NewID(), Created: now, Updated: now, LastSeen: now, Seen: 1, Source: "cli",
 		Kind: kind, Subject: subject, Key: key, Status: proposal.Pending, Title: title, Severity: 1}
+}
+
+// The reports below are stored in English with their proposals and shown
+// translated sentence by sentence (internal/titles, Report): a sentence
+// added or changed here needs its form there.
+
+func sourceRemoveReport(name string) string {
+	return "Remove " + name + ": no more software comes from it, and its signing key is no longer trusted. " +
+		"Programs already installed from it stay; they no longer get updates."
+}
+
+func sourceAddReport(name, fingerprint, who string, pinned, signedLists bool) string {
+	trust := "Basalt pins this key for " + name + "."
+	if !pinned {
+		trust = "Basalt does not know this source: check the fingerprint with its publisher before you trust it."
+	}
+	meta := "Its packages and its package lists are signed."
+	if !signedLists {
+		meta = "Its packages are signed; its package lists are not (the source does not sign them), so they come from a metalink over HTTPS."
+	}
+	return fmt.Sprintf("Add %s. Software from this source can change your whole system: only add sources you trust. "+
+		"Its signing key, %s, belongs to %s. %s %s", name, fingerprint, who, trust, meta)
 }
 
 func channelReport(repo, sub string) string {
@@ -500,16 +521,7 @@ func (a *app) addSource(ctx context.Context, which string) (*proposal.Proposal, 
 	if who == "" {
 		who = "no name in the key"
 	}
-	trust := "Basalt pins this key for " + name + "."
-	if !pinned {
-		trust = "Basalt does not know this source: check the fingerprint with its publisher before you trust it."
-	}
-	meta := "Its packages and its package lists are signed."
-	if ps[0].RepoGPGCheck != "1" {
-		meta = "Its packages are signed; its package lists are not (the source does not sign them), so they come from a metalink over HTTPS."
-	}
-	p.Report = fmt.Sprintf("Add %s. Software from this source can change your whole system: only add sources you trust. "+
-		"Its signing key, %s, belongs to %s. %s %s", name, sources.Spaced(k.Fingerprint), who, trust, meta)
+	p.Report = sourceAddReport(name, sources.Spaced(k.Fingerprint), who, pinned, ps[0].RepoGPGCheck == "1")
 	for _, sp := range ps {
 		p.Evidence = append(p.Evidence, fmt.Sprintf("%s: %s %s", sp.ID, sp.URLType, sp.URL))
 	}

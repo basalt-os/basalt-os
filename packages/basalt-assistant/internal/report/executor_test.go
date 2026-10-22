@@ -5,6 +5,7 @@ import (
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/titles"
 )
 
 func TestExecutorUnit(t *testing.T) {
@@ -76,5 +77,11 @@ func TestFromExecutorPlainWords(t *testing.T) {
 	if q.Title != "Applying the change p-f3604a did not finish" ||
 		q.Report != "Applying the change p-f3604a stopped before it was done, and its log does not say why. Nothing will be changed by this report." {
 		t.Errorf("no record: %q / %q", q.Title, q.Report)
+	}
+	// Shown translated sentence by sentence (internal/titles).
+	for _, rep := range []string{p.Report, q.Report} {
+		if !titles.KnownReport(rep) {
+			t.Errorf("a sentence of this report is not in internal/titles: %q", rep)
+		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/audit"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/titles"
 )
 
 // fake answers commands by their first words.
@@ -273,5 +274,31 @@ func TestOfflineMode(t *testing.T) {
 	sec, _ := InstallProposal(us, "cli", "security")
 	if sec.Actions[0].Params["mode"] != "live" {
 		t.Errorf("security set without core packages: %s", sec.Actions[0].Params["mode"])
+	}
+}
+
+// The reports of update proposals are stored in English and shown
+// translated sentence by sentence: every sentence is one internal/titles
+// knows.
+func TestReportsAreKnown(t *testing.T) {
+	s := testSys(t)
+	us, _ := Query(context.Background(), s, true)
+	live, err := InstallProposal(us, "cli", "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	us = append(us, Update{Name: "kernel-core", NEVRA: "kernel-core-6.17.3-200.fc44.x86_64", Group: GroupSystem})
+	offline, err := InstallProposal(us, "cli", "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	undo, err := RollbackProposal(Undo{Proposal: "p-a1b2c3", Snapshot: 41, Time: "2026-10-20 10:00", Count: 4}, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []*proposal.Proposal{live, offline, undo} {
+		if !titles.KnownReport(p.Report) {
+			t.Errorf("a sentence of this report is not in internal/titles: %q", p.Report)
+		}
 	}
 }

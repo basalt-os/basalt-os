@@ -1,7 +1,6 @@
 package apply
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -34,7 +33,7 @@ func (a *Applier) throughGate(ctx context.Context, p *proposal.Proposal, o Optio
 		a.audit("refuse", "the approval gate refused "+p.ID+": "+rep.Reason, map[string]any{"proposal": p.ID, "gate_id": id, "by": rep.By})
 		return fmt.Errorf("the approval gate refused it (%s); nothing was changed", rep.Reason)
 	case gateclient.Allowed:
-		a.printf("Approved by %s.\n", byText(rep.By))
+		a.printf(a.Tr.T("Approved by %s.")+"\n", a.byText(rep.By))
 	case gateclient.Asked:
 		if err := a.confirmAtGate(id, p, o, fp); err != nil {
 			return err
@@ -61,9 +60,8 @@ func (a *Applier) confirmAtGate(id string, p *proposal.Proposal, o Options, fp s
 			return fmt.Errorf("%v; nothing was changed", err)
 		}
 	case a.Interactive:
-		a.printf("Type yes to apply it, or anything else to cancel (request %s, code %s): ", id, fp)
-		line, _ := bufio.NewReader(a.In).ReadString('\n')
-		if strings.TrimSpace(line) != "yes" {
+		a.printf(a.Tr.T("Type yes to apply it, or anything else to cancel (request %s, code %s): "), id, fp)
+		if !a.confirmed() {
 			_, _ = g.C.Cancel(id)
 			a.audit("decline", "declined "+p.ID, map[string]any{"proposal": p.ID, "gate_id": id, "fingerprint": fp})
 			return ErrCancelled
@@ -72,7 +70,7 @@ func (a *Applier) confirmAtGate(id string, p *proposal.Proposal, o Options, fp s
 			return fmt.Errorf("%v; nothing was changed", err)
 		}
 	default:
-		a.printf("Waiting for a decision in the approval queue (request %s, code %s): approve it in the desktop shell or with basalt-gate approve %s.\n", id, fp, id)
+		a.printf(a.Tr.T("Waiting for a decision in the approval queue (request %s, code %s): approve it in the desktop shell or with %s.")+"\n", id, fp, "basalt-gate approve "+id)
 		rep, err := g.C.Wait(id, 300)
 		if err != nil {
 			return fmt.Errorf("approval gate: %w", err)
@@ -100,7 +98,7 @@ func (a *Applier) follow(ctx context.Context, id string, p *proposal.Proposal) e
 		limit = 30 * time.Minute
 	}
 	unit := "basalt-gate-exec@" + id + ".service"
-	a.printf("basalt-gate-exec applies it now (journalctl -u %s shows its output).\n", unit)
+	a.printf(a.Tr.T("basalt-gate-exec applies it now (%s shows its output).")+"\n", "journalctl -u "+unit)
 	deadline := time.Now().Add(limit)
 	var view *gateclient.View
 	for {
@@ -121,28 +119,28 @@ func (a *Applier) follow(ctx context.Context, id string, p *proposal.Proposal) e
 	q, err := a.Store.Load(p.ID)
 	if err == nil && q.Result != nil {
 		for _, st := range q.Result.Steps {
-			a.printf("$ %s  [%s]\n", st.What, mark(st.OK))
+			a.printf("$ %s  [%s]\n", st.What, a.mark(st.OK))
 		}
 		for _, c := range q.Result.Checks {
-			a.printf("  [%s] %s: %s\n", mark(c.OK), c.What, c.Output)
+			a.checkLine(c.OK, c.What, c.Output)
 		}
 		if q.Result.PreSnapshot > 0 {
-			a.printf("To undo it: sudo basalt snapshots rollback --before %s   (back to snapshot %d, at the next boot)\n", p.ID, q.Result.PreSnapshot)
+			a.undoLine(p.ID, q.Result.PreSnapshot)
 		}
 	}
 	if strings.HasPrefix(view.Result, "exit code 0") || view.Result == "done" {
-		a.printf("\nDone: %s is applied and every check passed.\n", p.ID)
+		a.printf("\n"+a.Tr.T("Done: %s is applied and every check passed.")+"\n", p.ID)
 		return nil
 	}
 	return fmt.Errorf("%s did not verify (%s)", p.ID, view.Result)
 }
 
-func byText(by string) string {
+func (a *Applier) byText(by string) string {
 	switch {
 	case strings.HasPrefix(by, "rule:"):
-		return "the rule " + strings.TrimPrefix(by, "rule:")
+		return fmt.Sprintf(a.Tr.T("the rule %s"), strings.TrimPrefix(by, "rule:"))
 	case strings.HasPrefix(by, "person:"):
-		return "a person (" + strings.TrimPrefix(by, "person:") + ")"
+		return fmt.Sprintf(a.Tr.T("a person (%s)"), strings.TrimPrefix(by, "person:"))
 	}
 	return by
 }

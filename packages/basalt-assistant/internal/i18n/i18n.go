@@ -7,9 +7,12 @@
 // Every user-facing string goes through T or N (whole sentences, with
 // placeholders for values, never concatenated pieces); logs, audit records
 // and machine output (--json) stay English. Text that is stored in English
-// and translated when it is shown (proposal titles) is marked with M. The sources of the catalogs
-// are po/basalt-assistant.pot and po/<lang>.po in the package; a test
-// checks that every T and N call is in the template and translated.
+// and translated when it is shown (proposal titles) is marked with M.
+// Text written both for people and for machines (a proposal's rendering)
+// takes a Tr: the zero Tr is English, Local the reader's language. The
+// sources of the catalogs are po/basalt-assistant.pot and po/<lang>.po in
+// the package; a test checks that every T, N, tr.T and tr.N call is in the
+// template and translated.
 package i18n
 
 import (
@@ -99,6 +102,54 @@ func N(singular, plural string, n int) string {
 // Lang is the language of the loaded catalog ("" for the reference
 // English text).
 func Lang() string { return get().Lang }
+
+// Tr translates with one catalog, chosen by the caller: code that writes
+// both for people and for machines (a proposal's rendering is shown at the
+// command line and logged by the daemon, sent to MCP clients) takes a Tr
+// instead of the process-wide catalog. The zero Tr is the English
+// reference text; Local is the reader's language. The catalog template
+// collects tr.T and tr.N calls (a variable or field named tr) like i18n.T
+// and i18n.N calls.
+type Tr struct{ c *Catalog }
+
+// Local is the reader's language: the catalog of the environment.
+func Local() Tr { return Tr{c: get()} }
+
+// With translates with c (tests, or a catalog loaded by hand).
+func With(c *Catalog) Tr { return Tr{c: c} }
+
+// T returns the translation of msgid, or msgid.
+func (t Tr) T(msgid string) string {
+	if t.c != nil {
+		if f := t.c.Messages[msgid]; len(f) > 0 && f[0] != "" {
+			return f[0]
+		}
+	}
+	return msgid
+}
+
+// Marked translates a message that M marked, held in a variable.
+func (t Tr) Marked(msgid string) string { return t.T(msgid) }
+
+// N returns the singular or plural form for n.
+func (t Tr) N(singular, plural string, n int) string {
+	if t.c != nil {
+		if f := t.c.Messages[singular]; len(f) > 0 && t.c.Plural != nil {
+			i := t.c.Plural(n)
+			if i >= 0 && i < len(f) && f[i] != "" {
+				return f[i]
+			}
+		}
+	}
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// English reports whether t writes the reference text (no catalog was
+// found for the reader's language).
+func (t Tr) English() bool { return t.c == nil || t.c.Lang == "" }
 
 // Languages lists the candidate catalogs for the environment, most
 // specific first ("pt_BR.UTF-8" gives "pt_BR", then "pt").
