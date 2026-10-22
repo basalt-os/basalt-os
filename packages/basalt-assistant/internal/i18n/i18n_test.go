@@ -43,8 +43,24 @@ type msg struct {
 	refs       []string
 }
 
+// isCatalogCall: i18n.T, i18n.N and i18n.M, and the T and N methods of a
+// Tr held in a variable or field named tr (tr.T, p.tr.T, o.Tr.N).
+func isCatalogCall(sel *ast.SelectorExpr) bool {
+	name := sel.Sel.Name
+	switch x := sel.X.(type) {
+	case *ast.Ident:
+		if x.Name == "i18n" {
+			return name == "T" || name == "N" || name == "M"
+		}
+		return (x.Name == "tr" || x.Name == "Tr") && (name == "T" || name == "N")
+	case *ast.SelectorExpr:
+		return (x.Sel.Name == "tr" || x.Sel.Name == "Tr") && (name == "T" || name == "N")
+	}
+	return false
+}
+
 // extract finds every i18n.T("..."), i18n.M("...") and
-// i18n.N("...", "...", n) call.
+// i18n.N("...", "...", n) call, and every tr.T and tr.N call.
 func extract(t *testing.T) []*msg {
 	t.Helper()
 	byID := map[string]*msg{}
@@ -72,8 +88,7 @@ func extract(t *testing.T) []*msg {
 			if !ok {
 				return true
 			}
-			x, ok := sel.X.(*ast.Ident)
-			if !ok || x.Name != "i18n" || (sel.Sel.Name != "T" && sel.Sel.Name != "N" && sel.Sel.Name != "M") {
+			if !isCatalogCall(sel) {
 				return true
 			}
 			lit := func(i int) string {
@@ -112,7 +127,12 @@ func extract(t *testing.T) []*msg {
 	for _, m := range byID {
 		out = append(out, m)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].refs[0] < out[j].refs[0] })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].refs[0] != out[j].refs[0] {
+			return out[i].refs[0] < out[j].refs[0]
+		}
+		return out[i].id < out[j].id // several messages on one line
+	})
 	return out
 }
 

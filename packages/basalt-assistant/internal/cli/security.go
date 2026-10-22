@@ -56,14 +56,7 @@ func (a *app) security(ctx context.Context) error {
 		}
 		p := newProposal("security", "audit", "security:audit", "run the AI audit suite on this computer")
 		p.Actions = []action.Action{act}
-		p.Report = "Run the public AI audit suite on this computer: like an attacker would, it tries to get around the " +
-			"protections for AI agents (their confinement, their network limits, the activity record, the confirmation " +
-			"step). It runs as its own unprivileged account with fake test data and changes none of your files. " +
-			"The results appear in Security and Activity."
-		if install == "yes" {
-			p.Report += " The suite is not installed yet: it is installed first from the Basalt repositories, " +
-				"checked against their signing key."
-		}
+		p.Report = auditReport(install == "yes")
 		return a.storeAndPresent(ctx, p)
 	case "accept", "review":
 		if len(a.o.args) < 3 {
@@ -79,13 +72,11 @@ func (a *app) security(ctx context.Context) error {
 			by := requester()
 			act = action.Action{Kind: action.RiskAccept, Params: map[string]string{"item": item, "by": by}}
 			title = "accept the risk of " + item
-			report = "Record that " + by + " knows about the warning on " + item + " and accepts it. Security and " +
-				"Activity then shows it as accepted, with the date and who accepted it, and stops counting it. " +
-				"If it ever becomes a problem it shows as a problem again. Review again undoes this."
+			report = riskAcceptReport(by, item)
 		} else {
 			act = action.Action{Kind: action.RiskReview, Params: map[string]string{"item": item}}
 			title = "review the risk of " + item + " again"
-			report = "Forget that the risk of " + item + " was accepted: Security and Activity counts it as a warning again."
+			report = riskReviewReport(item)
 		}
 		if err := act.Validate(); err != nil {
 			return err
@@ -138,4 +129,29 @@ func (a *app) riskHelper() error {
 		return nil
 	}
 	return errors.New("usage: basalt __risk accept ITEM BY | clear ITEM")
+}
+
+// The reports below are stored in English and shown translated sentence
+// by sentence (internal/titles, Report).
+
+func auditReport(install bool) string {
+	r := "Run the public AI audit suite on this computer: like an attacker would, it tries to get around the " +
+		"protections for AI agents (their confinement, their network limits, the activity record, the confirmation " +
+		"step). It runs as its own unprivileged account with fake test data and changes none of your files. " +
+		"The results appear in Security and Activity."
+	if install {
+		r += " The suite is not installed yet: it is installed first from the Basalt repositories, " +
+			"checked against their signing key."
+	}
+	return r
+}
+
+func riskAcceptReport(by, item string) string {
+	return "Record that " + by + " knows about the warning on " + item + " and accepts it. Security and " +
+		"Activity then shows it as accepted, with the date and who accepted it, and stops counting it. " +
+		"If it ever becomes a problem it shows as a problem again. Review again undoes this."
+}
+
+func riskReviewReport(item string) string {
+	return "Forget that the risk of " + item + " was accepted: Security and Activity counts it as a warning again."
 }

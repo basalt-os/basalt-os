@@ -182,7 +182,7 @@ func scenarios() map[string]*proposal.Proposal {
 	ps["dnf-rollback"] = FromDnf("cli", dn)
 	dh := *dn
 	dh.Actions, dh.Packages = nil, diag.PackageDiff{}
-	dh.Hints = []action.Hint{{Reason: "snapshot 41 was taken just before the failed transaction", Actions: []action.Action{act(action.SnapshotRollback, "snapshot", "41")}}}
+	dh.Hints = []action.Hint{{Reason: "snapshot 41 was taken just before the failed transaction \"dnf install basalt-lab-postfail\"", Actions: []action.Action{act(action.SnapshotRollback, "snapshot", "41")}}}
 	ps["dnf-rollback-hint"] = FromDnf("daemon", &dh)
 	di := &diag.DnfReport{Command: "dnf install basalt-lab-broken", Failed: []string{"basalt-lab-broken-1-1.noarch"}, Pre: &diag.Snapshot{Number: 43},
 		Decision: dec("dnf.next", "investigate", 0.85, 0.75), LogLines: []string{"error: %prein(basalt-lab-broken-1-1.noarch) scriptlet failed, exit status 1"}}

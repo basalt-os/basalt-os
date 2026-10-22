@@ -75,10 +75,15 @@ func (a *app) keyboard(ctx context.Context) error {
 			was = "none set (us)"
 		}
 		p.Evidence = []string{"now: " + was + ", console " + orNone(cur.Console), "console keymap: " + km}
-		p.Report = "The login screen, the text console and accounts created from now on type with " + names +
-			" (the first is the default; the console uses the keymap " + km + "). People who chose their own layouts in " +
-			"Settings, Keyboard keep them. To change it again, choose other layouts the same way."
+		p.Report = keyboardReport(names, km)
 		return a.storeAndPresent(ctx, p)
 	}
 	return fmt.Errorf("unknown: basalt keyboard %s (basalt help)", sub)
+}
+
+// keyboardReport is stored in English and shown translated (internal/titles).
+func keyboardReport(names, keymap string) string {
+	return "The login screen, the text console and accounts created from now on type with " + names +
+		" (the first is the default; the console uses the keymap " + keymap + "). People who chose their own layouts in " +
+		"Settings, Keyboard keep them. To change it again, choose other layouts the same way."
 }

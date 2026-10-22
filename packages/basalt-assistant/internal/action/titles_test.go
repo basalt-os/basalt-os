@@ -2,6 +2,7 @@ package action
 
 import (
 	"testing"
+	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/titles"
@@ -9,8 +10,9 @@ import (
 
 // TestDescriptionsAreKnownTitles: the description of every command an
 // action runs is a form internal/titles knows, so a proposal titled with
-// Describe (the MCP server's typed actions) is shown translated. A new or
-// changed description needs its form there and its translation in po/.
+// Describe (the MCP server's typed actions) is shown translated, and what
+// every check of an action proves is a phrase it knows. A new or changed
+// description needs its form there and its translation in po/.
 func TestDescriptionsAreKnownTitles(t *testing.T) {
 	withSources(t)
 	pk := "kernel-core-6.17.3-200.fc44.x86_64 openssl-libs-1:3.5.9-1.fc44.x86_64"
@@ -53,6 +55,13 @@ func TestDescriptionsAreKnownTitles(t *testing.T) {
 		for _, c := range cmds {
 			if !titles.Known(c.Description) {
 				t.Errorf("%s: %q is not a form of internal/titles", a.Kind, c.Description)
+			}
+		}
+		// What each check proves is stored in the result and shown
+		// translated (basalt show, basalt apply).
+		for _, c := range append(a.Verify(time.Now()), a.InstalledChecks()...) {
+			if !titles.KnownPhrase(c.Description) {
+				t.Errorf("%s: check %q is not a phrase of internal/titles", a.Kind, c.Description)
 			}
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 )
 
 // Pending is an offline update waiting for the next start: the proposal
@@ -92,7 +93,7 @@ func (a *Applier) FinishOffline(ctx context.Context) error {
 	// restart into it and restarted later another way): it is still
 	// staged, and waits for "Restart and update".
 	if st := a.Exec.Read(ctx, "dnf", "offline", "status"); strings.Contains(st.Out, "offline transaction was initiated") {
-		a.printf("%s is still staged: it installs when the computer restarts into it.\n", p.ID)
+		a.printf(a.Tr.T("%s is still staged: it installs when the computer restarts into it.")+"\n", p.ID)
 		return ErrStillStaged
 	}
 	res := p.Result
@@ -103,7 +104,7 @@ func (a *Applier) FinishOffline(ctx context.Context) error {
 	if pend.PreSnapshot > 0 && a.Snapshots && snapperReady() {
 		if n, err := a.snapper(ctx, "post", pend.PreSnapshot, "basalt apply "+p.ID+" (installed at start)", p.ID); err == nil {
 			res.PostSnapshot = n
-			a.printf("Snapshot %d taken (after the update).\n", n)
+			a.printf(a.Tr.T("Snapshot %d taken (after the update).")+"\n", n)
 		}
 	}
 	// dnf's own record of the offline transaction, for the report.
@@ -115,7 +116,7 @@ func (a *Applier) FinishOffline(ctx context.Context) error {
 		for _, chk := range act.InstalledChecks() {
 			good, detail := chk.Run(ctx, a.Exec)
 			res.Checks = append(res.Checks, proposal.Step{What: chk.Description, OK: good, Output: detail})
-			a.printf("  [%s] %s: %s\n", mark(good), chk.Description, detail)
+			a.checkLine(good, chk.Description, detail)
 			ok = ok && good
 		}
 	}
@@ -129,13 +130,13 @@ func (a *Applier) FinishOffline(ctx context.Context) error {
 		"proposal": p.ID, "title": p.Title, "actions": p.Actions, "result": res, "offline": true})
 	res.AuditSeq = rec.Seq
 	if err := a.Store.Save(p); err != nil {
-		a.printf("Warning: could not update the proposal: %v\n", err)
+		a.printf(a.Tr.T("Warning: could not update the proposal: %v")+"\n", err)
 	}
 	_ = os.Remove(path)
 	if ok && a.OnUpdated != nil {
 		a.OnUpdated()
 	}
-	a.printf("%s: %s (snapshots %s before, %s after)\n", p.ID, p.Status, strconv.Itoa(res.PreSnapshot), strconv.Itoa(res.PostSnapshot))
+	a.printf(a.Tr.T("%s: %s (snapshots %s before, %s after)")+"\n", p.ID, report.StatusWord(a.Tr, p.Status), strconv.Itoa(res.PreSnapshot), strconv.Itoa(res.PostSnapshot))
 	if !ok {
 		return fmt.Errorf("%s did not install at the start; undo it with the snapshot %d taken before it", p.ID, res.PreSnapshot)
 	}

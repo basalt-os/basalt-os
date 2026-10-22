@@ -1,9 +1,11 @@
 package explain
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/i18n"
 )
 
 // Risk levels of a planned change.
@@ -13,15 +15,18 @@ const (
 	RiskHigh   = 3
 )
 
-// RiskName is the word for a level.
-func RiskName(level int) string {
+// RiskName is the word for a level (English).
+func RiskName(level int) string { return RiskNameIn(i18n.Tr{}, level) }
+
+// RiskNameIn is RiskName in the language of tr.
+func RiskNameIn(tr i18n.Tr, level int) string {
 	switch level {
 	case RiskHigh:
-		return "high"
+		return tr.T("high")
 	case RiskMedium:
-		return "medium"
+		return tr.T("medium")
 	}
-	return "low"
+	return tr.T("low")
 }
 
 // DataVolumes are the subvolumes a root rollback leaves alone (the
@@ -39,69 +44,73 @@ func DataVolume(path string) string {
 	return ""
 }
 
-func riskOf(a action.Action) (int, string) {
+func riskOf(tr i18n.Tr, a action.Action) (int, string) {
+	p := a.Params
 	switch a.Kind {
 	case action.SELinuxRestorecon:
-		return RiskLow, "only puts back the label the policy expects"
+		return RiskLow, tr.T("only puts back the label the policy expects")
 	case action.UnitRestart:
-		return RiskLow, a.Params["unit"] + " is briefly unavailable while it restarts"
+		return RiskLow, fmt.Sprintf(tr.T("%s is briefly unavailable while it restarts"), p["unit"])
 	case action.DnfClean:
-		return RiskLow, "cached packages are downloaded again when needed"
+		return RiskLow, tr.T("cached packages are downloaded again when needed")
 	case action.SELinuxFcontext:
-		return RiskMedium, "adds a lasting SELinux rule for " + a.Params["path"]
+		return RiskMedium, fmt.Sprintf(tr.T("adds a lasting SELinux rule for %s"), p["path"])
 	case action.SELinuxPort:
-		return RiskMedium, "adds a lasting SELinux label for " + a.Params["proto"] + " port " + a.Params["port"]
+		return RiskMedium, fmt.Sprintf(tr.T("adds a lasting SELinux label for %s port %s"), p["proto"], p["port"])
 	case action.SELinuxBoolean:
-		return RiskMedium, "changes what the SELinux policy allows, for every program the boolean covers"
+		return RiskMedium, tr.T("changes what the SELinux policy allows, for every program the boolean covers")
 	case action.FileRestore:
-		return RiskMedium, "replaces the current " + a.Params["path"]
+		return RiskMedium, fmt.Sprintf(tr.T("replaces the current %s"), p["path"])
 	case action.JournalVacuum:
-		return RiskMedium, "old log entries are deleted"
+		return RiskMedium, tr.T("old log entries are deleted")
 	case action.SnapshotRollback:
-		return RiskHigh, "the whole system, but not your data, goes back to an earlier state at the next boot"
+		return RiskHigh, tr.T("the whole system, but not your data, goes back to an earlier state at the next boot")
 	case action.SnapshotDelete:
-		return RiskHigh, "snapshot " + a.Params["snapshot"] + " is gone for good and can no longer be rolled back to"
+		return RiskHigh, fmt.Sprintf(tr.T("snapshot %s is gone for good and can no longer be rolled back to"), p["snapshot"])
 	case action.DriverInstall:
-		return RiskHigh, "the graphics driver changes at the next start; if it does not work there, the start after it uses nouveau again"
+		return RiskHigh, tr.T("the graphics driver changes at the next start; if it does not work there, the start after it uses nouveau again")
 	case action.UpdateCheck:
-		return RiskLow, "only the list of available packages is downloaded"
+		return RiskLow, tr.T("only the list of available packages is downloaded")
 	case action.UpdateInstall:
-		return RiskMedium, "programs and system parts are replaced by newer versions; some need a restart"
+		return RiskMedium, tr.T("programs and system parts are replaced by newer versions; some need a restart")
 	case action.UpdateRollback:
-		return RiskHigh, "the whole system, but not your data, goes back to how it was before the update at the next boot"
+		return RiskHigh, tr.T("the whole system, but not your data, goes back to how it was before the update at the next boot")
 	case action.RepoEnable:
-		if strings.HasSuffix(a.Params["repo"], "-testing") {
-			return RiskMedium, "updates from now on may include preview builds, which can break things"
+		if strings.HasSuffix(p["repo"], "-testing") {
+			return RiskMedium, tr.T("updates from now on may include preview builds, which can break things")
 		}
-		return RiskLow, "updates from now on also come from " + a.Params["repo"]
+		return RiskLow, fmt.Sprintf(tr.T("updates from now on also come from %s"), p["repo"])
 	case action.RepoDisable:
-		return RiskLow, "no more updates come from " + a.Params["repo"] + "; what is installed stays"
+		return RiskLow, fmt.Sprintf(tr.T("no more updates come from %s; what is installed stays"), p["repo"])
 	case action.SourceAdd:
-		return RiskHigh, "software from " + a.Params["name"] + " can change the whole system: its signing key becomes trusted"
+		return RiskHigh, fmt.Sprintf(tr.T("software from %s can change the whole system: its signing key becomes trusted"), p["name"])
 	case action.SourceRemove:
-		return RiskLow, "no more software comes from " + a.Params["id"] + "; what is installed from it stays"
+		return RiskLow, fmt.Sprintf(tr.T("no more software comes from %s; what is installed from it stays"), p["id"])
 	case action.KeyboardSystem:
-		return RiskLow, "the login screen and the console type with " + a.Params["layouts"] + "; people's own keyboard settings stay"
+		return RiskLow, fmt.Sprintf(tr.T("the login screen and the console type with %s; people's own keyboard settings stay"), p["layouts"])
 	case action.AuditRun:
-		if a.Params["install"] == "yes" {
-			return RiskLow, "one package is installed; its tests run as their own unprivileged account and change none of your files"
+		if p["install"] == "yes" {
+			return RiskLow, tr.T("one package is installed; its tests run as their own unprivileged account and change none of your files")
 		}
-		return RiskLow, "the tests run as their own unprivileged account and change none of your files"
+		return RiskLow, tr.T("the tests run as their own unprivileged account and change none of your files")
 	case action.RiskAccept:
-		return RiskLow, "Security and Activity stops counting " + a.Params["item"] + " as a warning; nothing else changes"
+		return RiskLow, fmt.Sprintf(tr.T("Security and Activity stops counting %s as a warning; nothing else changes"), p["item"])
 	case action.RiskReview:
-		return RiskLow, a.Params["item"] + " counts as a warning again; nothing else changes"
+		return RiskLow, fmt.Sprintf(tr.T("%s counts as a warning again; nothing else changes"), p["item"])
 	}
-	return RiskHigh, "unknown change"
+	return RiskHigh, tr.T("unknown change")
 }
 
 // Risk returns the highest level of the changes and why, one note per
-// change at that level.
-func Risk(acts []action.Action) (int, string) {
+// change at that level (English).
+func Risk(acts []action.Action) (int, string) { return RiskIn(i18n.Tr{}, acts) }
+
+// RiskIn is Risk in the language of tr.
+func RiskIn(tr i18n.Tr, acts []action.Action) (int, string) {
 	level := 0
 	var notes []string
 	for _, a := range acts {
-		l, n := riskOf(a)
+		l, n := riskOf(tr, a)
 		switch {
 		case l > level:
 			level, notes = l, []string{n}
@@ -114,8 +123,11 @@ func Risk(acts []action.Action) (int, string) {
 
 // Undo explains how to undo the changes after `basalt apply`, which takes a
 // snapshot before and after (except for a rollback, which works on
-// snapshots itself). The command to run is rendered separately.
-func Undo(acts []action.Action) (text string, rollbackCmd bool) {
+// snapshots itself). The command to run is rendered separately. English.
+func Undo(acts []action.Action) (text string, rollbackCmd bool) { return UndoIn(i18n.Tr{}, acts) }
+
+// UndoIn is Undo in the language of tr.
+func UndoIn(tr i18n.Tr, acts []action.Action) (text string, rollbackCmd bool) {
 	toggles := len(acts) > 0
 	for _, a := range acts {
 		if (a.Kind != action.RepoEnable && a.Kind != action.RepoDisable) || a.Params["definition"] != "" {
@@ -123,16 +135,16 @@ func Undo(acts []action.Action) (text string, rollbackCmd bool) {
 		}
 	}
 	if toggles {
-		return "turn the channel back the other way in Settings, Updates and channels, or with basalt channels; no snapshot is needed for one setting, and every update takes its own.", false
+		return tr.T("turn the channel back the other way in Settings, Updates and channels, or with basalt channels; no snapshot is needed for one setting, and every update takes its own."), false
 	}
 	if len(acts) == 1 && acts[0].Kind == action.KeyboardSystem {
-		return "choose other layouts in Settings, Keyboard, or with basalt keyboard set; no snapshot is needed for one setting.", false
+		return tr.T("choose other layouts in Settings, Keyboard, or with basalt keyboard set; no snapshot is needed for one setting."), false
 	}
 	if len(acts) == 1 && acts[0].Kind == action.RiskAccept {
-		return "choose Review again in Security and Activity; no snapshot is needed for one setting.", false
+		return tr.T("choose Review again in Security and Activity; no snapshot is needed for one setting."), false
 	}
 	if len(acts) == 1 && acts[0].Kind == action.RiskReview {
-		return "accept the risk again in Security and Activity; no snapshot is needed for one setting.", false
+		return tr.T("accept the risk again in Security and Activity; no snapshot is needed for one setting."), false
 	}
 	var caveats []string
 	rollback, reversible := false, false
@@ -146,26 +158,26 @@ func Undo(acts []action.Action) (text string, rollbackCmd bool) {
 		case action.SnapshotRollback, action.UpdateRollback:
 			rollback = true
 		case action.SnapshotDelete:
-			caveats = append(caveats, "deleting snapshot "+a.Params["snapshot"]+" cannot be undone")
+			caveats = append(caveats, fmt.Sprintf(tr.T("deleting snapshot %s cannot be undone"), a.Params["snapshot"]))
 		case action.JournalVacuum:
-			caveats = append(caveats, "deleted journal files cannot be brought back")
+			caveats = append(caveats, tr.T("deleted journal files cannot be brought back"))
 		case action.DnfClean:
-			caveats = append(caveats, "removed package files are simply downloaded again when needed")
+			caveats = append(caveats, tr.T("removed package files are simply downloaded again when needed"))
 		case action.SELinuxFcontext, action.SELinuxRestorecon:
 			if v := DataVolume(a.Params["path"]); v != "" {
-				caveats = append(caveats, "the labels of files under "+v+" are on a separate volume and stay as they are")
+				caveats = append(caveats, fmt.Sprintf(tr.T("the labels of files under %s are on a separate volume and stay as they are"), v))
 			}
 		}
 	}
 	if rollback {
-		return "your current system stays as a snapshot, so you can return to it the same way (basalt snapshots lists them).", false
+		return tr.T("your current system stays as a snapshot, so you can return to it the same way (basalt snapshots lists them)."), false
 	}
 	if !reversible {
 		return strings.Join(caveats, "; ") + ".", false
 	}
-	text = "a snapshot is taken before and after, so you can go back to the state before the change; a rollback takes effect at the next boot."
+	text = tr.T("a snapshot is taken before and after, so you can go back to the state before the change; a rollback takes effect at the next boot.")
 	if len(caveats) > 0 {
-		text += " Note: " + strings.Join(caveats, "; ") + "."
+		text += " " + fmt.Sprintf(tr.T("Note: %s."), strings.Join(caveats, "; "))
 	}
 	return text, true
 }

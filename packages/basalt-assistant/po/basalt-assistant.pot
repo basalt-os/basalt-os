@@ -9,6 +9,247 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: internal/apply/apply.go:132
+msgid "a snapshot is taken before and after"
+msgstr ""
+
+#: internal/apply/apply.go:134
+msgid "no extra snapshot: the rollback works on snapshots itself"
+msgstr ""
+
+#: internal/apply/apply.go:136
+msgid "no snapshot: the system's keyboard is one setting, and choosing other layouts changes it back"
+msgstr ""
+
+#: internal/apply/apply.go:138
+msgid "no snapshot: an accepted risk is one setting, and Review again changes it back"
+msgstr ""
+
+#: internal/apply/apply.go:140
+msgid "no snapshot: turning a channel on or off changes one setting, and the next update takes its own snapshot"
+msgstr ""
+
+#: internal/apply/apply.go:142
+msgid "the command shown above"
+msgstr ""
+
+#: internal/apply/apply.go:144
+#, c-format
+msgid "the %d commands shown above, in that order"
+msgstr ""
+
+#: internal/apply/apply.go:146
+#, c-format
+msgid "Applying runs %s, as root (%s)."
+msgstr ""
+
+#: internal/apply/apply.go:164
+msgid "Type yes to apply it, or anything else to cancel: "
+msgstr ""
+
+#: internal/apply/apply.go:218
+#, c-format
+msgid "Snapshot %d taken (before the change)."
+msgstr ""
+
+#: internal/apply/apply.go:220
+#, c-format
+msgid "Warning: no snapshot could be taken before the change: %v"
+msgstr ""
+
+#: internal/apply/apply.go:240
+#, c-format
+msgid "That command failed (exit code %d), so the remaining ones were not run."
+msgstr ""
+
+#: internal/apply/apply.go:250
+#, c-format
+msgid "Snapshot %d taken (after the change)."
+msgstr ""
+
+#: internal/apply/apply.go:260
+msgid "Checking that it worked"
+msgstr ""
+
+#: internal/apply/apply.go:288
+#, c-format
+msgid "Warning: the boot will not finish the record: %v"
+msgstr ""
+
+#: internal/apply/apply.go:299 internal/apply/offline.go:133
+#, c-format
+msgid "Warning: could not update the proposal: %v"
+msgstr ""
+
+#: internal/apply/apply.go:302
+#, c-format
+msgid "Ready: %s installs at the next start (audit record #%d)."
+msgstr ""
+
+#: internal/apply/apply.go:303
+msgid "Restart to install it: Settings, Updates and channels, or sudo basalt updates restart"
+msgstr ""
+
+#: internal/apply/apply.go:305
+#, c-format
+msgid "Done: %s is applied and every check passed (audit record #%d)."
+msgstr ""
+
+#: internal/apply/apply.go:310
+#, c-format
+msgid "%s did not work as expected: see the failed step or check above (audit record #%d)."
+msgstr ""
+
+#: internal/apply/apply.go:341
+#, c-format
+msgid "warning: audit log: %v"
+msgstr ""
+
+#: internal/apply/apply.go:433
+#, c-format
+msgid "To undo it: %s   (back to snapshot %d, at the next boot)"
+msgstr ""
+
+#: internal/apply/apply.go:463
+#, c-format
+msgid "That command failed (exit code %d). The update stays prepared."
+msgstr ""
+
+#: internal/apply/apply.go:83 internal/cli/feedback.go:447
+msgid "yes"
+msgstr ""
+
+#: internal/apply/apply.go:89 internal/cli/cli.go:1044
+msgid "ok"
+msgstr ""
+
+#: internal/apply/apply.go:91
+msgid "FAIL"
+msgstr ""
+
+#: internal/apply/gate.go:101
+#, c-format
+msgid "basalt-gate-exec applies it now (%s shows its output)."
+msgstr ""
+
+#: internal/apply/gate.go:132
+#, c-format
+msgid "Done: %s is applied and every check passed."
+msgstr ""
+
+#: internal/apply/gate.go:141
+#, c-format
+msgid "the rule %s"
+msgstr ""
+
+#: internal/apply/gate.go:143
+#, c-format
+msgid "a person (%s)"
+msgstr ""
+
+#: internal/apply/gate.go:36
+#, c-format
+msgid "Approved by %s."
+msgstr ""
+
+#: internal/apply/gate.go:63
+#, c-format
+msgid "Type yes to apply it, or anything else to cancel (request %s, code %s): "
+msgstr ""
+
+#: internal/apply/gate.go:73
+#, c-format
+msgid "Waiting for a decision in the approval queue (request %s, code %s): approve it in the desktop shell or with %s."
+msgstr ""
+
+#: internal/apply/offline.go:107
+#, c-format
+msgid "Snapshot %d taken (after the update)."
+msgstr ""
+
+#: internal/apply/offline.go:139
+#, c-format
+msgid "%s: %s (snapshots %s before, %s after)"
+msgstr ""
+
+#: internal/apply/offline.go:96
+#, c-format
+msgid "%s is still staged: it installs when the computer restarts into it."
+msgstr ""
+
+#: internal/cli/cli.go:1046
+msgid "FAILED"
+msgstr ""
+
+#: internal/cli/cli.go:1056
+#, c-format
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/cli/cli.go:1059
+#, c-format
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/cli/cli.go:380
+msgid "This is a preview. Run the same command with sudo to store the proposal and apply it."
+msgstr ""
+
+#: internal/cli/cli.go:526
+#, c-format
+msgid "SELinux blocked nothing in the last %s. Nothing to do."
+msgstr ""
+
+#: internal/cli/cli.go:529
+#, c-format
+msgid "SELinux blocked %d kind of access in the last %s. Each one is explained below."
+msgid_plural "SELinux blocked %d kinds of access in the last %s. Each one is explained below."
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/cli/cli.go:605
+#, c-format
+msgid "Checked as root. The hint %s is closed and stored as proposal %s, which you can apply."
+msgstr ""
+
+#: internal/cli/cli.go:783
+msgid "There are no proposals."
+msgstr ""
+
+#: internal/cli/cli.go:785
+msgid "Nothing is waiting for your decision."
+msgstr ""
+
+#: internal/cli/cli.go:793
+msgid "[review]: the assistant is not sure, read it first. [hint]: confirm it as root first. [report]: nothing to apply."
+msgstr ""
+
+#: internal/cli/cli.go:794
+msgid "Details: basalt show ID.   Then: sudo basalt apply ID, or sudo basalt ignore ID."
+msgstr ""
+
+#: internal/cli/cli.go:868
+msgid "it worked and every check passed"
+msgstr ""
+
+#: internal/cli/cli.go:870
+msgid "it did NOT verify"
+msgstr ""
+
+#: internal/cli/cli.go:872
+#, c-format
+msgid "Applied on %s UTC: %s (snapshots %d before, %d after; audit record #%d)"
+msgstr ""
+
+#: internal/cli/cli.go:957
+#, c-format
+msgid "%s is closed without changing anything (recorded in the audit log)."
+msgstr ""
+
 #: internal/cli/drivers.go:136
 msgid "Graphics hardware"
 msgstr ""
@@ -282,10 +523,6 @@ msgstr ""
 msgid "y"
 msgstr ""
 
-#: internal/cli/feedback.go:447
-msgid "yes"
-msgstr ""
-
 #: internal/cli/feedback.go:66
 msgid "Sending feedback is turned off on this system ([feedback] endpoint is empty in /etc/basalt/assistant.conf). You can write to feedback@basalt-os.org instead."
 msgstr ""
@@ -300,6 +537,1102 @@ msgstr ""
 
 #: internal/cli/feedback.go:95
 msgid "Nothing leaves this computer until you have seen exactly what will be sent and said yes."
+msgstr ""
+
+#: internal/explain/prose.go:126
+msgid "24 hours"
+msgstr ""
+
+#: internal/explain/prose.go:129
+#, c-format
+msgid "%s days"
+msgstr ""
+
+#: internal/explain/prose.go:140
+#, c-format
+msgid "%s is running normally."
+msgstr ""
+
+#: internal/explain/prose.go:141 internal/explain/prose.go:389
+msgid "Nothing to do."
+msgstr ""
+
+#: internal/explain/prose.go:146
+#, c-format
+msgid "There is no unit called %s on this system."
+msgstr ""
+
+#: internal/explain/prose.go:147
+msgid "Check the name; systemctl list-units shows the units that exist."
+msgstr ""
+
+#: internal/explain/prose.go:149
+msgid "its configuration"
+msgstr ""
+
+#: internal/explain/prose.go:153
+#, c-format
+msgid "%s (line %s)"
+msgstr ""
+
+#: internal/explain/prose.go:156
+#, c-format
+msgid "%s is not running because of a mistake in %s."
+msgstr ""
+
+#: internal/explain/prose.go:160
+#, c-format
+msgid "The configuration check %s says: %s."
+msgstr ""
+
+#: internal/explain/prose.go:162
+#, c-format
+msgid "The service log says: %s."
+msgstr ""
+
+#: internal/explain/prose.go:166
+msgid "The background service cannot look inside snapshots, so confirm it as root: the assistant then tests the snapshot copy with the configuration check before proposing it."
+msgstr ""
+
+#: internal/explain/prose.go:170
+#, c-format
+msgid "No snapshot has a working copy of the file, so fix it by hand and then restart %s."
+msgstr ""
+
+#: internal/explain/prose.go:174
+#, c-format
+msgid "%s is not running because SELinux blocked something it needs."
+msgstr ""
+
+#: internal/explain/prose.go:178
+msgid "There is no safe automatic fix for at least one denial, so it needs a person to review it."
+msgstr ""
+
+#: internal/explain/prose.go:182
+#, c-format
+msgid "%s cannot start because another program is already using its port."
+msgstr ""
+
+#: internal/explain/prose.go:185
+#, c-format
+msgid "Port %s is held by %s."
+msgstr ""
+
+#: internal/explain/prose.go:187
+#, c-format
+msgid "Port %s is already in use."
+msgstr ""
+
+#: internal/explain/prose.go:189
+#, c-format
+msgid "Stop the other program or give %s a different port. Nothing is changed automatically."
+msgstr ""
+
+#: internal/explain/prose.go:192
+#, c-format
+msgid "%s did not start because a unit it depends on failed."
+msgstr ""
+
+#: internal/explain/prose.go:198
+#, c-format
+msgid "%s has failed."
+msgstr ""
+
+#: internal/explain/prose.go:200
+#, c-format
+msgid "%s is inactive."
+msgstr ""
+
+#: internal/explain/prose.go:202
+#, c-format
+msgid "%s is activating."
+msgstr ""
+
+#: internal/explain/prose.go:204
+#, c-format
+msgid "%s is deactivating."
+msgstr ""
+
+#: internal/explain/prose.go:206
+#, c-format
+msgid "%s is %s."
+msgstr ""
+
+#: internal/explain/prose.go:208
+#, c-format
+msgid "Fix %s first; %s can start once it runs."
+msgstr ""
+
+#: internal/explain/prose.go:211
+#, c-format
+msgid "%s failed while the disk was full."
+msgstr ""
+
+#: internal/explain/prose.go:213
+#, c-format
+msgid "%s is %s %% full."
+msgstr ""
+
+#: internal/explain/prose.go:215
+msgid "Free some space first; the disk report shows what is using it."
+msgstr ""
+
+#: internal/explain/prose.go:217
+#, c-format
+msgid "%s failed because a file it needs does not exist."
+msgstr ""
+
+#: internal/explain/prose.go:219
+#, c-format
+msgid "Its log says: %s."
+msgstr ""
+
+#: internal/explain/prose.go:221
+#, c-format
+msgid "Create or restore the missing file, then start %s again."
+msgstr ""
+
+#: internal/explain/prose.go:224
+#, c-format
+msgid "%s ran out of memory and was stopped by the kernel."
+msgstr ""
+
+#: internal/explain/prose.go:227
+#, c-format
+msgid "It reached its memory limit (MemoryMax=%s)."
+msgstr ""
+
+#: internal/explain/prose.go:229
+msgid "The whole system ran out of memory at the time."
+msgstr ""
+
+#: internal/explain/prose.go:231
+msgid "It hit a memory limit of its control group or slice."
+msgstr ""
+
+#: internal/explain/prose.go:233
+msgid "A plain restart would most likely end the same way, so none is proposed. Check how much memory it uses and its limits; raise the limit if it is too low, otherwise find out why it needs so much."
+msgstr ""
+
+#: internal/explain/prose.go:236
+#, c-format
+msgid "%s crashed."
+msgstr ""
+
+#: internal/explain/prose.go:238
+#, c-format
+msgid "systemd recorded the result %s."
+msgstr ""
+
+#: internal/explain/prose.go:241
+#, c-format
+msgid "It had been running for %s and has not crashed like this before."
+msgstr ""
+
+#: internal/explain/prose.go:243
+msgid "A restart is proposed to bring it back, but the crash itself still needs a look."
+msgstr ""
+
+#: internal/explain/prose.go:245
+#, c-format
+msgid "%s keeps crashing."
+msgstr ""
+
+#: internal/explain/prose.go:248
+#, c-format
+msgid "it ended the same way (%s) %s times in the last %s"
+msgstr ""
+
+#: internal/explain/prose.go:251
+#, c-format
+msgid "systemd already restarted it %s times"
+msgstr ""
+
+#: internal/explain/prose.go:254
+msgid "systemd gave up restarting it after too many failures"
+msgstr ""
+
+#: internal/explain/prose.go:257
+#, c-format
+msgid "it crashed %s after it started"
+msgstr ""
+
+#: internal/explain/prose.go:262
+#, c-format
+msgid "%s, and %s"
+msgstr ""
+
+#: internal/explain/prose.go:266
+msgid "A restart would most likely crash the same way, so none is proposed. Look at its log and core dump to find the cause, fix it, then start it again."
+msgstr ""
+
+#: internal/explain/prose.go:269
+#, c-format
+msgid "%s cannot use a file it needs because of the file permissions."
+msgstr ""
+
+#: internal/explain/prose.go:275
+#, c-format
+msgid "%s has mode %s and belongs to %s, but the service runs as %s, which may not read it."
+msgstr ""
+
+#: internal/explain/prose.go:277
+#, c-format
+msgid "%s has mode %s and belongs to %s, but the service runs as %s, which may not write it."
+msgstr ""
+
+#: internal/explain/prose.go:279
+#, c-format
+msgid "%s has mode %s and belongs to %s, but the service runs as %s, which may not search it."
+msgstr ""
+
+#: internal/explain/prose.go:281
+#, c-format
+msgid "%s has mode %s and belongs to %s, but the service runs as %s, which may not create files in it."
+msgstr ""
+
+#: internal/explain/prose.go:283
+#, c-format
+msgid "%s has mode %s and belongs to %s, but the service runs as %s, which may not %s it."
+msgstr ""
+
+#: internal/explain/prose.go:286
+msgid "Fix the owner or mode of that path, or the User= and Group= of the unit. Nothing is changed automatically."
+msgstr ""
+
+#: internal/explain/prose.go:289
+#, c-format
+msgid "%s failed, and the assistant could not find out why."
+msgstr ""
+
+#: internal/explain/prose.go:291
+#, c-format
+msgid "The last relevant log line is: %s."
+msgstr ""
+
+#: internal/explain/prose.go:293
+msgid "Read the log lines in the evidence below."
+msgstr ""
+
+#: internal/explain/prose.go:303 internal/titles/titles.go:119
+#, c-format
+msgid "%s port %s"
+msgstr ""
+
+#: internal/explain/prose.go:314
+#, c-format
+msgid "%s (labeled %s)"
+msgstr ""
+
+#: internal/explain/prose.go:316
+#, c-format
+msgid "SELinux denied %s the %s permission on %s"
+msgstr ""
+
+#: internal/explain/prose.go:318
+#, c-format
+msgid "%s, %s times"
+msgstr ""
+
+#: internal/explain/prose.go:321
+#, c-format
+msgid "%s; there are %s kinds of denial in all"
+msgstr ""
+
+#: internal/explain/prose.go:333
+#, c-format
+msgid "SELinux blocked %s from using %s because it has the wrong label."
+msgstr ""
+
+#: internal/explain/prose.go:336
+#, c-format
+msgid "The policy default there is %s; the file was probably moved or created with the wrong label."
+msgstr ""
+
+#: internal/explain/prose.go:339
+#, c-format
+msgid "SELinux blocked %s from using %s because no rule labels that place for it."
+msgstr ""
+
+#: internal/explain/prose.go:342
+#, c-format
+msgid "It is labeled %s, a type %s may not use; %s is a type it may use."
+msgstr ""
+
+#: internal/explain/prose.go:345
+#, c-format
+msgid "SELinux blocked %s from using %s port %s because the port is not labeled for it."
+msgstr ""
+
+#: internal/explain/prose.go:348
+#, c-format
+msgid "The port is labeled %s now."
+msgstr ""
+
+#: internal/explain/prose.go:352
+#, c-format
+msgid "SELinux blocked %s because the boolean %s that allows this is off."
+msgstr ""
+
+#: internal/explain/prose.go:355
+#, c-format
+msgid "SELinux blocked %s because a boolean that would allow this is off."
+msgstr ""
+
+#: internal/explain/prose.go:358
+#, c-format
+msgid "SELinux stopped %s from touching %s, which is security sensitive. This looks like the policy doing its job."
+msgstr ""
+
+#: internal/explain/prose.go:359
+msgid "Do not loosen the policy. Find out why the program tried this."
+msgstr ""
+
+#: internal/explain/prose.go:364
+msgid "The security rules (SELinux) stopped a program from doing something they do not allow."
+msgstr ""
+
+#: internal/explain/prose.go:365
+msgid "Nothing needs your action now: this is a note for whoever looks after this computer."
+msgstr ""
+
+#: internal/explain/prose.go:366
+#, c-format
+msgid "SELinux blocked %s from using %s, and there is no known safe fix."
+msgstr ""
+
+#: internal/explain/prose.go:368
+msgid "Please have someone review it before changing the policy. The assistant never writes policy modules on its own."
+msgstr ""
+
+#: internal/explain/prose.go:377
+msgid "The assistant is not confident enough to propose a change, so it needs a person to review it."
+msgstr ""
+
+#: internal/explain/prose.go:388 internal/explain/prose.go:396
+#, c-format
+msgid "The root file system is %s %% full."
+msgstr ""
+
+#: internal/explain/prose.go:393
+#, c-format
+msgid "The root file system is %s %% full, which is critical."
+msgstr ""
+
+#: internal/explain/prose.go:401
+#, c-format
+msgid "Snapshot %s (%s, \"%s\") alone holds %s."
+msgstr ""
+
+#: internal/explain/prose.go:403
+#, c-format
+msgid "Snapshots hold %s."
+msgstr ""
+
+#: internal/explain/prose.go:403
+msgid "most of the space"
+msgstr ""
+
+#: internal/explain/prose.go:406
+#, c-format
+msgid "The system journal uses %s."
+msgstr ""
+
+#: internal/explain/prose.go:408
+#, c-format
+msgid "Cached packages use %s."
+msgstr ""
+
+#: internal/explain/prose.go:410
+msgid "Most of the space is data, not snapshots, logs or cached packages."
+msgstr ""
+
+#: internal/explain/prose.go:412
+msgid "Nothing is deleted automatically. Look for large files you no longer need."
+msgstr ""
+
+#: internal/explain/prose.go:414
+msgid "Run the disk report as root to measure the space each snapshot holds."
+msgstr ""
+
+#: internal/explain/prose.go:419
+msgid "At the current rate it will be full within about a day."
+msgstr ""
+
+#: internal/explain/prose.go:421
+#, c-format
+msgid "At the current rate it will be full in about %s days."
+msgstr ""
+
+#: internal/explain/prose.go:425
+msgid "No single item is large enough to free on its own."
+msgstr ""
+
+#: internal/explain/prose.go:436
+msgid "No failed package transaction was found."
+msgstr ""
+
+#: internal/explain/prose.go:439
+msgid "A package transaction"
+msgstr ""
+
+#: internal/explain/prose.go:441
+#, c-format
+msgid "The package transaction \"%s\""
+msgstr ""
+
+#: internal/explain/prose.go:445
+#, c-format
+msgid "%s failed after it had already changed packages."
+msgstr ""
+
+#: internal/explain/prose.go:450
+#, c-format
+msgid "added %d package"
+msgid_plural "added %d packages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/explain/prose.go:453
+#, c-format
+msgid "removed %d package"
+msgid_plural "removed %d packages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/explain/prose.go:456
+#, c-format
+msgid "changed %d package"
+msgid_plural "changed %d packages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/explain/prose.go:459
+#, c-format
+msgid "Since snapshot %s, taken just before it, the transaction %s."
+msgstr ""
+
+#: internal/explain/prose.go:461
+#, c-format
+msgid "Snapshot %s was taken just before it."
+msgstr ""
+
+#: internal/explain/prose.go:465 internal/explain/prose.go:473
+#, c-format
+msgid "The package that failed is %s."
+msgstr ""
+
+#: internal/explain/prose.go:468
+msgid "The background service cannot compare the packages inside snapshots, so confirm it as root first: the assistant then shows exactly what a rollback changes."
+msgstr ""
+
+#: internal/explain/prose.go:471
+#, c-format
+msgid "%s failed, but no package was changed."
+msgstr ""
+
+#: internal/explain/prose.go:475
+msgid "Nothing needs undoing. Read the log lines, fix the cause and try again."
+msgstr ""
+
+#: internal/explain/prose.go:486
+#, c-format
+msgid "This returns the system to snapshot %s (%s, \"%s\")."
+msgstr ""
+
+#: internal/explain/prose.go:489
+#, c-format
+msgid "This undoes %s: it returns the system to snapshot %s, taken just before %s was applied."
+msgstr ""
+
+#: internal/explain/prose.go:494
+#, c-format
+msgid "brings back %d package"
+msgid_plural "brings back %d packages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/explain/prose.go:497
+#, c-format
+msgid "removes %d package"
+msgid_plural "removes %d packages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/explain/prose.go:500
+#, c-format
+msgid "changes the version of %d package"
+msgid_plural "changes the version of %d packages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/explain/prose.go:503
+#, c-format
+msgid "Compared with now, it %s"
+msgstr ""
+
+#: internal/explain/prose.go:505
+msgid "Compared with now, the packages are the same"
+msgstr ""
+
+#: internal/explain/prose.go:508
+#, c-format
+msgid "%d file differs"
+msgid_plural "%d files differ"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/explain/prose.go:508
+#, c-format
+msgid "%s; %s."
+msgstr ""
+
+#: internal/explain/prose.go:523
+#, c-format
+msgid "%s can use the NVIDIA driver %s instead of nouveau."
+msgstr ""
+
+#: internal/explain/prose.go:527
+msgid "Only the compute part is installed (CUDA, NVML, OpenCL and nvidia-smi), no display packages."
+msgstr ""
+
+#: internal/explain/prose.go:529
+#, c-format
+msgid "%s stays the display GPU; programs run on %s when they ask for it (PRIME offload, basalt-nvidia-run), and CUDA works on it."
+msgstr ""
+
+#: internal/explain/prose.go:531
+msgid "The NVIDIA driver then drives the display."
+msgstr ""
+
+#: internal/explain/prose.go:533
+msgid "Restart the computer after applying it. The first start checks the driver and goes back to nouveau if it fails, and the snapshot taken before the change brings the system back. The driver is proprietary: applying it means you accept the NVIDIA Driver License Agreement (basalt drivers license nvidia)."
+msgstr ""
+
+#: internal/explain/prose.go:550
+#, c-format
+msgid "add a rule that labels %s and everything below it as %s (relabeling the files already there)"
+msgstr ""
+
+#: internal/explain/prose.go:552
+#, c-format
+msgid "reset the SELinux label of %s to the policy default"
+msgstr ""
+
+#: internal/explain/prose.go:554
+#, c-format
+msgid "label %s port %s as %s"
+msgstr ""
+
+#: internal/explain/prose.go:557
+#, c-format
+msgid "turn the SELinux boolean %s on"
+msgstr ""
+
+#: internal/explain/prose.go:560
+#, c-format
+msgid "turn the SELinux boolean %s off"
+msgstr ""
+
+#: internal/explain/prose.go:562
+#, c-format
+msgid "turn the SELinux boolean %s %s"
+msgstr ""
+
+#: internal/explain/prose.go:564 internal/titles/titles.go:62
+#, c-format
+msgid "restart %s"
+msgstr ""
+
+#: internal/explain/prose.go:566
+#, c-format
+msgid "put back the copy of %s from snapshot %s"
+msgstr ""
+
+#: internal/explain/prose.go:568
+#, c-format
+msgid "make snapshot %s the root from the next boot"
+msgstr ""
+
+#: internal/explain/prose.go:570
+#, c-format
+msgid "delete snapshot %s, which frees the space only it holds"
+msgstr ""
+
+#: internal/explain/prose.go:572
+#, c-format
+msgid "shrink the archived journal files to %s"
+msgstr ""
+
+#: internal/explain/prose.go:574
+msgid "remove the cached package files"
+msgstr ""
+
+#: internal/explain/prose.go:576
+#, c-format
+msgid "turn on the basalt-nonfree repository, install the NVIDIA driver with the signed kernel module for kernel %s and turn nouveau off from the next start"
+msgstr ""
+
+#: internal/explain/prose.go:578
+msgid "download the newest list of packages"
+msgstr ""
+
+#: internal/explain/prose.go:581
+#, c-format
+msgid "install %s security updates, exactly the versions shown"
+msgstr ""
+
+#: internal/explain/prose.go:583
+#, c-format
+msgid "install %s updates, exactly the versions shown"
+msgstr ""
+
+#: internal/explain/prose.go:585
+#, c-format
+msgid "make snapshot %s, taken just before the update %s, the root from the next boot"
+msgstr ""
+
+#: internal/explain/prose.go:587 internal/titles/titles.go:48
+#, c-format
+msgid "turn the %s channel on"
+msgstr ""
+
+#: internal/explain/prose.go:589 internal/titles/titles.go:49
+#, c-format
+msgid "turn the %s channel off"
+msgstr ""
+
+#: internal/explain/prose.go:591
+#, c-format
+msgid "add the software source %s (%s) and trust its signing key %s"
+msgstr ""
+
+#: internal/explain/prose.go:593 internal/titles/titles.go:51
+#, c-format
+msgid "remove the software source %s"
+msgstr ""
+
+#: internal/explain/prose.go:595
+#, c-format
+msgid "make %s the keyboard layouts of the login screen, the text console (%s) and new accounts"
+msgstr ""
+
+#: internal/explain/prose.go:598
+msgid "install the AI audit suite from the Basalt repositories and run it on this computer"
+msgstr ""
+
+#: internal/explain/prose.go:600 internal/titles/titles.go:53
+msgid "run the AI audit suite on this computer"
+msgstr ""
+
+#: internal/explain/prose.go:602
+#, c-format
+msgid "record that %s accepts the risk of %s on this computer"
+msgstr ""
+
+#: internal/explain/prose.go:604
+#, c-format
+msgid "show %s as a warning again"
+msgstr ""
+
+#: internal/explain/prose.go:616
+#, c-format
+msgid "%s and then %s"
+msgstr ""
+
+#: internal/explain/prose.go:619
+#, c-format
+msgid "Once confirmed, applying it would %s."
+msgstr ""
+
+#: internal/explain/prose.go:621
+#, c-format
+msgid "If you apply it, the assistant will %s."
+msgstr ""
+
+#: internal/explain/prose.go:639
+#, c-format
+msgid "%s and %s"
+msgstr ""
+
+#: internal/explain/prose.go:94
+#, c-format
+msgid "The diagnosis is incomplete (%s), so nothing is proposed."
+msgstr ""
+
+#: internal/explain/prose.go:95
+msgid "Run it again in a moment."
+msgstr ""
+
+#: internal/explain/prose.go:97
+#, c-format
+msgid "The assistant is not sure about this one (confidence %s, threshold %s), so please read the evidence before applying."
+msgstr ""
+
+#: internal/explain/risk.go:101
+msgid "unknown change"
+msgstr ""
+
+#: internal/explain/risk.go:138
+msgid "turn the channel back the other way in Settings, Updates and channels, or with basalt channels; no snapshot is needed for one setting, and every update takes its own."
+msgstr ""
+
+#: internal/explain/risk.go:141
+msgid "choose other layouts in Settings, Keyboard, or with basalt keyboard set; no snapshot is needed for one setting."
+msgstr ""
+
+#: internal/explain/risk.go:144
+msgid "choose Review again in Security and Activity; no snapshot is needed for one setting."
+msgstr ""
+
+#: internal/explain/risk.go:147
+msgid "accept the risk again in Security and Activity; no snapshot is needed for one setting."
+msgstr ""
+
+#: internal/explain/risk.go:161
+#, c-format
+msgid "deleting snapshot %s cannot be undone"
+msgstr ""
+
+#: internal/explain/risk.go:163
+msgid "deleted journal files cannot be brought back"
+msgstr ""
+
+#: internal/explain/risk.go:165
+msgid "removed package files are simply downloaded again when needed"
+msgstr ""
+
+#: internal/explain/risk.go:168
+#, c-format
+msgid "the labels of files under %s are on a separate volume and stay as they are"
+msgstr ""
+
+#: internal/explain/risk.go:173
+msgid "your current system stays as a snapshot, so you can return to it the same way (basalt snapshots lists them)."
+msgstr ""
+
+#: internal/explain/risk.go:178
+msgid "a snapshot is taken before and after, so you can go back to the state before the change; a rollback takes effect at the next boot."
+msgstr ""
+
+#: internal/explain/risk.go:180
+#, c-format
+msgid "Note: %s."
+msgstr ""
+
+#: internal/explain/risk.go:25
+msgid "high"
+msgstr ""
+
+#: internal/explain/risk.go:27
+msgid "medium"
+msgstr ""
+
+#: internal/explain/risk.go:29
+msgid "low"
+msgstr ""
+
+#: internal/explain/risk.go:51
+msgid "only puts back the label the policy expects"
+msgstr ""
+
+#: internal/explain/risk.go:53
+#, c-format
+msgid "%s is briefly unavailable while it restarts"
+msgstr ""
+
+#: internal/explain/risk.go:55
+msgid "cached packages are downloaded again when needed"
+msgstr ""
+
+#: internal/explain/risk.go:57
+#, c-format
+msgid "adds a lasting SELinux rule for %s"
+msgstr ""
+
+#: internal/explain/risk.go:59
+#, c-format
+msgid "adds a lasting SELinux label for %s port %s"
+msgstr ""
+
+#: internal/explain/risk.go:61
+msgid "changes what the SELinux policy allows, for every program the boolean covers"
+msgstr ""
+
+#: internal/explain/risk.go:63
+#, c-format
+msgid "replaces the current %s"
+msgstr ""
+
+#: internal/explain/risk.go:65
+msgid "old log entries are deleted"
+msgstr ""
+
+#: internal/explain/risk.go:67
+msgid "the whole system, but not your data, goes back to an earlier state at the next boot"
+msgstr ""
+
+#: internal/explain/risk.go:69
+#, c-format
+msgid "snapshot %s is gone for good and can no longer be rolled back to"
+msgstr ""
+
+#: internal/explain/risk.go:71
+msgid "the graphics driver changes at the next start; if it does not work there, the start after it uses nouveau again"
+msgstr ""
+
+#: internal/explain/risk.go:73
+msgid "only the list of available packages is downloaded"
+msgstr ""
+
+#: internal/explain/risk.go:75
+msgid "programs and system parts are replaced by newer versions; some need a restart"
+msgstr ""
+
+#: internal/explain/risk.go:77
+msgid "the whole system, but not your data, goes back to how it was before the update at the next boot"
+msgstr ""
+
+#: internal/explain/risk.go:80
+msgid "updates from now on may include preview builds, which can break things"
+msgstr ""
+
+#: internal/explain/risk.go:82
+#, c-format
+msgid "updates from now on also come from %s"
+msgstr ""
+
+#: internal/explain/risk.go:84
+#, c-format
+msgid "no more updates come from %s; what is installed stays"
+msgstr ""
+
+#: internal/explain/risk.go:86
+#, c-format
+msgid "software from %s can change the whole system: its signing key becomes trusted"
+msgstr ""
+
+#: internal/explain/risk.go:88
+#, c-format
+msgid "no more software comes from %s; what is installed from it stays"
+msgstr ""
+
+#: internal/explain/risk.go:90
+#, c-format
+msgid "the login screen and the console type with %s; people's own keyboard settings stay"
+msgstr ""
+
+#: internal/explain/risk.go:93
+msgid "one package is installed; its tests run as their own unprivileged account and change none of your files"
+msgstr ""
+
+#: internal/explain/risk.go:95
+msgid "the tests run as their own unprivileged account and change none of your files"
+msgstr ""
+
+#: internal/explain/risk.go:97
+#, c-format
+msgid "Security and Activity stops counting %s as a warning; nothing else changes"
+msgstr ""
+
+#: internal/explain/risk.go:99
+#, c-format
+msgid "%s counts as a warning again; nothing else changes"
+msgstr ""
+
+#: internal/report/render.go:103
+msgid "The commands of this proposal"
+msgstr ""
+
+#: internal/report/render.go:106
+msgid "What will run (exactly these commands, as root, in this order)"
+msgstr ""
+
+#: internal/report/render.go:110
+msgid "Suggested change (a hint, not yet a proposal you can apply)"
+msgstr ""
+
+#: internal/report/render.go:112
+#, c-format
+msgid "Why: %s."
+msgstr ""
+
+#: internal/report/render.go:116
+msgid "Nothing will be changed: this is a report for you to read."
+msgstr ""
+
+#: internal/report/render.go:122
+msgid "Next step"
+msgstr ""
+
+#: internal/report/render.go:144
+msgid "pending"
+msgstr ""
+
+#: internal/report/render.go:146
+msgid "applied"
+msgstr ""
+
+#: internal/report/render.go:148
+msgid "failed"
+msgstr ""
+
+#: internal/report/render.go:150
+msgid "ignored"
+msgstr ""
+
+#: internal/report/render.go:152
+msgid "resolved"
+msgstr ""
+
+#: internal/report/render.go:154
+msgid "scheduled"
+msgstr ""
+
+#: internal/report/render.go:165
+msgid "Waiting for confirmation as root"
+msgstr ""
+
+#: internal/report/render.go:167
+msgid "Waiting for your decision"
+msgstr ""
+
+#: internal/report/render.go:169
+msgid "For your information"
+msgstr ""
+
+#: internal/report/render.go:172
+msgid "Applied"
+msgstr ""
+
+#: internal/report/render.go:174
+msgid "Applied, but it did not verify"
+msgstr ""
+
+#: internal/report/render.go:176
+msgid "Ignored"
+msgstr ""
+
+#: internal/report/render.go:178
+msgid "Resolved"
+msgstr ""
+
+#: internal/report/render.go:183
+msgid "please review"
+msgstr ""
+
+#: internal/report/render.go:188
+msgid "found by the background service"
+msgstr ""
+
+#: internal/report/render.go:190
+msgid "found by basalt"
+msgstr ""
+
+#: internal/report/render.go:192
+msgid "proposed through MCP"
+msgstr ""
+
+#: internal/report/render.go:194
+#, c-format
+msgid "from %s"
+msgstr ""
+
+#: internal/report/render.go:196
+#, c-format
+msgid "%s on %s UTC"
+msgstr ""
+
+#: internal/report/render.go:198
+#, c-format
+msgid "seen %d time"
+msgid_plural "seen %d times"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/report/render.go:201
+msgid "urgent"
+msgstr ""
+
+#: internal/report/render.go:210
+#, c-format
+msgid "(invalid action: %s)"
+msgstr ""
+
+#: internal/report/render.go:221
+#, c-format
+msgid "Risk: %s (%s)."
+msgstr ""
+
+#: internal/report/render.go:223
+#, c-format
+msgid "Undo: %s"
+msgstr ""
+
+#: internal/report/render.go:234 internal/report/render.go:255
+msgid "Apply it:"
+msgstr ""
+
+#: internal/report/render.go:234 internal/report/render.go:302
+msgid "Close it:"
+msgstr ""
+
+#: internal/report/render.go:234 internal/report/render.go:259
+msgid "Ignore it:"
+msgstr ""
+
+#: internal/report/render.go:234 internal/report/render.go:249
+msgid "Undo it:"
+msgstr ""
+
+#: internal/report/render.go:257
+#, c-format
+msgid "(without a prompt: %s)"
+msgstr ""
+
+#: internal/report/render.go:261
+#, c-format
+msgid "Confirm it as root: %s"
+msgstr ""
+
+#: internal/report/render.go:262
+msgid "(the assistant checks the snapshot and turns the hint into a proposal you can apply)"
+msgstr ""
+
+#: internal/report/render.go:295
+msgid "Commands you may run yourself:"
+msgstr ""
+
+#: internal/report/render.go:316
+msgid "Evidence"
+msgstr ""
+
+#: internal/report/render.go:320
+#, c-format
+msgid "(%d more line: %s)"
+msgid_plural "(%d more lines: %s)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: internal/report/render.go:331
+msgid "How sure the assistant is"
+msgstr ""
+
+#: internal/report/render.go:333
+#, c-format
+msgid "%s: %s, %.2f (threshold %.2f, %s)"
+msgstr ""
+
+#: internal/report/render.go:369
+msgid "[review]"
+msgstr ""
+
+#: internal/report/render.go:372
+msgid "[hint]"
+msgstr ""
+
+#: internal/report/render.go:374
+msgid "[report]"
 msgstr ""
 
 #: internal/titles/titles.go:100
@@ -374,6 +1707,350 @@ msgstr ""
 #: internal/titles/titles.go:117
 #, c-format
 msgid "%s security updates"
+msgstr ""
+
+#: internal/titles/titles.go:121
+msgid "no name in the key"
+msgstr ""
+
+#: internal/titles/titles.go:122
+msgid "a change you confirmed"
+msgstr ""
+
+#: internal/titles/titles.go:123
+#, c-format
+msgid "the change %s"
+msgstr ""
+
+#: internal/titles/titles.go:132
+#, c-format
+msgid "the policy default for %s is %s"
+msgstr ""
+
+#: internal/titles/titles.go:133
+#, c-format
+msgid "%s carries its default label"
+msgstr ""
+
+#: internal/titles/titles.go:134
+#, c-format
+msgid "%s port %s is %s"
+msgstr ""
+
+#: internal/titles/titles.go:135
+#, c-format
+msgid "%s is %s"
+msgstr ""
+
+#: internal/titles/titles.go:136
+#, c-format
+msgid "%s is active"
+msgstr ""
+
+#: internal/titles/titles.go:137
+msgid "no new SELinux denials since the change"
+msgstr ""
+
+#: internal/titles/titles.go:138
+#, c-format
+msgid "%s matches snapshot %s"
+msgstr ""
+
+#: internal/titles/titles.go:139
+#, c-format
+msgid "a rollback is pending: the next boot uses a copy of snapshot %s"
+msgstr ""
+
+#: internal/titles/titles.go:140
+msgid "deleted subvolumes cleaned up (space released)"
+msgstr ""
+
+#: internal/titles/titles.go:141
+#, c-format
+msgid "snapshot %s is gone"
+msgstr ""
+
+#: internal/titles/titles.go:142
+msgid "journal disk usage"
+msgstr ""
+
+#: internal/titles/titles.go:143
+msgid "dnf cache cleaned"
+msgstr ""
+
+#: internal/titles/titles.go:144
+msgid "the basalt-nonfree repository is on"
+msgstr ""
+
+#: internal/titles/titles.go:145
+#, c-format
+msgid "%s is installed"
+msgstr ""
+
+#: internal/titles/titles.go:146
+msgid "nouveau is off from the next start"
+msgstr ""
+
+#: internal/titles/titles.go:147
+msgid "an installed kernel has the signed NVIDIA module"
+msgstr ""
+
+#: internal/titles/titles.go:148
+msgid "the next start is a trial of the NVIDIA driver"
+msgstr ""
+
+#: internal/titles/titles.go:149
+msgid "the updates wait for the next start"
+msgstr ""
+
+#: internal/titles/titles.go:150
+#, c-format
+msgid "the %s updates are installed"
+msgstr ""
+
+#: internal/titles/titles.go:151
+#, c-format
+msgid "the audit wrote its results (%s)"
+msgstr ""
+
+#: internal/titles/titles.go:152
+#, c-format
+msgid "the risk of %s is accepted"
+msgstr ""
+
+#: internal/titles/titles.go:153
+#, c-format
+msgid "the risk of %s is no longer accepted"
+msgstr ""
+
+#: internal/titles/titles.go:154
+#, c-format
+msgid "the %s channel is on"
+msgstr ""
+
+#: internal/titles/titles.go:155
+#, c-format
+msgid "the %s channel is off"
+msgstr ""
+
+#: internal/titles/titles.go:156
+#, c-format
+msgid "the source %s is recorded with its key"
+msgstr ""
+
+#: internal/titles/titles.go:157
+#, c-format
+msgid "the system's keyboard is %s, console keymap %s"
+msgstr ""
+
+#: internal/titles/titles.go:158
+#, c-format
+msgid "the source %s is gone"
+msgstr ""
+
+#: internal/titles/titles.go:161
+#, c-format
+msgid "snapshot %d holds a different copy of %s (%s)"
+msgstr ""
+
+#: internal/titles/titles.go:162
+#, c-format
+msgid "snapshot %d was taken just before the failed transaction \"%s\""
+msgstr ""
+
+#: internal/titles/titles.go:163
+msgid "found by the confined daemon, which cannot check the snapshot"
+msgstr ""
+
+#: internal/titles/titles.go:164
+msgid "proposed through MCP; the confined view cannot check the snapshot"
+msgstr ""
+
+#: internal/titles/titles.go:165
+#, c-format
+msgid "proposed by %s before hints existed"
+msgstr ""
+
+#: internal/titles/titles.go:175
+#, c-format
+msgid "%d updates are ready: %d security, %d Basalt OS components, %d apps, %d system."
+msgstr ""
+
+#: internal/titles/titles.go:176
+msgid "A snapshot is taken first, so the update can be undone from Settings, Updates and channels, or with sudo basalt updates rollback."
+msgstr ""
+
+#: internal/titles/titles.go:177
+#, c-format
+msgid "Some of them replace core parts of the system (%s), so they install while the computer restarts, before the desktop starts; a snapshot is taken before and after."
+msgstr ""
+
+#: internal/titles/titles.go:178
+#, c-format
+msgid "Undo the last update (%s, %d packages, %s): the system goes back to snapshot %d, taken just before it, at the next start."
+msgstr ""
+
+#: internal/titles/titles.go:179
+msgid "Your files in /home and the other data volumes stay as they are."
+msgstr ""
+
+#: internal/titles/titles.go:181
+#, c-format
+msgid "Turn the %s channel off: no more updates come from it."
+msgstr ""
+
+#: internal/titles/titles.go:182
+msgid "What is installed from it stays."
+msgstr ""
+
+#: internal/titles/titles.go:183
+msgid "Turn the basalt-testing channel on: preview builds of Basalt OS components, before they reach everyone."
+msgstr ""
+
+#: internal/titles/titles.go:184
+msgid "Turn the basalt-nonfree-testing channel on: preview builds of the additional drivers (the NVIDIA driver), for testers with that hardware."
+msgstr ""
+
+#: internal/titles/titles.go:185
+msgid "Preview builds can break things."
+msgstr ""
+
+#: internal/titles/titles.go:186
+msgid "A snapshot is taken before each update so you can go back."
+msgstr ""
+
+#: internal/titles/titles.go:187
+#, c-format
+msgid "Turn the %s channel on: updates from now on also come from it."
+msgstr ""
+
+#: internal/titles/titles.go:188
+msgid "Its packages are signed with the OpenBasalt release key."
+msgstr ""
+
+#: internal/titles/titles.go:189
+#, c-format
+msgid "Remove %s: no more software comes from it, and its signing key is no longer trusted."
+msgstr ""
+
+#: internal/titles/titles.go:190
+msgid "Programs already installed from it stay; they no longer get updates."
+msgstr ""
+
+#: internal/titles/titles.go:191
+#, c-format
+msgid "Add %s."
+msgstr ""
+
+#: internal/titles/titles.go:192
+msgid "Software from this source can change your whole system: only add sources you trust."
+msgstr ""
+
+#: internal/titles/titles.go:193
+#, c-format
+msgid "Its signing key, %s, belongs to %s."
+msgstr ""
+
+#: internal/titles/titles.go:194
+#, c-format
+msgid "Basalt pins this key for %s."
+msgstr ""
+
+#: internal/titles/titles.go:195
+msgid "Basalt does not know this source: check the fingerprint with its publisher before you trust it."
+msgstr ""
+
+#: internal/titles/titles.go:196
+msgid "Its packages and its package lists are signed."
+msgstr ""
+
+#: internal/titles/titles.go:197
+msgid "Its packages are signed; its package lists are not (the source does not sign them), so they come from a metalink over HTTPS."
+msgstr ""
+
+#: internal/titles/titles.go:199
+#, c-format
+msgid "The login screen, the text console and accounts created from now on type with %s (the first is the default; the console uses the keymap %s)."
+msgstr ""
+
+#: internal/titles/titles.go:200
+msgid "People who chose their own layouts in Settings, Keyboard keep them."
+msgstr ""
+
+#: internal/titles/titles.go:201
+msgid "To change it again, choose other layouts the same way."
+msgstr ""
+
+#: internal/titles/titles.go:203
+msgid "Run the public AI audit suite on this computer: like an attacker would, it tries to get around the protections for AI agents (their confinement, their network limits, the activity record, the confirmation step)."
+msgstr ""
+
+#: internal/titles/titles.go:204
+msgid "It runs as its own unprivileged account with fake test data and changes none of your files."
+msgstr ""
+
+#: internal/titles/titles.go:205
+msgid "The results appear in Security and Activity."
+msgstr ""
+
+#: internal/titles/titles.go:206
+msgid "The suite is not installed yet: it is installed first from the Basalt repositories, checked against their signing key."
+msgstr ""
+
+#: internal/titles/titles.go:207
+#, c-format
+msgid "Record that %s knows about the warning on %s and accepts it."
+msgstr ""
+
+#: internal/titles/titles.go:208
+msgid "Security and Activity then shows it as accepted, with the date and who accepted it, and stops counting it."
+msgstr ""
+
+#: internal/titles/titles.go:209
+msgid "If it ever becomes a problem it shows as a problem again."
+msgstr ""
+
+#: internal/titles/titles.go:210
+msgid "Review again undoes this."
+msgstr ""
+
+#: internal/titles/titles.go:211
+#, c-format
+msgid "Forget that the risk of %s was accepted: Security and Activity counts it as a warning again."
+msgstr ""
+
+#: internal/titles/titles.go:213
+#, c-format
+msgid "Proposed by an MCP client: %s"
+msgstr ""
+
+#: internal/titles/titles.go:214
+#, c-format
+msgid "Confirmed as root: %s."
+msgstr ""
+
+#: internal/titles/titles.go:216
+#, c-format
+msgid "Applying %s stopped before it was done."
+msgstr ""
+
+#: internal/titles/titles.go:217
+#, c-format
+msgid "Applying %s stopped before it was done, and its log does not say why."
+msgstr ""
+
+#: internal/titles/titles.go:218
+#, c-format
+msgid "The log says: %s."
+msgstr ""
+
+#: internal/titles/titles.go:219
+#, c-format
+msgid "The change itself (%s) still waits for you: open it to try again, or dismiss it."
+msgstr ""
+
+#: internal/titles/titles.go:220
+msgid "Nothing will be changed by this report."
 msgstr ""
 
 #: internal/titles/titles.go:30
@@ -455,33 +2132,14 @@ msgstr ""
 msgid "install the NVIDIA driver %s for %s"
 msgstr ""
 
-#: internal/titles/titles.go:48
-#, c-format
-msgid "turn the %s channel on"
-msgstr ""
-
-#: internal/titles/titles.go:49
-#, c-format
-msgid "turn the %s channel off"
-msgstr ""
-
 #: internal/titles/titles.go:50
 #, c-format
 msgid "add the software source %s"
 msgstr ""
 
-#: internal/titles/titles.go:51
-#, c-format
-msgid "remove the software source %s"
-msgstr ""
-
 #: internal/titles/titles.go:52
 #, c-format
 msgid "use %s for the login screen, the console and new accounts"
-msgstr ""
-
-#: internal/titles/titles.go:53
-msgid "run the AI audit suite on this computer"
 msgstr ""
 
 #: internal/titles/titles.go:54
@@ -516,11 +2174,6 @@ msgstr ""
 #: internal/titles/titles.go:61
 #, c-format
 msgid "set the boolean %s %s (persistent)"
-msgstr ""
-
-#: internal/titles/titles.go:62
-#, c-format
-msgid "restart %s"
 msgstr ""
 
 #: internal/titles/titles.go:63

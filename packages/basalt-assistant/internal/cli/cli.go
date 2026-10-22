@@ -22,6 +22,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/explain"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/gatelink"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
@@ -376,7 +377,7 @@ func (a *app) present(ctx context.Context, p *proposal.Proposal) error {
 	if len(p.Actions) > 0 && !a.root {
 		p.ID = "preview"
 		a.render(ctx, p)
-		fmt.Fprintln(a.out, "\nThis is a preview. Run the same command with sudo to store the proposal and apply it.")
+		fmt.Fprintln(a.out, "\n"+i18n.T("This is a preview. Run the same command with sudo to store the proposal and apply it."))
 		return nil
 	}
 	if a.o.apply && len(p.Actions) > 0 {
@@ -522,11 +523,11 @@ func (a *app) fix(ctx context.Context) error {
 		return incomplete(errs)
 	}
 	if len(items) == 0 {
-		fmt.Fprintf(a.out, "SELinux blocked nothing in the last %s. Nothing to do.\n", human(a.o.since))
+		fmt.Fprintf(a.out, i18n.T("SELinux blocked nothing in the last %s. Nothing to do.")+"\n", humanIn(i18n.Local(), a.o.since))
 		return nil
 	}
-	fmt.Fprintf(a.out, "SELinux blocked %s in the last %s. Each one is explained below.\n\n",
-		plural(len(items), "kind of access", "kinds of access"), human(a.o.since))
+	fmt.Fprintf(a.out, i18n.N("SELinux blocked %d kind of access in the last %s. Each one is explained below.",
+		"SELinux blocked %d kinds of access in the last %s. Each one is explained below.", len(items))+"\n\n", len(items), humanIn(i18n.Local(), a.o.since))
 	for _, it := range items {
 		p := a.keep(report.FromSELinux("cli", it))
 		if err := a.present(ctx, p); err != nil {
@@ -601,7 +602,7 @@ func (a *app) confirm(ctx context.Context) error {
 	cmds, _ := q.Commands()
 	_, _ = a.audit.Append("proposal", q.ID+" from cli: confirms the hint of "+p.ID+": "+q.Title,
 		map[string]any{"proposal": q.ID, "confirms": p.ID, "actions": q.Actions, "commands": cmds, "evidence": evidence})
-	fmt.Fprintf(a.out, "Checked as root. The hint %s is closed and stored as proposal %s, which you can apply.\n\n", p.ID, q.ID)
+	fmt.Fprintf(a.out, i18n.T("Checked as root. The hint %s is closed and stored as proposal %s, which you can apply.")+"\n\n", p.ID, q.ID)
 	return a.present(ctx, q)
 }
 
@@ -779,33 +780,61 @@ func (a *app) pending() error {
 	}
 	if len(ps) == 0 {
 		if a.o.all {
-			fmt.Fprintln(a.out, "There are no proposals.")
+			fmt.Fprintln(a.out, i18n.T("There are no proposals."))
 		} else {
-			fmt.Fprintln(a.out, "Nothing is waiting for your decision.")
+			fmt.Fprintln(a.out, i18n.T("Nothing is waiting for your decision."))
 		}
 		return nil
 	}
+	tr := i18n.Local()
 	for _, p := range ps {
-		fmt.Fprintln(a.out, report.Line(p))
+		fmt.Fprintln(a.out, report.LineIn(tr, p))
 	}
-	fmt.Fprintln(a.out, "\n[review]: the assistant is not sure, read it first. [hint]: confirm it as root first. [report]: nothing to apply.")
-	fmt.Fprintln(a.out, "Details: basalt show ID.   Then: sudo basalt apply ID, or sudo basalt ignore ID.")
+	fmt.Fprintln(a.out, "\n"+i18n.T("[review]: the assistant is not sure, read it first. [hint]: confirm it as root first. [report]: nothing to apply."))
+	fmt.Fprintln(a.out, i18n.T("Details: basalt show ID.   Then: sudo basalt apply ID, or sudo basalt ignore ID."))
 	return nil
 }
 
 // shown is a proposal as pending --json and show --json print it: the
-// stored proposal and, when the reader's language translates it, its
-// title in that language (title_local, for the desktop to show; title
-// stays the English reference text).
+// stored proposal, whose text stays the English reference for machines,
+// and, where the reader's language translates it, the same text in that
+// language for the desktop to show: title_local (the title), report_local
+// (what is wrong, why and what applying will do, written from the facts),
+// status_local (the status word) and checks_local (what each check of
+// the result proves, in the order of result.checks).
 type shown struct {
 	*proposal.Proposal
-	TitleLocal string `json:"title_local,omitempty"`
+	TitleLocal  string   `json:"title_local,omitempty"`
+	ReportLocal string   `json:"report_local,omitempty"`
+	StatusLocal string   `json:"status_local,omitempty"`
+	ChecksLocal []string `json:"checks_local,omitempty"`
 }
 
 func localized(p *proposal.Proposal) shown {
+	tr := i18n.Local()
 	s := shown{Proposal: p}
-	if t := titles.Local(p.Title); t != p.Title {
+	if tr.English() {
+		return s
+	}
+	if t := titles.In(tr, p.Title); t != p.Title {
 		s.TitleLocal = t
+	}
+	if r := report.Prose(tr, p); r != "" && r != report.Prose(i18n.Tr{}, p) {
+		s.ReportLocal = r
+	}
+	if w := report.StatusWord(tr, p.Status); w != p.Status {
+		s.StatusLocal = w
+	}
+	if p.Result != nil {
+		changed := false
+		cs := make([]string, len(p.Result.Checks))
+		for i, c := range p.Result.Checks {
+			cs[i] = titles.Phrase(tr, c.What)
+			changed = changed || cs[i] != c.What
+		}
+		if changed {
+			s.ChecksLocal = cs
+		}
 	}
 	return s
 }
@@ -827,17 +856,30 @@ func (a *app) show() error {
 	}
 	a.render(context.Background(), p)
 	if r := p.Result; r != nil {
-		verdict := "it worked and every check passed"
-		if !r.OK {
-			verdict = "it did NOT verify"
-		}
-		fmt.Fprintf(a.out, "\nApplied on %s UTC: %s (snapshots %d before, %d after; audit record #%d)\n",
-			r.Time.Format("2006-01-02 15:04"), verdict, r.PreSnapshot, r.PostSnapshot, r.AuditSeq)
-		for _, s := range append(r.Steps, r.Checks...) {
-			fmt.Fprintf(a.out, "  [%s] %s %s\n", okMark(s.OK), s.What, strings.ReplaceAll(strings.TrimSpace(s.Output), "\n", " | "))
-		}
+		writeResult(a.out, i18n.Local(), r)
 	}
 	return nil
+}
+
+// writeResult prints the result of an apply: the verdict, then each
+// command and each check (what a check proves in the reader's language;
+// commands and their output as they are).
+func writeResult(w io.Writer, tr i18n.Tr, r *proposal.Result) {
+	verdict := tr.T("it worked and every check passed")
+	if !r.OK {
+		verdict = tr.T("it did NOT verify")
+	}
+	fmt.Fprintf(w, "\n"+tr.T("Applied on %s UTC: %s (snapshots %d before, %d after; audit record #%d)")+"\n",
+		r.Time.Format("2006-01-02 15:04"), verdict, r.PreSnapshot, r.PostSnapshot, r.AuditSeq)
+	line := func(s proposal.Step, what string) {
+		fmt.Fprintf(w, "  [%s] %s %s\n", okMarkIn(tr, s.OK), what, strings.ReplaceAll(strings.TrimSpace(s.Output), "\n", " | "))
+	}
+	for _, s := range r.Steps {
+		line(s, s.What)
+	}
+	for _, s := range r.Checks {
+		line(s, titles.Phrase(tr, s.What))
+	}
 }
 
 func (a *app) applyCmd(ctx context.Context) error {
@@ -912,7 +954,7 @@ func (a *app) ignore() error {
 	if err := a.applier().Ignore(p, why); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.out, "%s is closed without changing anything (recorded in the audit log).\n", p.ID)
+	fmt.Fprintf(a.out, i18n.T("%s is closed without changing anything (recorded in the audit log).")+"\n", p.ID)
 	return nil
 }
 
@@ -997,20 +1039,24 @@ func (a *app) auditRotate() error {
 	return nil
 }
 
-func okMark(ok bool) string {
+func okMarkIn(tr i18n.Tr, ok bool) string {
 	if ok {
-		return "ok"
+		return tr.T("ok")
 	}
-	return "FAILED"
+	return tr.T("FAILED")
 }
 
 // human prints a duration the way people say it (1h, 30m, 24h).
-func human(d time.Duration) string {
+func human(d time.Duration) string { return humanIn(i18n.Tr{}, d) }
+
+func humanIn(tr i18n.Tr, d time.Duration) string {
 	switch {
 	case d%time.Hour == 0 && d >= time.Hour:
-		return plural(int(d/time.Hour), "hour", "hours")
+		n := int(d / time.Hour)
+		return fmt.Sprintf(tr.N("%d hour", "%d hours", n), n)
 	case d%time.Minute == 0 && d >= time.Minute:
-		return plural(int(d/time.Minute), "minute", "minutes")
+		n := int(d / time.Minute)
+		return fmt.Sprintf(tr.N("%d minute", "%d minutes", n), n)
 	}
 	return d.String()
 }

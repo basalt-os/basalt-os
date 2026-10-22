@@ -1,10 +1,15 @@
 package explain
 
 import (
+	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/i18n"
 )
 
 // Text is the prose of one finding, sentence by sentence.
@@ -32,24 +37,36 @@ func joinSentences(ss ...string) string {
 }
 
 // phraser picks among equivalent wordings: the first one without a random
-// source (what people see), any of them with one (training data for the
-// optional model, see basalt-eval render-data).
-type phraser struct{ r *rand.Rand }
+// source (what people see), in the language of tr, or any of them with one
+// (training data for the optional model, see basalt-eval render-data,
+// always English). A wording is a format: its verbs take the values. The
+// first wording is a catalog message (marked with i18n.M); the others are
+// English only.
+type phraser struct {
+	r  *rand.Rand
+	tr i18n.Tr
+}
 
 func (p phraser) pick(alts ...string) string {
 	if p.r == nil || len(alts) == 1 {
-		return alts[0]
+		return p.tr.Marked(alts[0])
 	}
 	return alts[p.r.Intn(len(alts))]
 }
 
 // Write renders the facts and the planned changes as text, with the
-// default wording.
+// default wording, in English (the reference text: logs, the gate, the
+// humanize layer's template).
 func Write(f *Facts, changes []action.Action) Text { return write(f, changes, phraser{}) }
+
+// WriteIn is Write in the language of tr (what a person reads).
+func WriteIn(tr i18n.Tr, f *Facts, changes []action.Action) Text {
+	return write(f, changes, phraser{tr: tr})
+}
 
 // WriteVariant is Write with wording picked by r (training data).
 func WriteVariant(f *Facts, changes []action.Action, r *rand.Rand) Text {
-	return write(f, changes, phraser{r})
+	return write(f, changes, phraser{r: r})
 }
 
 func write(f *Facts, changes []action.Action, p phraser) Text {
@@ -74,13 +91,44 @@ func write(f *Facts, changes []action.Action, p phraser) Text {
 		t.Change = changeSentence(changes, f.Hint, p)
 	}
 	if f.Incomplete {
-		t.Next = joinSentences("The diagnosis is incomplete ("+strings.TrimRight(f.V("error"), ".")+"), so nothing is proposed.",
-			p.pick("Run it again in a moment.", "Please run it again in a moment."))
+		t.Next = joinSentences(fmt.Sprintf(p.tr.T("The diagnosis is incomplete (%s), so nothing is proposed."), strings.TrimRight(f.V("error"), ".")),
+			p.pick(i18n.M("Run it again in a moment."), "Please run it again in a moment."))
 	} else if f.Review && f.Has("confidence") && len(changes) > 0 {
-		t.Next = joinSentences(t.Next, "The assistant is not sure about this one (confidence "+f.V("confidence")+
-			", threshold "+f.V("threshold")+"), so please read the evidence before applying.")
+		t.Next = joinSentences(t.Next, fmt.Sprintf(p.tr.T("The assistant is not sure about this one (confidence %s, threshold %s), so please read the evidence before applying."),
+			f.V("confidence"), f.V("threshold")))
 	}
 	return t
+}
+
+// upperFirst capitalizes the first letter (of any script).
+func upperFirst(s string) string {
+	r, n := utf8.DecodeRuneInString(s)
+	if n == 0 {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[n:]
+}
+
+// count reads a count of the facts (0 when absent or not a number).
+func count(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// duration translates the durations of internal/diag ("24 hours", "3
+// days"); "5 s", "12 min" and "3 h" read the same in every language we
+// ship.
+func duration(tr i18n.Tr, s string) string {
+	if s == "24 hours" {
+		return tr.T("24 hours")
+	}
+	if n, ok := strings.CutSuffix(s, " days"); ok {
+		return fmt.Sprintf(tr.T("%s days"), n)
+	}
+	return s
 }
 
 // --- units -----------------------------------------------------------------------
@@ -89,160 +137,188 @@ func unitText(f *Facts, p phraser) Text {
 	u := f.Subject
 	var t Text
 	if f.OK {
-		t.Headline = u + p.pick(" is running normally.", " is up and running.", " is running fine.")
-		t.Next = p.pick("Nothing to do.", "There is nothing to fix.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s is running normally."), "%s is up and running.", "%s is running fine."), u)
+		t.Next = p.pick(i18n.M("Nothing to do."), "There is nothing to fix.")
 		return t
 	}
 	switch f.Cause {
 	case "not_found":
-		t.Headline = p.pick("There is no unit called "+u+" on this system.", "This system has no unit named "+u+".")
-		t.Next = "Check the name; systemctl list-units shows the units that exist."
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("There is no unit called %s on this system."), "This system has no unit named %s."), u)
+		t.Next = p.tr.T("Check the name; systemctl list-units shows the units that exist.")
 	case "config_error":
-		where := "its configuration"
+		where := p.tr.T("its configuration")
 		if f.Has("file") {
 			where = f.V("file")
 			if f.Has("line") {
-				where += " (line " + f.V("line") + ")"
+				where = fmt.Sprintf(p.tr.T("%s (line %s)"), where, f.V("line"))
 			}
 		}
-		t.Headline = p.pick(u+" is not running because of a mistake in "+where+".",
-			u+" stopped: there is an error in "+where+".",
-			u+" cannot start because "+where+" has an error.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s is not running because of a mistake in %s."),
+			"%s stopped: there is an error in %s.",
+			"%s cannot start because %s has an error."), u, where)
 		if f.Has("checker") && f.Has("checker_msg") {
-			t.Why = p.pick("The configuration check "+f.V("checker")+" says: "+f.V("checker_msg")+".",
-				f.V("checker")+" reports: "+f.V("checker_msg")+".")
+			t.Why = fmt.Sprintf(p.pick(i18n.M("The configuration check %s says: %s."), "%s reports: %s."), f.V("checker"), f.V("checker_msg"))
 		} else if f.Has("journal") {
-			t.Why = p.pick("The service log says: "+f.V("journal")+".", "Its log shows: "+f.V("journal")+".")
+			t.Why = fmt.Sprintf(p.pick(i18n.M("The service log says: %s."), "Its log shows: %s."), f.V("journal"))
 		}
 		switch {
 		case f.Hint:
-			t.Next = "The background service cannot look inside snapshots, so confirm it as root: the assistant then tests the snapshot copy with the configuration check before proposing it."
+			t.Next = p.tr.T("The background service cannot look inside snapshots, so confirm it as root: the assistant then tests the snapshot copy with the configuration check before proposing it.")
 		case f.Has("snapshot"):
 			// The change sentence says what is restored.
 		default:
-			t.Next = p.pick("No snapshot has a working copy of the file, so fix it by hand and then restart "+u+".",
-				"No snapshot holds a good copy, so please correct the file by hand and restart "+u+".")
+			t.Next = fmt.Sprintf(p.pick(i18n.M("No snapshot has a working copy of the file, so fix it by hand and then restart %s."),
+				"No snapshot holds a good copy, so please correct the file by hand and restart %s."), u)
 		}
 	case "selinux_denial":
-		t.Headline = p.pick(u+" is not running because SELinux blocked something it needs.",
-			u+" stopped because SELinux denied it access to something it needs.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s is not running because SELinux blocked something it needs."),
+			"%s stopped because SELinux denied it access to something it needs."), u)
 		t.Why = denialWhy(f, p)
 		if f.Review {
-			t.Next = p.pick("There is no safe automatic fix for at least one denial, so it needs a person to review it.",
+			t.Next = p.pick(i18n.M("There is no safe automatic fix for at least one denial, so it needs a person to review it."),
 				"At least one denial has no safe automatic fix; please have someone review it.")
 		}
 	case "port_conflict":
-		t.Headline = p.pick(u+" cannot start because another program is already using its port.",
-			u+" did not start: its port is taken by another program.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s cannot start because another program is already using its port."),
+			"%s did not start: its port is taken by another program."), u)
 		if f.Has("port") && f.Has("port_owner") {
-			t.Why = "Port " + f.V("port") + " is held by " + f.V("port_owner") + "."
+			t.Why = fmt.Sprintf(p.tr.T("Port %s is held by %s."), f.V("port"), f.V("port_owner"))
 		} else if f.Has("port") {
-			t.Why = "Port " + f.V("port") + " is already in use."
+			t.Why = fmt.Sprintf(p.tr.T("Port %s is already in use."), f.V("port"))
 		}
-		t.Next = p.pick("Stop the other program or give "+u+" a different port. Nothing is changed automatically.",
-			"Either stop the other program or move "+u+" to another port. The assistant does not change this on its own.")
+		t.Next = fmt.Sprintf(p.pick(i18n.M("Stop the other program or give %s a different port. Nothing is changed automatically."),
+			"Either stop the other program or move %s to another port. The assistant does not change this on its own."), u)
 	case "dependency_failed":
-		t.Headline = p.pick(u+" did not start because a unit it depends on failed.",
-			u+" could not start: something it needs failed first.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s did not start because a unit it depends on failed."),
+			"%s could not start: something it needs failed first."), u)
 		if f.Has("dep") {
-			if st := orWord(f.V("dep_state"), "failed"); st == "failed" {
-				t.Why = f.V("dep") + " has failed."
-			} else {
-				t.Why = f.V("dep") + " is " + st + "."
+			dep := f.V("dep")
+			switch st := orWord(f.V("dep_state"), "failed"); st {
+			case "failed":
+				t.Why = fmt.Sprintf(p.tr.T("%s has failed."), dep)
+			case "inactive":
+				t.Why = fmt.Sprintf(p.tr.T("%s is inactive."), dep)
+			case "activating":
+				t.Why = fmt.Sprintf(p.tr.T("%s is activating."), dep)
+			case "deactivating":
+				t.Why = fmt.Sprintf(p.tr.T("%s is deactivating."), dep)
+			default:
+				t.Why = fmt.Sprintf(p.tr.T("%s is %s."), dep, st)
 			}
-			t.Next = p.pick("Fix "+f.V("dep")+" first; "+u+" can start once it runs.", "Look at "+f.V("dep")+" first.")
+			t.Next = fmt.Sprintf(p.pick(i18n.M("Fix %s first; %s can start once it runs."), "Look at %[1]s first."), dep, u)
 		}
 	case "disk_full":
-		t.Headline = p.pick(u+" failed while the disk was full.", u+" stopped because it ran out of disk space.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s failed while the disk was full."), "%s stopped because it ran out of disk space."), u)
 		if f.Has("fs_path") {
-			t.Why = f.V("fs_path") + " is " + f.V("fs_pct") + " % full."
+			t.Why = fmt.Sprintf(p.tr.T("%s is %s %% full."), f.V("fs_path"), f.V("fs_pct"))
 		}
-		t.Next = "Free some space first; the disk report shows what is using it."
+		t.Next = p.tr.T("Free some space first; the disk report shows what is using it.")
 	case "missing_file":
-		t.Headline = p.pick(u+" failed because a file it needs does not exist.", u+" stopped: a file it reads is missing.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s failed because a file it needs does not exist."), "%s stopped: a file it reads is missing."), u)
 		if f.Has("journal") {
-			t.Why = "Its log says: " + f.V("journal") + "."
+			t.Why = fmt.Sprintf(p.tr.T("Its log says: %s."), f.V("journal"))
 		}
-		t.Next = p.pick("Create or restore the missing file, then start "+u+" again.",
-			"Put the missing file back (or fix the setting that names it), then start "+u+" again.")
+		t.Next = fmt.Sprintf(p.pick(i18n.M("Create or restore the missing file, then start %s again."),
+			"Put the missing file back (or fix the setting that names it), then start %s again."), u)
 	case "oom":
-		t.Headline = p.pick(u+" ran out of memory and was stopped by the kernel.", u+" used too much memory and was killed.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s ran out of memory and was stopped by the kernel."), "%s used too much memory and was killed."), u)
 		switch {
 		case f.Has("memory_max"):
-			t.Why = "It reached its memory limit (MemoryMax=" + f.V("memory_max") + ")."
+			t.Why = fmt.Sprintf(p.tr.T("It reached its memory limit (MemoryMax=%s)."), f.V("memory_max"))
 		case f.V("oom_scope") == "system":
-			t.Why = "The whole system ran out of memory at the time."
+			t.Why = p.tr.T("The whole system ran out of memory at the time.")
 		case f.V("oom_scope") == "cgroup":
-			t.Why = "It hit a memory limit of its control group or slice."
+			t.Why = p.tr.T("It hit a memory limit of its control group or slice.")
 		}
-		t.Next = p.pick("A plain restart would most likely end the same way, so none is proposed. Check how much memory it uses and its limits; raise the limit if it is too low, otherwise find out why it needs so much.",
+		t.Next = p.pick(i18n.M("A plain restart would most likely end the same way, so none is proposed. Check how much memory it uses and its limits; raise the limit if it is too low, otherwise find out why it needs so much."),
 			"Restarting it would probably hit the same wall, so nothing is proposed. Compare its memory use with its limits, then raise the limit or find out why it needs that much.")
 	case "crashed":
-		t.Headline = p.pick(u+" crashed.", u+" stopped unexpectedly.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s crashed."), "%s stopped unexpectedly."), u)
 		if f.Has("result") {
-			t.Why = "systemd recorded the result " + f.V("result") + "."
+			t.Why = fmt.Sprintf(p.tr.T("systemd recorded the result %s."), f.V("result"))
 		}
 		if f.Has("ran_for") {
-			t.Why = joinSentences(t.Why, "It had been running for "+f.V("ran_for")+" and has not crashed like this before.")
+			t.Why = joinSentences(t.Why, fmt.Sprintf(p.tr.T("It had been running for %s and has not crashed like this before."), duration(p.tr, f.V("ran_for"))))
 		}
-		t.Next = "A restart is proposed to bring it back, but the crash itself still needs a look."
+		t.Next = p.tr.T("A restart is proposed to bring it back, but the crash itself still needs a look.")
 	case "crash_loop":
-		t.Headline = p.pick(u+" keeps crashing.", u+" crashes every time it runs.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s keeps crashing."), "%s crashes every time it runs."), u)
 		var why []string
 		if f.Has("crashes") {
-			why = append(why, "it ended the same way ("+f.V("exit")+") "+f.V("crashes")+" times in the last "+f.V("window"))
+			why = append(why, fmt.Sprintf(p.tr.T("it ended the same way (%s) %s times in the last %s"), f.V("exit"), f.V("crashes"), duration(p.tr, f.V("window"))))
 		}
 		if f.Has("restarts") {
-			why = append(why, "systemd already restarted it "+f.V("restarts")+" times")
+			why = append(why, fmt.Sprintf(p.tr.T("systemd already restarted it %s times"), f.V("restarts")))
 		}
 		if f.V("start_limit") == "yes" {
-			why = append(why, "systemd gave up restarting it after too many failures")
+			why = append(why, p.tr.T("systemd gave up restarting it after too many failures"))
 		}
 		if f.V("at_start") == "yes" {
-			why = append(why, "it crashed "+f.V("ran_for")+" after it started")
+			why = append(why, fmt.Sprintf(p.tr.T("it crashed %s after it started"), duration(p.tr, f.V("ran_for"))))
 		}
 		if len(why) > 0 {
-			t.Why = strings.ToUpper(why[0][:1]) + why[0][1:]
-			if len(why) > 1 {
-				t.Why += ", and " + strings.Join(why[1:], ", and ")
+			s := why[0]
+			for _, w := range why[1:] {
+				s = fmt.Sprintf(p.tr.T("%s, and %s"), s, w)
 			}
-			t.Why += "."
+			t.Why = upperFirst(s) + "."
 		}
-		t.Next = p.pick("A restart would most likely crash the same way, so none is proposed. Look at its log and core dump to find the cause, fix it, then start it again.",
+		t.Next = p.pick(i18n.M("A restart would most likely crash the same way, so none is proposed. Look at its log and core dump to find the cause, fix it, then start it again."),
 			"Restarting it would probably end in the same crash, so nothing is proposed. Find the cause in its log and core dump first, then start it again.")
 	case "permission":
-		t.Headline = p.pick(u+" cannot use a file it needs because of the file permissions.",
-			u+" failed with \"Permission denied\" from the file permissions, not from SELinux.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s cannot use a file it needs because of the file permissions."),
+			"%s failed with \"Permission denied\" from the file permissions, not from SELinux."), u)
 		if f.Has("dac_path") {
-			t.Why = f.V("dac_path") + " has mode " + f.V("dac_mode") + " and belongs to " + f.V("dac_owner") +
-				", but the service runs as " + f.V("dac_user") + ", which may not " + f.V("dac_need") + " it."
+			args := []any{f.V("dac_path"), f.V("dac_mode"), f.V("dac_owner"), f.V("dac_user")}
+			switch f.V("dac_need") {
+			case "read":
+				t.Why = fmt.Sprintf(p.tr.T("%s has mode %s and belongs to %s, but the service runs as %s, which may not read it."), args...)
+			case "write":
+				t.Why = fmt.Sprintf(p.tr.T("%s has mode %s and belongs to %s, but the service runs as %s, which may not write it."), args...)
+			case "search":
+				t.Why = fmt.Sprintf(p.tr.T("%s has mode %s and belongs to %s, but the service runs as %s, which may not search it."), args...)
+			case "create files in":
+				t.Why = fmt.Sprintf(p.tr.T("%s has mode %s and belongs to %s, but the service runs as %s, which may not create files in it."), args...)
+			default:
+				t.Why = fmt.Sprintf(p.tr.T("%s has mode %s and belongs to %s, but the service runs as %s, which may not %s it."), append(args, f.V("dac_need"))...)
+			}
 		}
-		t.Next = p.pick("Fix the owner or mode of that path, or the User= and Group= of the unit. Nothing is changed automatically.",
+		t.Next = p.pick(i18n.M("Fix the owner or mode of that path, or the User= and Group= of the unit. Nothing is changed automatically."),
 			"Change the owner or mode of that path, or the user the unit runs as. The assistant does not change this on its own.")
 	default:
-		t.Headline = p.pick(u+" failed, and the assistant could not find out why.", u+" failed for a reason the assistant does not recognize.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s failed, and the assistant could not find out why."), "%s failed for a reason the assistant does not recognize."), u)
 		if f.Has("journal") {
-			t.Why = "The last relevant log line is: " + f.V("journal") + "."
+			t.Why = fmt.Sprintf(p.tr.T("The last relevant log line is: %s."), f.V("journal"))
 		}
-		t.Next = "Read the log lines in the evidence below."
+		t.Next = p.tr.T("Read the log lines in the evidence below.")
 	}
 	return t
+}
+
+// object is what a denial was about: a path, or a port ("tcp port 8080")
+// in the reader's words.
+func object(f *Facts, p phraser) string {
+	o := f.V("object")
+	if proto, port, ok := strings.Cut(o, " port "); ok && !strings.Contains(proto, "/") && count(port) > 0 {
+		return fmt.Sprintf(p.tr.T("%s port %s"), proto, port)
+	}
+	return o
 }
 
 func denialWhy(f *Facts, p phraser) string {
 	if !f.Has("perm") {
 		return ""
 	}
-	obj := f.V("object")
+	obj := object(f, p)
 	if f.Has("target_type") {
-		obj += " (labeled " + f.V("target_type") + ")"
+		obj = fmt.Sprintf(p.tr.T("%s (labeled %s)"), obj, f.V("target_type"))
 	}
-	s := "SELinux denied " + f.V("domain") + " the " + f.V("perm") + " permission on " + obj
+	s := fmt.Sprintf(p.tr.T("SELinux denied %s the %s permission on %s"), f.V("domain"), f.V("perm"), obj)
 	if n := f.V("count"); n != "" && n != "1" {
-		s += ", " + n + " times"
+		s = fmt.Sprintf(p.tr.T("%s, %s times"), s, n)
 	}
 	if n := f.V("denials"); n != "" && n != "1" {
-		s += "; there are " + n + " kinds of denial in all"
+		s = fmt.Sprintf(p.tr.T("%s; there are %s kinds of denial in all"), s, n)
 	}
 	return s + "."
 }
@@ -250,45 +326,46 @@ func denialWhy(f *Facts, p phraser) string {
 // --- SELinux ---------------------------------------------------------------------
 
 func selinuxText(f *Facts, p phraser) Text {
-	d, obj := f.V("domain"), f.V("object")
+	d, obj := f.V("domain"), object(f, p)
 	var t Text
 	switch f.Cause {
 	case "mislabeled":
-		t.Headline = p.pick("SELinux blocked "+d+" from using "+obj+" because it has the wrong label.",
-			"SELinux stopped "+d+" from using "+obj+": the file carries the wrong label.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("SELinux blocked %s from using %s because it has the wrong label."),
+			"SELinux stopped %s from using %s: the file carries the wrong label."), d, obj)
 		if f.Has("default_type") {
-			t.Why = "The policy default there is " + f.V("default_type") + "; the file was probably moved or created with the wrong label."
+			t.Why = fmt.Sprintf(p.tr.T("The policy default there is %s; the file was probably moved or created with the wrong label."), f.V("default_type"))
 		}
 	case "missing_fcontext":
-		t.Headline = p.pick("SELinux blocked "+d+" from using "+obj+" because no rule labels that place for it.",
-			"SELinux stopped "+d+" from using "+obj+": nothing in the policy labels that location for this service.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("SELinux blocked %s from using %s because no rule labels that place for it."),
+			"SELinux stopped %s from using %s: nothing in the policy labels that location for this service."), d, obj)
 		if f.Has("want_type") {
-			t.Why = "It is labeled " + f.V("target_type") + ", a type " + d + " may not use; " + f.V("want_type") + " is a type it may use."
+			t.Why = fmt.Sprintf(p.tr.T("It is labeled %s, a type %s may not use; %s is a type it may use."), f.V("target_type"), d, f.V("want_type"))
 		}
 	case "port":
-		t.Headline = p.pick("SELinux blocked "+d+" from using "+f.V("proto")+" port "+f.V("port")+" because the port is not labeled for it.",
-			"SELinux stopped "+d+" from using "+f.V("proto")+" port "+f.V("port")+": the port does not carry a label it may use.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("SELinux blocked %s from using %s port %s because the port is not labeled for it."),
+			"SELinux stopped %s from using %s port %s: the port does not carry a label it may use."), d, f.V("proto"), f.V("port"))
 		if f.Has("port_type_now") && f.V("port_type_now") != f.V("target_type") {
-			t.Why = "The port is labeled " + f.V("port_type_now") + " now."
+			t.Why = fmt.Sprintf(p.tr.T("The port is labeled %s now."), f.V("port_type_now"))
 		}
 	case "boolean":
 		if f.Has("boolean") {
-			t.Headline = p.pick("SELinux blocked "+d+" because the boolean "+f.V("boolean")+" that allows this is off.",
-				"SELinux stopped "+d+": the switch that allows this, the boolean "+f.V("boolean")+", is off.")
+			t.Headline = fmt.Sprintf(p.pick(i18n.M("SELinux blocked %s because the boolean %s that allows this is off."),
+				"SELinux stopped %s: the switch that allows this, the boolean %s, is off."), d, f.V("boolean"))
 		} else {
-			t.Headline = "SELinux blocked " + d + " because a boolean that would allow this is off."
+			t.Headline = fmt.Sprintf(p.tr.T("SELinux blocked %s because a boolean that would allow this is off."), d)
 		}
 	case "suspicious":
-		t.Headline = "SELinux stopped " + d + " from touching " + obj + ", which is security sensitive. This looks like the policy doing its job."
-		t.Next = p.pick("Do not loosen the policy. Find out why the program tried this.",
+		t.Headline = fmt.Sprintf(p.tr.T("SELinux stopped %s from touching %s, which is security sensitive. This looks like the policy doing its job."), d, obj)
+		t.Next = p.pick(i18n.M("Do not loosen the policy. Find out why the program tried this."),
 			"Leave the policy as it is and find out why the program tried this.")
 	default:
 		// Plain language first: what happened and whether the person must
 		// act; the technical sentence follows, the raw denial is evidence.
-		t.Headline = "The security rules (SELinux) stopped a program from doing something they do not allow. " +
-			"Nothing needs your action now: this is a note for whoever looks after this computer. " + p.pick("SELinux blocked "+d+" from using "+obj+", and there is no known safe fix.",
-			"SELinux denied "+d+" access to "+obj+", and no known fix applies.")
-		t.Next = p.pick("Please have someone review it before changing the policy. The assistant never writes policy modules on its own.",
+		t.Headline = p.tr.T("The security rules (SELinux) stopped a program from doing something they do not allow.") + " " +
+			p.tr.T("Nothing needs your action now: this is a note for whoever looks after this computer.") + " " +
+			fmt.Sprintf(p.pick(i18n.M("SELinux blocked %s from using %s, and there is no known safe fix."),
+				"SELinux denied %s access to %s, and no known fix applies."), d, obj)
+		t.Next = p.pick(i18n.M("Please have someone review it before changing the policy. The assistant never writes policy modules on its own."),
 			"It needs a person to review it. The assistant never generates policy modules by itself.")
 	}
 	if t.Why == "" {
@@ -297,7 +374,7 @@ func selinuxText(f *Facts, p phraser) Text {
 		t.Why = joinSentences(denialWhy(f, p), t.Why)
 	}
 	if f.Review && f.Cause != "suspicious" && f.Cause != "unknown" && t.Next == "" {
-		t.Next = "The assistant is not confident enough to propose a change, so it needs a person to review it."
+		t.Next = p.tr.T("The assistant is not confident enough to propose a change, so it needs a person to review it.")
 	}
 	return t
 }
@@ -308,44 +385,44 @@ func diskText(f *Facts, p phraser) Text {
 	var t Text
 	pct := f.V("used_pct")
 	if f.OK {
-		t.Headline = "The root file system is " + pct + " % full."
-		t.Next = p.pick("Nothing to do.", "That is fine; nothing to do.")
+		t.Headline = fmt.Sprintf(p.tr.T("The root file system is %s %% full."), pct)
+		t.Next = p.pick(i18n.M("Nothing to do."), "That is fine; nothing to do.")
 		return t
 	}
 	if f.V("level") == "critical" {
-		t.Headline = p.pick("The root file system is "+pct+" % full, which is critical.",
-			"The root file system is critically full: "+pct+" % used.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("The root file system is %s %% full, which is critical."),
+			"The root file system is critically full: %s %% used."), pct)
 	} else {
-		t.Headline = p.pick("The root file system is "+pct+" % full.", "The root file system is getting full: "+pct+" % used.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("The root file system is %s %% full."), "The root file system is getting full: %s %% used."), pct)
 	}
 	switch f.Cause {
 	case "snapshots":
 		if f.Has("snapshot") {
-			t.Why = "Snapshot " + f.V("snapshot") + " (" + f.V("snapshot_date") + ", \"" + f.V("snapshot_desc") + "\") alone holds " + f.V("snapshot_size") + "."
+			t.Why = fmt.Sprintf(p.tr.T("Snapshot %s (%s, \"%s\") alone holds %s."), f.V("snapshot"), f.V("snapshot_date"), f.V("snapshot_desc"), f.V("snapshot_size"))
 		} else {
-			t.Why = "Snapshots hold " + orWord(f.V("snapshots_size"), "most of the space") + "."
+			t.Why = fmt.Sprintf(p.tr.T("Snapshots hold %s."), orWord(f.V("snapshots_size"), p.tr.T("most of the space")))
 		}
 	case "journal":
-		t.Why = "The system journal uses " + f.V("journal_size") + "."
+		t.Why = fmt.Sprintf(p.tr.T("The system journal uses %s."), f.V("journal_size"))
 	case "package_cache":
-		t.Why = "Cached packages use " + f.V("cache_size") + "."
+		t.Why = fmt.Sprintf(p.tr.T("Cached packages use %s."), f.V("cache_size"))
 	default:
-		t.Why = p.pick("Most of the space is data, not snapshots, logs or cached packages.",
+		t.Why = p.pick(i18n.M("Most of the space is data, not snapshots, logs or cached packages."),
 			"The space is used by data, not by snapshots, logs or the package cache.")
-		t.Next = "Nothing is deleted automatically. Look for large files you no longer need."
+		t.Next = p.tr.T("Nothing is deleted automatically. Look for large files you no longer need.")
 		if f.Has("confined") {
-			t.Next += " Run the disk report as root to measure the space each snapshot holds."
+			t.Next += " " + p.tr.T("Run the disk report as root to measure the space each snapshot holds.")
 		}
 	}
 	if f.Has("days_to_full") {
 		if d := f.V("days_to_full"); d == "1" {
-			t.Why = joinSentences(t.Why, "At the current rate it will be full within about a day.")
+			t.Why = joinSentences(t.Why, p.tr.T("At the current rate it will be full within about a day."))
 		} else {
-			t.Why = joinSentences(t.Why, "At the current rate it will be full in about "+d+" days.")
+			t.Why = joinSentences(t.Why, fmt.Sprintf(p.tr.T("At the current rate it will be full in about %s days."), d))
 		}
 	}
 	if f.Has("nothing_large") {
-		t.Next = joinSentences(t.Next, "No single item is large enough to free on its own.")
+		t.Next = joinSentences(t.Next, p.tr.T("No single item is large enough to free on its own."))
 	}
 	return t
 }
@@ -356,38 +433,46 @@ func dnfText(f *Facts, p phraser) Text {
 	var t Text
 	cmd := f.V("command")
 	if f.OK {
-		t.Headline = "No failed package transaction was found."
+		t.Headline = p.tr.T("No failed package transaction was found.")
 		return t
 	}
-	what := "A package transaction"
+	what := p.tr.T("A package transaction")
 	if cmd != "" {
-		what = "The package transaction \"" + cmd + "\""
+		what = fmt.Sprintf(p.tr.T("The package transaction \"%s\""), cmd)
 	}
 	switch f.Cause {
 	case "rollback":
-		t.Headline = p.pick(what+" failed after it had already changed packages.",
-			what+" failed halfway: packages were already changed.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s failed after it had already changed packages."),
+			"%s failed halfway: packages were already changed."), what)
 		if f.Has("snapshot") {
-			parts := nonZero([][3]string{{f.V("added"), "added 1 package", "added %s packages"},
-				{f.V("removed"), "removed 1 package", "removed %s packages"}, {f.V("changed"), "changed 1 package", "changed %s packages"}})
+			var parts []string
+			if n := count(f.V("added")); n > 0 {
+				parts = append(parts, fmt.Sprintf(p.tr.N("added %d package", "added %d packages", n), n))
+			}
+			if n := count(f.V("removed")); n > 0 {
+				parts = append(parts, fmt.Sprintf(p.tr.N("removed %d package", "removed %d packages", n), n))
+			}
+			if n := count(f.V("changed")); n > 0 {
+				parts = append(parts, fmt.Sprintf(p.tr.N("changed %d package", "changed %d packages", n), n))
+			}
 			if len(parts) > 0 {
-				t.Why = "Since snapshot " + f.V("snapshot") + ", taken just before it, the transaction " + list(parts) + "."
+				t.Why = fmt.Sprintf(p.tr.T("Since snapshot %s, taken just before it, the transaction %s."), f.V("snapshot"), list(p.tr, parts))
 			} else {
-				t.Why = "Snapshot " + f.V("snapshot") + " was taken just before it."
+				t.Why = fmt.Sprintf(p.tr.T("Snapshot %s was taken just before it."), f.V("snapshot"))
 			}
 		}
 		if f.Has("failed") {
-			t.Why = joinSentences(t.Why, "The package that failed is "+f.V("failed")+".")
+			t.Why = joinSentences(t.Why, fmt.Sprintf(p.tr.T("The package that failed is %s."), f.V("failed")))
 		}
 		if f.Hint {
-			t.Next = "The background service cannot compare the packages inside snapshots, so confirm it as root first: the assistant then shows exactly what a rollback changes."
+			t.Next = p.tr.T("The background service cannot compare the packages inside snapshots, so confirm it as root first: the assistant then shows exactly what a rollback changes.")
 		}
 	default:
-		t.Headline = p.pick(what+" failed, but no package was changed.", what+" failed before it changed any package.")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s failed, but no package was changed."), "%s failed before it changed any package."), what)
 		if f.Has("failed") {
-			t.Why = "The package that failed is " + f.V("failed") + "."
+			t.Why = fmt.Sprintf(p.tr.T("The package that failed is %s."), f.V("failed"))
 		}
-		t.Next = p.pick("Nothing needs undoing. Read the log lines, fix the cause and try again.",
+		t.Next = p.pick(i18n.M("Nothing needs undoing. Read the log lines, fix the cause and try again."),
 			"There is nothing to undo. Check the log lines, fix the cause and run it again.")
 	}
 	return t
@@ -398,26 +483,31 @@ func dnfText(f *Facts, p phraser) Text {
 func snapshotText(f *Facts, p phraser) Text {
 	var t Text
 	n := f.V("snapshot")
-	t.Headline = p.pick("This returns the system to snapshot "+n+" ("+f.V("snapshot_date")+", \""+f.V("snapshot_desc")+"\").",
-		"This takes the system back to snapshot "+n+" ("+f.V("snapshot_date")+", \""+f.V("snapshot_desc")+"\").")
+	t.Headline = fmt.Sprintf(p.pick(i18n.M("This returns the system to snapshot %s (%s, \"%s\")."),
+		"This takes the system back to snapshot %s (%s, \"%s\")."), n, f.V("snapshot_date"), f.V("snapshot_desc"))
 	if f.Has("before") {
-		t.Headline = "This undoes " + f.V("before") + ": it returns the system to snapshot " + n + ", taken just before " + f.V("before") + " was applied."
+		t.Headline = fmt.Sprintf(p.tr.T("This undoes %s: it returns the system to snapshot %s, taken just before %s was applied."), f.V("before"), n, f.V("before"))
 	}
 	if f.Has("added") {
-		parts := nonZero([][3]string{{f.V("added"), "brings back 1 package", "brings back %s packages"},
-			{f.V("removed"), "removes 1 package", "removes %s packages"}, {f.V("changed"), "changes the version of 1 package", "changes the version of %s packages"}})
-		if len(parts) > 0 {
-			t.Why = "Compared with now, it " + list(parts)
-		} else {
-			t.Why = "Compared with now, the packages are the same"
+		var parts []string
+		if c := count(f.V("added")); c > 0 {
+			parts = append(parts, fmt.Sprintf(p.tr.N("brings back %d package", "brings back %d packages", c), c))
 		}
-		switch f.V("files") {
-		case "", "0":
+		if c := count(f.V("removed")); c > 0 {
+			parts = append(parts, fmt.Sprintf(p.tr.N("removes %d package", "removes %d packages", c), c))
+		}
+		if c := count(f.V("changed")); c > 0 {
+			parts = append(parts, fmt.Sprintf(p.tr.N("changes the version of %d package", "changes the version of %d packages", c), c))
+		}
+		if len(parts) > 0 {
+			t.Why = fmt.Sprintf(p.tr.T("Compared with now, it %s"), list(p.tr, parts))
+		} else {
+			t.Why = p.tr.T("Compared with now, the packages are the same")
+		}
+		if c := count(f.V("files")); c > 0 {
+			t.Why = fmt.Sprintf(p.tr.T("%s; %s."), t.Why, fmt.Sprintf(p.tr.N("%d file differs", "%d files differ", c), c))
+		} else {
 			t.Why += "."
-		case "1":
-			t.Why += "; 1 file differs."
-		default:
-			t.Why += "; " + f.V("files") + " files differ."
 		}
 	}
 	return t
@@ -430,20 +520,17 @@ func driverText(f *Facts, p phraser) Text {
 	gpu, ver := f.V("gpu"), f.V("version")
 	switch f.Cause {
 	case "install":
-		t.Headline = p.pick(gpu+" can use the NVIDIA driver "+ver+" instead of nouveau.",
-			"The NVIDIA driver "+ver+" can replace nouveau for "+gpu+".")
+		t.Headline = fmt.Sprintf(p.pick(i18n.M("%s can use the NVIDIA driver %s instead of nouveau."),
+			"The NVIDIA driver %[2]s can replace nouveau for %[1]s."), gpu, ver)
 		switch {
 		case f.V("variant") == "compute":
-			t.Why = "Only the compute part is installed (CUDA, NVML, OpenCL and nvidia-smi), no display packages."
+			t.Why = p.tr.T("Only the compute part is installed (CUDA, NVML, OpenCL and nvidia-smi), no display packages.")
 		case f.Has("primary"):
-			t.Why = f.V("primary") + " stays the display GPU; programs run on " + gpu +
-				" when they ask for it (PRIME offload, basalt-nvidia-run), and CUDA works on it."
+			t.Why = fmt.Sprintf(p.tr.T("%s stays the display GPU; programs run on %s when they ask for it (PRIME offload, basalt-nvidia-run), and CUDA works on it."), f.V("primary"), gpu)
 		default:
-			t.Why = "The NVIDIA driver then drives the display."
+			t.Why = p.tr.T("The NVIDIA driver then drives the display.")
 		}
-		t.Next = "Restart the computer after applying it. The first start checks the driver and goes back to nouveau if it fails, " +
-			"and the snapshot taken before the change brings the system back. The driver is proprietary: applying it means you accept " +
-			"the NVIDIA Driver License Agreement (basalt drivers license nvidia)."
+		t.Next = p.tr.T("Restart the computer after applying it. The first start checks the driver and goes back to nouveau if it fails, and the snapshot taken before the change brings the system back. The driver is proprietary: applying it means you accept the NVIDIA Driver License Agreement (basalt drivers license nvidia).")
 	default:
 		t.Headline = f.V("report")
 	}
@@ -452,61 +539,69 @@ func driverText(f *Facts, p phraser) Text {
 
 // --- planned changes -----------------------------------------------------------------
 
-// Effect describes what one action does, in words.
-func Effect(a action.Action) string {
+// Effect describes what one action does, in words (English).
+func Effect(a action.Action) string { return EffectIn(i18n.Tr{}, a) }
+
+// EffectIn is Effect in the language of tr.
+func EffectIn(tr i18n.Tr, a action.Action) string {
 	p := a.Params
 	switch a.Kind {
 	case action.SELinuxFcontext:
-		return "add a rule that labels " + p["path"] + " and everything below it as " + p["type"] + " (relabeling the files already there)"
+		return fmt.Sprintf(tr.T("add a rule that labels %s and everything below it as %s (relabeling the files already there)"), p["path"], p["type"])
 	case action.SELinuxRestorecon:
-		return "reset the SELinux label of " + p["path"] + " to the policy default"
+		return fmt.Sprintf(tr.T("reset the SELinux label of %s to the policy default"), p["path"])
 	case action.SELinuxPort:
-		return "label " + p["proto"] + " port " + p["port"] + " as " + p["type"]
+		return fmt.Sprintf(tr.T("label %s port %s as %s"), p["proto"], p["port"], p["type"])
 	case action.SELinuxBoolean:
-		return "turn the SELinux boolean " + p["name"] + " " + p["value"]
+		if p["value"] == "on" {
+			return fmt.Sprintf(tr.T("turn the SELinux boolean %s on"), p["name"])
+		}
+		if p["value"] == "off" {
+			return fmt.Sprintf(tr.T("turn the SELinux boolean %s off"), p["name"])
+		}
+		return fmt.Sprintf(tr.T("turn the SELinux boolean %s %s"), p["name"], p["value"])
 	case action.UnitRestart:
-		return "restart " + p["unit"]
+		return fmt.Sprintf(tr.T("restart %s"), p["unit"])
 	case action.FileRestore:
-		return "put back the copy of " + p["path"] + " from snapshot " + p["snapshot"]
+		return fmt.Sprintf(tr.T("put back the copy of %s from snapshot %s"), p["path"], p["snapshot"])
 	case action.SnapshotRollback:
-		return "make snapshot " + p["snapshot"] + " the root from the next boot"
+		return fmt.Sprintf(tr.T("make snapshot %s the root from the next boot"), p["snapshot"])
 	case action.SnapshotDelete:
-		return "delete snapshot " + p["snapshot"] + ", which frees the space only it holds"
+		return fmt.Sprintf(tr.T("delete snapshot %s, which frees the space only it holds"), p["snapshot"])
 	case action.JournalVacuum:
-		return "shrink the archived journal files to " + p["size"]
+		return fmt.Sprintf(tr.T("shrink the archived journal files to %s"), p["size"])
 	case action.DnfClean:
-		return "remove the cached package files"
+		return tr.T("remove the cached package files")
 	case action.DriverInstall:
-		return "turn on the basalt-nonfree repository, install the NVIDIA driver with the signed kernel module for kernel " +
-			p["kernel"] + " and turn nouveau off from the next start"
+		return fmt.Sprintf(tr.T("turn on the basalt-nonfree repository, install the NVIDIA driver with the signed kernel module for kernel %s and turn nouveau off from the next start"), p["kernel"])
 	case action.UpdateCheck:
-		return "download the newest list of packages"
+		return tr.T("download the newest list of packages")
 	case action.UpdateInstall:
 		if p["scope"] == "security" {
-			return "install " + p["count"] + " security updates, exactly the versions shown"
+			return fmt.Sprintf(tr.T("install %s security updates, exactly the versions shown"), p["count"])
 		}
-		return "install " + p["count"] + " updates, exactly the versions shown"
+		return fmt.Sprintf(tr.T("install %s updates, exactly the versions shown"), p["count"])
 	case action.UpdateRollback:
-		return "make snapshot " + p["snapshot"] + ", taken just before the update " + p["proposal"] + ", the root from the next boot"
+		return fmt.Sprintf(tr.T("make snapshot %s, taken just before the update %s, the root from the next boot"), p["snapshot"], p["proposal"])
 	case action.RepoEnable:
-		return "turn the " + p["repo"] + " channel on"
+		return fmt.Sprintf(tr.T("turn the %s channel on"), p["repo"])
 	case action.RepoDisable:
-		return "turn the " + p["repo"] + " channel off"
+		return fmt.Sprintf(tr.T("turn the %s channel off"), p["repo"])
 	case action.SourceAdd:
-		return "add the software source " + p["name"] + " (" + p["url"] + ") and trust its signing key " + p["fingerprint"]
+		return fmt.Sprintf(tr.T("add the software source %s (%s) and trust its signing key %s"), p["name"], p["url"], p["fingerprint"])
 	case action.SourceRemove:
-		return "remove the software source " + p["id"]
+		return fmt.Sprintf(tr.T("remove the software source %s"), p["id"])
 	case action.KeyboardSystem:
-		return "make " + p["layouts"] + " the keyboard layouts of the login screen, the text console (" + p["keymap"] + ") and new accounts"
+		return fmt.Sprintf(tr.T("make %s the keyboard layouts of the login screen, the text console (%s) and new accounts"), p["layouts"], p["keymap"])
 	case action.AuditRun:
 		if p["install"] == "yes" {
-			return "install the AI audit suite from the Basalt repositories and run it on this computer"
+			return tr.T("install the AI audit suite from the Basalt repositories and run it on this computer")
 		}
-		return "run the AI audit suite on this computer"
+		return tr.T("run the AI audit suite on this computer")
 	case action.RiskAccept:
-		return "record that " + p["by"] + " accepts the risk of " + p["item"] + " on this computer"
+		return fmt.Sprintf(tr.T("record that %s accepts the risk of %s on this computer"), p["by"], p["item"])
 	case action.RiskReview:
-		return "show " + p["item"] + " as a warning again"
+		return fmt.Sprintf(tr.T("show %s as a warning again"), p["item"])
 	}
 	return a.Kind
 }
@@ -514,18 +609,16 @@ func Effect(a action.Action) string {
 func changeSentence(acts []action.Action, hint bool, p phraser) string {
 	var es []string
 	for _, a := range acts {
-		es = append(es, Effect(a))
+		es = append(es, EffectIn(p.tr, a))
 	}
 	list := es[0]
-	if len(es) == 2 {
-		list = es[0] + " and then " + es[1]
-	} else if len(es) > 2 {
-		list = strings.Join(es[:len(es)-1], ", ") + " and then " + es[len(es)-1]
+	if len(es) > 1 {
+		list = fmt.Sprintf(p.tr.T("%s and then %s"), strings.Join(es[:len(es)-1], ", "), es[len(es)-1])
 	}
 	if hint {
-		return "Once confirmed, applying it would " + list + "."
+		return fmt.Sprintf(p.tr.T("Once confirmed, applying it would %s."), list)
 	}
-	return p.pick("If you apply it, the assistant will "+list+".", "Applying it will "+list+".")
+	return fmt.Sprintf(p.pick(i18n.M("If you apply it, the assistant will %s."), "Applying it will %s."), list)
 }
 
 func orWord(s, def string) string {
@@ -535,28 +628,13 @@ func orWord(s, def string) string {
 	return s
 }
 
-// nonZero keeps the phrases whose count is not zero: {count, singular,
-// plural with %s for the count}.
-func nonZero(xs [][3]string) []string {
-	var out []string
-	for _, x := range xs {
-		switch x[0] {
-		case "", "0":
-		case "1":
-			out = append(out, x[1])
-		default:
-			out = append(out, strings.Replace(x[2], "%s", x[0], 1))
-		}
-	}
-	return out
-}
-
-func list(xs []string) string {
+// list joins phrases: "a", "a and b", "a, b and c".
+func list(tr i18n.Tr, xs []string) string {
 	switch len(xs) {
 	case 0:
 		return ""
 	case 1:
 		return xs[0]
 	}
-	return strings.Join(xs[:len(xs)-1], ", ") + " and " + xs[len(xs)-1]
+	return fmt.Sprintf(tr.T("%s and %s"), strings.Join(xs[:len(xs)-1], ", "), xs[len(xs)-1])
 }

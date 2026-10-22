@@ -20,10 +20,12 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/audit"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/gatelink"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/report"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/runner"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/titles"
 )
 
 // Applier carries what an apply needs.
@@ -53,6 +55,9 @@ type Applier struct {
 	// StateDir holds the record of an offline update waiting for the next
 	// start (default: next to the proposals).
 	StateDir string
+	// Tr is the language of what is printed for the person (the zero
+	// value, English, in the executor units); the audit log stays English.
+	Tr i18n.Tr
 }
 
 // ErrCancelled is returned when the person declines.
@@ -69,6 +74,27 @@ type Options struct {
 }
 
 func (a *Applier) printf(format string, args ...any) { fmt.Fprintf(a.Out, format, args...) }
+
+// confirmed reads the person's answer to "Type yes to apply it": yes, or
+// the word the reader's language uses for it.
+func (a *Applier) confirmed() bool {
+	line, _ := bufio.NewReader(a.In).ReadString('\n')
+	ans := strings.ToLower(strings.TrimSpace(line))
+	return ans == "yes" || ans == strings.ToLower(a.Tr.T("yes"))
+}
+
+// mark is the result of a step or a check.
+func (a *Applier) mark(ok bool) string {
+	if ok {
+		return a.Tr.T("ok")
+	}
+	return a.Tr.T("FAIL")
+}
+
+// checkLine prints what a check proves and what it found.
+func (a *Applier) checkLine(ok bool, what, detail string) {
+	a.printf("  [%s] %s: %s\n", a.mark(ok), titles.Phrase(a.Tr, what), detail)
+}
 
 // Apply runs a proposal after confirmation.
 func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) error {
@@ -102,22 +128,22 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	}
 	fp, _ := p.Fingerprint()
 
-	a.printf("%s\n", report.Render(p))
-	snapNote := "a snapshot is taken before and after"
+	a.printf("%s\n", report.RenderWith(p, report.Options{Tr: a.Tr}).String())
+	snapNote := a.Tr.T("a snapshot is taken before and after")
 	if rollbackAction(p.Actions) {
-		snapNote = "no extra snapshot: the rollback works on snapshots itself"
+		snapNote = a.Tr.T("no extra snapshot: the rollback works on snapshots itself")
 	} else if len(p.Actions) > 0 && p.Actions[0].Kind == action.KeyboardSystem && toggleOnly(p.Actions) {
-		snapNote = "no snapshot: the system's keyboard is one setting, and choosing other layouts changes it back"
+		snapNote = a.Tr.T("no snapshot: the system's keyboard is one setting, and choosing other layouts changes it back")
 	} else if len(p.Actions) > 0 && (p.Actions[0].Kind == action.RiskAccept || p.Actions[0].Kind == action.RiskReview) && toggleOnly(p.Actions) {
-		snapNote = "no snapshot: an accepted risk is one setting, and Review again changes it back"
+		snapNote = a.Tr.T("no snapshot: an accepted risk is one setting, and Review again changes it back")
 	} else if toggleOnly(p.Actions) {
-		snapNote = "no snapshot: turning a channel on or off changes one setting, and the next update takes its own snapshot"
+		snapNote = a.Tr.T("no snapshot: turning a channel on or off changes one setting, and the next update takes its own snapshot")
 	}
-	what := "the command shown above"
+	what := a.Tr.T("the command shown above")
 	if len(cmds) > 1 {
-		what = fmt.Sprintf("the %d commands shown above, in that order", len(cmds))
+		what = fmt.Sprintf(a.Tr.T("the %d commands shown above, in that order"), len(cmds))
 	}
-	a.printf("Applying runs %s, as root (%s).\n", what, snapNote)
+	a.printf(a.Tr.T("Applying runs %s, as root (%s).")+"\n", what, snapNote)
 
 	by := "root at a terminal"
 	switch {
@@ -135,9 +161,8 @@ func (a *Applier) Apply(ctx context.Context, p *proposal.Proposal, o Options) er
 	case !a.Interactive:
 		return fmt.Errorf("not a terminal: confirm with --yes --confirm %s", fp)
 	default:
-		a.printf("Type yes to apply it, or anything else to cancel: ")
-		line, _ := bufio.NewReader(a.In).ReadString('\n')
-		if strings.TrimSpace(line) != "yes" {
+		a.printf("%s", a.Tr.T("Type yes to apply it, or anything else to cancel: "))
+		if !a.confirmed() {
 			a.audit("decline", "declined "+p.ID, map[string]any{"proposal": p.ID, "fingerprint": fp})
 			a.Gate.Observe(p, "declined", by)
 			return ErrCancelled
@@ -190,9 +215,9 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	if snap {
 		if n, err := a.snapper(ctx, "pre", 0, desc, p.ID); err == nil {
 			res.PreSnapshot = n
-			a.printf("Snapshot %d taken (before the change).\n", n)
+			a.printf(a.Tr.T("Snapshot %d taken (before the change).")+"\n", n)
 		} else {
-			a.printf("Warning: no snapshot could be taken before the change: %v\n", err)
+			a.printf(a.Tr.T("Warning: no snapshot could be taken before the change: %v")+"\n", err)
 		}
 	}
 
@@ -212,7 +237,7 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 		res.Steps = append(res.Steps, step)
 		if !r.OK() {
 			ok = false
-			a.printf("That command failed (exit code %d), so the remaining ones were not run.\n", r.Code)
+			a.printf(a.Tr.T("That command failed (exit code %d), so the remaining ones were not run.")+"\n", r.Code)
 			break
 		}
 	}
@@ -222,7 +247,7 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	if snap && res.PreSnapshot > 0 && !offline {
 		if n, err := a.snapper(ctx, "post", res.PreSnapshot, desc, p.ID); err == nil {
 			res.PostSnapshot = n
-			a.printf("Snapshot %d taken (after the change).\n", n)
+			a.printf(a.Tr.T("Snapshot %d taken (after the change).")+"\n", n)
 		}
 	}
 
@@ -232,12 +257,12 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 		if a.Settle > 0 {
 			time.Sleep(a.Settle)
 		}
-		a.printf("\nChecking that it worked\n")
+		a.printf("\n%s\n", a.Tr.T("Checking that it worked"))
 		for _, act := range p.Actions {
 			for _, chk := range act.Verify(start) {
 				good, detail := chk.Run(ctx, a.Exec)
 				res.Checks = append(res.Checks, proposal.Step{What: chk.Description, OK: good, Output: detail})
-				a.printf("  [%s] %s: %s\n", mark(good), chk.Description, detail)
+				a.checkLine(good, chk.Description, detail)
 				if !good {
 					ok = false
 				}
@@ -260,7 +285,7 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 	case ok && offline:
 		p.Status, typ = proposal.Scheduled, "schedule"
 		if err := writePending(a.pendingPath(), Pending{Proposal: p.ID, PreSnapshot: res.PreSnapshot, Time: start.UTC()}); err != nil {
-			a.printf("Warning: the boot will not finish the record: %v\n", err)
+			a.printf(a.Tr.T("Warning: the boot will not finish the record: %v")+"\n", err)
 		}
 	case ok:
 		p.Status = proposal.Applied
@@ -271,21 +296,21 @@ func (a *Applier) run(ctx context.Context, p *proposal.Proposal, cmds []runner.C
 		"proposal": p.ID, "title": p.Title, "actions": p.Actions, "result": res})
 	res.AuditSeq = rec.Seq
 	if err := a.Store.Save(p); err != nil {
-		a.printf("Warning: could not update the proposal: %v\n", err)
+		a.printf(a.Tr.T("Warning: could not update the proposal: %v")+"\n", err)
 	}
 	if ok && offline {
-		a.printf("\nReady: %s installs at the next start (audit record #%d).\n", p.ID, rec.Seq)
-		a.printf("Restart to install it: Settings, Updates and channels, or sudo basalt updates restart\n")
+		a.printf("\n"+a.Tr.T("Ready: %s installs at the next start (audit record #%d).")+"\n", p.ID, rec.Seq)
+		a.printf("%s\n", a.Tr.T("Restart to install it: Settings, Updates and channels, or sudo basalt updates restart"))
 	} else if ok {
-		a.printf("\nDone: %s is applied and every check passed (audit record #%d).\n", p.ID, rec.Seq)
+		a.printf("\n"+a.Tr.T("Done: %s is applied and every check passed (audit record #%d).")+"\n", p.ID, rec.Seq)
 		if a.OnUpdated != nil && isUpdate(p.Actions) {
 			a.OnUpdated()
 		}
 	} else {
-		a.printf("\n%s did not work as expected: see the failed step or check above (audit record #%d).\n", p.ID, rec.Seq)
+		a.printf("\n"+a.Tr.T("%s did not work as expected: see the failed step or check above (audit record #%d).")+"\n", p.ID, rec.Seq)
 	}
 	if res.PreSnapshot > 0 {
-		a.printf("To undo it: sudo basalt snapshots rollback --before %s   (back to snapshot %d, at the next boot)\n", p.ID, res.PreSnapshot)
+		a.undoLine(p.ID, res.PreSnapshot)
 	}
 	if !ok {
 		return fmt.Errorf("%s did not verify", p.ID)
@@ -313,7 +338,7 @@ func (a *Applier) audit(typ, text string, data any) audit.Record {
 	}
 	r, err := a.Audit.Append(typ, text, data)
 	if err != nil {
-		a.printf("warning: audit log: %v\n", err)
+		a.printf(a.Tr.T("warning: audit log: %v")+"\n", err)
 	}
 	return r
 }
@@ -403,11 +428,9 @@ func indent(s string) string {
 	return "  " + strings.ReplaceAll(strings.TrimRight(s, "\n"), "\n", "\n  ")
 }
 
-func mark(ok bool) string {
-	if ok {
-		return "ok"
-	}
-	return "FAIL"
+// undoLine says how to undo an applied proposal.
+func (a *Applier) undoLine(id string, pre int) {
+	a.printf(a.Tr.T("To undo it: %s   (back to snapshot %d, at the next boot)")+"\n", "sudo basalt snapshots rollback --before "+id, pre)
 }
 
 // RunAfter runs the commands of a proposal that wait for its recorded
@@ -437,7 +460,7 @@ func (a *Applier) RunAfter(ctx context.Context, p *proposal.Proposal) error {
 			a.printf("%s\n", indent(clip(r.Out, 2000)))
 		}
 		if !r.OK() {
-			a.printf("That command failed (exit code %d). The update stays prepared.\n", r.Code)
+			a.printf(a.Tr.T("That command failed (exit code %d). The update stays prepared.")+"\n", r.Code)
 			return fmt.Errorf("%s: exit code %d", c.String(), r.Code)
 		}
 	}

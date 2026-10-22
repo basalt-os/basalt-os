@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.13.2
+Version:        0.13.3
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -207,6 +207,26 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Wed Oct 21 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.3-1
+- The body of proposals and reports in the reader's language: basalt
+  show, pending and apply, and the proposal part of why, fix and disk,
+  print what is wrong, what will run, the risk, the undo, the next
+  step, the evidence headings and the applied result in the person's
+  catalog (pt_BR translates all of it).
+  Text written from facts is rendered in that language; reports stored
+  in English without facts (updates, channels, sources, keyboard,
+  security, an apply that did not finish) and what each check proves
+  are translated sentence by sentence; commands, ids, codes, evidence
+  and logs stay as they are. The daemon's log, MCP clients and the
+  audit log stay English (a Tr chosen by the caller, English by
+  default). show --json and pending --json keep the English text and
+  add report_local, status_local and checks_local next to title_local.
+  The optional humanize model writes English, so it is skipped for
+  other languages. Tests: every catalog call (tr.T too) is in the
+  template and translated, every scenario rendered with a pseudo
+  catalog leaves no English prose, and every stored report sentence and
+  check is a known form.
+
 * Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.2-1
 - Proposal titles in the reader's language: titles stay stored, logged
   and audited in English, and basalt pending --json and basalt show
