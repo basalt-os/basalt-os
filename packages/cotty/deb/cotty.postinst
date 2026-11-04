@@ -1,0 +1,18 @@
+#!/bin/sh
+# cotty postinst: load the AppArmor profile (Ubuntu 24.04 and later let
+# /usr/bin/cotty create user namespaces only through it). A system without
+# AppArmor, or a container where profiles cannot be loaded, is not an error:
+# cotty doctor reports what works.
+set -e
+
+aa_enabled() {
+  [ -r /sys/module/apparmor/parameters/enabled ] &&
+    [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ] &&
+    command -v apparmor_parser >/dev/null 2>&1
+}
+
+if [ "$1" = configure ] && [ -f /etc/apparmor.d/cotty ] && aa_enabled; then
+  apparmor_parser -r -T -W /etc/apparmor.d/cotty ||
+    echo "cotty: could not load the AppArmor profile /etc/apparmor.d/cotty; cotty agent may be unable to create user namespaces (run cotty doctor)" >&2
+fi
+exit 0

@@ -1,0 +1,20 @@
+#!/bin/sh
+# cotty-guard prerm: on removal, stop and disable the service, then detach
+# the programs and remove the pinned maps (cotty-guard uninstall), so no
+# rule outlives the package. An upgrade keeps everything in force.
+set -e
+if [ "$1" = remove ]; then
+  if [ -d /run/systemd/system ]; then
+    systemctl disable --now cotty-guard.service >/dev/null 2>&1 || true
+  fi
+  # The unit keeps its runtime directory across a stop
+  # (RuntimeDirectoryPreserve); once the programs are detached nothing in
+  # it is needed. Kept when uninstall fails: its "enforcing" marker makes
+  # cotty fail closed while pinned programs may still enforce.
+  if /usr/bin/cotty-guard uninstall; then
+    systemctl clean --what=runtime cotty-guard.service >/dev/null 2>&1 || rm -rf /run/cotty-guard
+  else
+    echo "cotty-guard: uninstall failed; run cotty-guard uninstall as root" >&2
+  fi
+fi
+exit 0

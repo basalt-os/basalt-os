@@ -1,0 +1,9 @@
+#!/bin/sh
+# cotty prerm: unload the AppArmor profile on removal (the file itself is a
+# configuration file and stays until purge).
+set -e
+if [ "$1" = remove ] && [ -f /etc/apparmor.d/cotty ] && command -v apparmor_parser >/dev/null 2>&1 &&
+  [ -r /sys/module/apparmor/parameters/enabled ] && [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ]; then
+  apparmor_parser -R /etc/apparmor.d/cotty >/dev/null 2>&1 || true
+fi
+exit 0

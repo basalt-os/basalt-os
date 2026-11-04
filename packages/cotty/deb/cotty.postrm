@@ -1,0 +1,11 @@
+#!/bin/sh
+# cotty postrm: on purge, drop the compiled AppArmor profile from the caches
+# (dpkg removes /etc/apparmor.d/cotty itself).
+set -e
+if [ "$1" = purge ]; then
+  rm -f /etc/apparmor.d/cache/cotty
+  if [ -d /var/cache/apparmor ]; then
+    find /var/cache/apparmor -type f -name cotty -delete 2>/dev/null || true
+  fi
+fi
+exit 0

@@ -27,4 +27,9 @@ Filters = [
     # basalt-vm-cursor (basalt-shell 0.5.1) is built the same way: Go runtime
     # and the DRM cursor ioctl through syscall, no shared library.
     'statically-linked-binary /usr/libexec/basalt-shell/basalt-vm-cursor',
+    # cotty and cotty-guard are static Go builds without cgo on purpose: the
+    # confinement drops capabilities on every thread with AllThreadsSyscall,
+    # which Go refuses in cgo binaries.
+    'statically-linked-binary /usr/bin/cotty',
+    'statically-linked-binary /usr/bin/cotty-guard',
 ]
