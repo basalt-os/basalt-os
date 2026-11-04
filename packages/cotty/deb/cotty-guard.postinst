@@ -1,0 +1,17 @@
+#!/bin/sh
+# cotty-guard postinst: make systemd see the unit; never enable it (the
+# guard is opt-in). An upgrade restarts a running guard: the pinned
+# programs and maps stay in force across the restart.
+set -e
+if [ "$1" = configure ]; then
+  if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    if [ -n "$2" ] && systemctl is-active --quiet cotty-guard.service; then
+      systemctl restart cotty-guard.service || true
+    fi
+  fi
+  if [ -z "$2" ] && ! grep -qw bpf /sys/kernel/security/lsm 2>/dev/null; then
+    echo "cotty-guard: the bpf LSM is not active on the running kernel; the guard will not start until it is (see the Distributions section of /usr/share/doc/cotty-guard/guard.md)."
+  fi
+fi
+exit 0

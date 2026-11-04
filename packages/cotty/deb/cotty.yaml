@@ -1,0 +1,78 @@
+# nfpm configuration of the "cotty" .deb (Debian 13, Ubuntu 26.04 and 24.04;
+# one static build serves all of them). Built by packages/cotty/build-deb.sh,
+# which runs nfpm in this directory and sets ARCH, PKG_VERSION, BUILD
+# (staging directory), SRC (the source tree at the pinned commit) and
+# SOURCE_DATE_EPOCH.
+name: cotty
+arch: ${ARCH}
+platform: linux
+version: ${PKG_VERSION}
+version_schema: none
+release: "1"
+section: utils
+priority: optional
+maintainer: Basalt OS project <noreply@basalt-os.org>
+vendor: OpenBasalt
+homepage: https://github.com/openbasalt/cotty
+license: Apache-2.0
+description: |-
+  terminal shared by a person and an AI coding agent
+  cotty runs one real terminal session that a person and an AI coding
+  agent use at the same time. The agent reads the screen and types through
+  MCP, so any agent CLI that speaks MCP works. The person sees everything
+  it types, can type at any moment and can take the keyboard back. What
+  the person types at a password prompt never reaches the agent, and
+  values on a masking list are hidden in everything it reads. cotty agent
+  starts the agent CLI confined (namespaces, Landlock, seccomp, its own
+  cgroup).
+  .
+  On Ubuntu 24.04 and later the package installs and loads an AppArmor
+  profile that lets /usr/bin/cotty create user namespaces.
+  .
+  Pre-release software: not reviewed outside the project yet.
+suggests:
+  - cotty-guard
+  - apparmor
+
+scripts:
+  postinstall: cotty.postinst
+  preremove: cotty.prerm
+  postremove: cotty.postrm
+
+contents:
+  - src: ${BUILD}/bin/cotty
+    dst: /usr/bin/cotty
+    expand: true
+    file_info: {mode: 0755}
+  - src: ${SRC}/dist/apparmor/cotty
+    dst: /etc/apparmor.d/cotty
+    type: config|noreplace
+    expand: true
+    file_info: {mode: 0644}
+  - src: cotty.lintian-overrides
+    dst: /usr/share/lintian/overrides/cotty
+    file_info: {mode: 0644}
+  - src: copyright
+    dst: /usr/share/doc/cotty/copyright
+    expand: true
+    file_info: {mode: 0644}
+  - src: ${BUILD}/doc/changelog.Debian.gz
+    dst: /usr/share/doc/cotty/changelog.Debian.gz
+    expand: true
+    file_info: {mode: 0644}
+  - src: ${BUILD}/doc/THIRD-PARTY-LICENSES.gz
+    dst: /usr/share/doc/cotty/THIRD-PARTY-LICENSES.gz
+    expand: true
+    file_info: {mode: 0644}
+  - src: ${SRC}/README.md
+    dst: /usr/share/doc/cotty/README.md
+    expand: true
+    file_info: {mode: 0644}
+  - src: ${SRC}/SECURITY.md
+    dst: /usr/share/doc/cotty/SECURITY.md
+    expand: true
+    file_info: {mode: 0644}
+  - src: ${SRC}/docs
+    dst: /usr/share/doc/cotty/docs
+    expand: true
+    type: tree

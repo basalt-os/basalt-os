@@ -1,0 +1,6 @@
+# The binaries are static Go programs by design (CGO off): the confinement
+# drops capabilities on every thread with AllThreadsSyscall, which Go refuses
+# in cgo binaries, and one build serves every supported distribution.
+cotty: statically-linked-binary [usr/bin/*]
+# Not uploaded to the Debian archive: there is no Debian bug to close.
+cotty: initial-upload-closes-no-bugs [usr/share/doc/cotty/changelog.Debian.gz:*]

@@ -52,7 +52,8 @@ shellcheck -x -S warning scripts/ci/*.sh packages/basalt-assistant/build.sh scri
   packages/basalt-resolver/build.sh packages/basalt-ledger/build.sh scripts/lab/ledger-test.sh packages/basalt-ledger/tests/*.sh \
   packages/basalt-gate/build.sh scripts/lab/gate-test.sh packages/basalt-gate/tests/*.sh \
   packages/basalt-llm/build.sh packages/basalt-llm/basalt-llm-start packages/basalt-llm/basalt-llm-fetch \
-  packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh scripts/data-package.sh scripts/release/*.sh || fail=1
+  packages/basalt-llm/basalt-llm-select packages/basalt-llm/tests/select-test.sh scripts/data-package.sh scripts/release/*.sh \
+  packages/cotty/*.sh packages/cotty/deb/*.postinst packages/cotty/deb/*.prerm packages/cotty/deb/*.postrm || fail=1
 
 step "Security controls catalog: IDs, implementation paths, verifications, audit guide, generated controls.md"
 scripts/ci/security-controls-check.sh || fail=1

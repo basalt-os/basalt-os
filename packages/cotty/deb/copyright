@@ -1,0 +1,28 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: cotty
+Source: https://github.com/openbasalt/cotty
+
+Files: *
+Copyright: 2026 The cotty authors
+License: Apache-2.0
+ On Debian systems, the full text of the Apache License, Version 2.0 can be
+ found in /usr/share/common-licenses/Apache-2.0.
+
+Files: bpf/guard.bpf.c
+Copyright: 2026 The cotty authors
+License: Apache-2.0 or GPL-2.0-only
+ The guard's BPF programs, built into cotty-guard. On Debian systems, the
+ full texts are in /usr/share/common-licenses/Apache-2.0 and
+ /usr/share/common-licenses/GPL-2.
+
+Files: bpf/headers/*
+Copyright: libbpf authors
+License: LGPL-2.1 or BSD-2-Clause
+ The libbpf headers used to compile the guard's BPF programs, used under
+ BSD-2-Clause (bpf/headers/LICENSE.BSD-2-Clause in the source).
+
+Files: vendor/*
+Copyright: 2026 and earlier, the authors of each module (see THIRD-PARTY-LICENSES.gz)
+License: MIT and BSD-3-Clause and (BSD-3-Clause or GPL-2.0-only)
+ The license texts of every Go module linked into the binaries are in
+ /usr/share/doc/cotty/THIRD-PARTY-LICENSES.gz.
