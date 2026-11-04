@@ -5,8 +5,8 @@
 #
 #   scripts/release/build-testing-apt.sh OUT_DIR
 #
-# Packages: cotty and cotty-guard (amd64, arm64) from the commit pinned in
-# packages/cotty/source.conf (packages/cotty/build-deb.sh).
+# Packages: cotty and cotty-guard (amd64, arm64) from github.com/openbasalt/cotty
+# at the commit pinned in packages/cotty/source.conf (packages/cotty/build-deb.sh).
 #
 # OUT_DIR receives the .deb files, BUILD-INFO.txt and SHA256SUMS. Then:
 #   OB_APT_SUITE=testing scripts/release/merge-published-apt.sh OUT_DIR
@@ -21,7 +21,9 @@ export ENV_FILE
 source "$(dirname "$0")/../lib.sh"
 
 out="${1:?usage: $0 OUT_DIR}"
-[[ -z "${COTTY_COMMIT_OVERRIDE:-}" ]] || die "COTTY_COMMIT_OVERRIDE is set: a release build uses the pinned commit, unset it"
+for var in COTTY_SRC COTTY_COMMIT_OVERRIDE; do
+  [[ -z "${!var:-}" ]] || die "$var is set: a release build uses the pinned public commit, unset it"
+done
 [[ -z "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]] || die "the checkout has local changes; release builds come from a clean commit"
 commit="$(git -C "$REPO_ROOT" rev-parse HEAD)" || die "not a git checkout"
 # shellcheck source=packages/cotty/source.conf

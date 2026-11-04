@@ -18,16 +18,17 @@ cotty_fetch() {
   mkdir -p "$work/git" "$work/SOURCES"
   git -C "$work/git" init -q
   if [[ -n "${COTTY_SRC:-}" ]]; then
-    # A clone (a directory) or a git bundle (a file); the pin is checked below.
+    # Offline override: a clone (a directory) or a git bundle (a file); the
+    # pin is checked below.
     local src="$COTTY_SRC"
     [[ -d "$src" ]] && src="$(cd "$src" && pwd)"
     git -C "$work/git" fetch -q "$src" "$COTTY_COMMIT" || die "commit $COTTY_COMMIT not in $COTTY_SRC"
     log "cotty from $COTTY_SRC"
   else
-    # Credentials come from the build host's git configuration; a prompt
-    # would hang an unattended build, so it fails instead.
+    # Anonymous fetch of a public repository; a credential prompt would hang
+    # an unattended build, so it fails instead.
     GIT_TERMINAL_PROMPT=0 git -C "$work/git" fetch -q --depth 1 "$COTTY_REPO_URL" "$COTTY_COMMIT" ||
-      die "cannot fetch $COTTY_COMMIT from $COTTY_REPO_URL (private repository: set up git credentials on this host, or set COTTY_SRC)"
+      die "cannot fetch $COTTY_COMMIT from $COTTY_REPO_URL (offline: set COTTY_SRC to a clone or bundle holding it)"
   fi
   [[ "$(git -C "$work/git" rev-parse FETCH_HEAD)" == "$COTTY_COMMIT" ]] || die "fetched commit differs from the pin"
   COTTY_EPOCH="$(git -C "$work/git" show -s --format=%ct "$COTTY_COMMIT")"

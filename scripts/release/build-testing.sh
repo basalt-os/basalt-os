@@ -18,10 +18,8 @@
 # suite from github.com/basalt-os/ai-audit-suite at the commit pinned in
 # packages/basalt-audit-suite/source.conf, run by Security and Activity) and
 # cotty and cotty-guard (the shared terminal for a person and an AI agent,
-# from the commit pinned in packages/cotty/source.conf; its repository is
-# not public yet, so the build host fetches it with its own git credentials
-# or COTTY_SRC names a clone or bundle holding the pinned commit, and its
-# source RPM is left out).
+# from github.com/openbasalt/cotty at the commit pinned in
+# packages/cotty/source.conf).
 #
 # OUT_DIR receives the binary and source RPMs, BUILD-INFO.txt and
 # SHA256SUMS. Then, as for the basalt set but with OB_REPO=basalt-testing:
@@ -35,7 +33,7 @@ export ENV_FILE
 source "$(dirname "$0")/../lib.sh"
 
 out="${1:?usage: $0 OUT_DIR}"
-for var in BASALT_SHELL_SRC BASALT_SHELL_COMMIT BASALT_APPS_SRC BASALT_APPS_COMMIT AUDIT_SUITE_SRC COTTY_COMMIT_OVERRIDE COTTY_SRPM; do
+for var in BASALT_SHELL_SRC BASALT_SHELL_COMMIT BASALT_APPS_SRC BASALT_APPS_COMMIT AUDIT_SUITE_SRC COTTY_SRC COTTY_COMMIT_OVERRIDE; do
   [[ -z "${!var:-}" ]] || die "$var is set: a release build uses the pinned public commit, unset it"
 done
 [[ -z "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]] || die "the checkout has local changes; release builds come from a clean commit"
