@@ -58,6 +58,9 @@ func TestReadHelperCommandsRunNoRPMOrDNF(t *testing.T) {
 		{"keyboard", "--json"},
 		{"keyboard", "set", "br,us(intl)", "--json"},
 		{"keyboard", "set", "br", "--options", "grp:alt_shift_toggle", "--json"},
+		{"fallback", "--json"},
+		{"fallback", "gnome", "--json"},
+		{"fallback", "basalt", "--json"},
 	} {
 		g := &guard{}
 		o, err := parse(argv)
@@ -78,7 +81,9 @@ func TestReadHelperCommandsRunNoRPMOrDNF(t *testing.T) {
 		for _, r := range g.ran {
 			// Nor localectl: the system's keyboard changes only when the
 			// person applies the keyboard.system proposal (the executor).
-			if p := strings.Fields(r)[0]; p == "rpm" || p == "dnf" || p == "dnf5" || p == "rpmkeys" || p == "localectl" {
+			// Nor systemctl: the display manager changes only when the
+			// person applies the desktop.fallback proposal.
+			if p := strings.Fields(r)[0]; p == "rpm" || p == "dnf" || p == "dnf5" || p == "rpmkeys" || p == "localectl" || p == "systemctl" && strings.Contains(r, "able") {
 				t.Errorf("basalt %s ran %q", strings.Join(argv, " "), r)
 			}
 		}

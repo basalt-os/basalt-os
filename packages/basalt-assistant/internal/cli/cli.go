@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/apply"
@@ -51,6 +52,7 @@ Look (no changes, no confirmation):
   basalt updates check                download the newest package lists (update.check; as root)
   basalt channels                     Basalt's channels, added software sources, their signing keys
   basalt keyboard                     the system's keyboard (the login screen, the console, new accounts)
+  basalt fallback                     GNOME as a fallback: installed? which login screen starts next?
   basalt security risks               the security risks an administrator accepted (Security and Activity)
 
 Change (as root; you see the exact commands first and confirm them):
@@ -78,6 +80,9 @@ Change (as root; you see the exact commands first and confirm them):
   basalt keyboard set LAYOUTS [--options OPTIONS]
                                       the keyboard of the login screen, the console and new accounts,
                                       e.g. br,us(intl) (keyboard.system; people's own settings stay)
+  basalt fallback gnome|basalt        GDM as the login screen while GNOME is the fallback (it can lock
+                                      the screen), or the Basalt login screen again (desktop.fallback;
+                                      from the next start)
   basalt security audit               run the AI audit suite on this computer (audit.run; installs it first)
   basalt security accept|review ITEM  accept the risk of a warning, or count it again (risk.accept,
                                       risk.review; ITEM: encryption, secure_boot, tpm, audit, ledger)
@@ -317,6 +322,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.channels(ctx)
 	case "keyboard":
 		return a.keyboard(ctx)
+	case "fallback":
+		return a.fallback(ctx)
 	case "security":
 		return a.security(ctx)
 	case "__risk":
@@ -339,7 +346,12 @@ func (a *app) applier() *apply.Applier {
 	st, _ := os.Stdin.Stat()
 	interactive := st != nil && st.Mode()&os.ModeCharDevice != 0
 	ap := &apply.Applier{Store: a.store, Audit: a.audit, Exec: runner.Exec{}, In: os.Stdin, Out: a.out,
-		Interactive: interactive, Snapshots: true, Settle: 2 * time.Second}
+		Interactive: interactive, Snapshots: true, Settle: 2 * time.Second,
+		// What the person reads (the report, the prompt, the steps and
+		// checks) in their language, and their word for yes; the audit
+		// log stays English. The executor units run without a locale,
+		// so they print English as before.
+		Tr: i18n.Local()}
 	if a.root {
 		// The approval gate, when installed: it decides (enforce) or is told
 		// what was decided here (shadow mode); without it, nothing changes.
@@ -400,7 +412,7 @@ func (a *app) status(ctx context.Context) error {
 	ps, _ := a.store.List(proposal.Pending)
 	s := a.env.GetStatus(ctx, len(ps))
 	if a.o.json {
-		return a.printJSON(s)
+		return a.printJSON(statusLocalized(s))
 	}
 	n, err := audit.Verify(a.cfg.AuditPath)
 	if err != nil && (os.IsNotExist(err) || os.IsPermission(err)) {
@@ -410,57 +422,121 @@ func (a *app) status(ctx context.Context) error {
 	return nil
 }
 
-// writeStatus prints the health summary; auditN < 0: the audit log was
-// not readable here.
+// writeStatus prints the health summary in the reader's language
+// (`basalt status`, the command bar's "system status"); auditN < 0: the
+// audit log was not readable here. The problems are stored in English
+// (the JSON and MCP answers keep them so) and translated as phrases.
 func writeStatus(w io.Writer, s diag.Status, auditN int64, auditErr error) {
+	tr := i18n.Local()
 	if len(s.Problems) == 0 {
-		fmt.Fprintln(w, "Everything looks fine.")
+		fmt.Fprintln(w, i18n.T("Everything looks fine."))
 	} else {
-		fmt.Fprintf(w, "%s your attention:\n", plural(len(s.Problems), "thing needs", "things need"))
+		fmt.Fprintf(w, i18n.N("%d thing needs your attention:", "%d things need your attention:", len(s.Problems))+"\n", len(s.Problems))
 		for _, p := range s.Problems {
-			fmt.Fprintln(w, "  - "+p)
+			fmt.Fprintln(w, "  - "+titles.Phrase(tr, p))
 		}
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  System      %s\n", s.OS)
+	// The rows are printed once all are known, so the values line up
+	// whatever the length of the translated labels (counted in runes:
+	// "Serviços" is 8 letters, 9 bytes).
+	type statusRow struct{ label, value string }
+	var rows []statusRow
+	row := func(label, value string) { rows = append(rows, statusRow{label, value}) }
+	defer func() {
+		width := 11
+		for _, r := range rows {
+			width = max(width, utf8.RuneCountInString(r.label))
+		}
+		for _, r := range rows {
+			fmt.Fprintf(w, "  %s%s %s\n", r.label, strings.Repeat(" ", width-utf8.RuneCountInString(r.label)), r.value)
+		}
+	}()
+	row(i18n.T("System"), s.OS.String())
 	selinux := s.SELinux
 	if s.SELinux == "Enforcing" {
-		selinux += " (protecting the system)"
+		selinux = fmt.Sprintf(i18n.T("%s (protecting the system)"), s.SELinux)
 	}
-	fmt.Fprintf(w, "  SELinux     %s\n", orNone(selinux))
+	row("SELinux", orNoneT(selinux))
 	if len(s.FailedUnits) == 0 {
-		fmt.Fprintln(w, "  Services    none failed")
+		row(i18n.T("Services"), i18n.T("none failed"))
 	} else {
-		fmt.Fprintf(w, "  Services    failed: %s\n", strings.Join(s.FailedUnits, " "))
+		row(i18n.T("Services"), fmt.Sprintf(i18n.T("failed: %s"), strings.Join(s.FailedUnits, " ")))
 	}
 	if s.Denials24h == 0 {
-		fmt.Fprintln(w, "  Denials     none in the last 24 hours")
+		row(i18n.T("Denials"), i18n.T("none in the last 24 hours"))
 	} else {
-		fmt.Fprintf(w, "  Denials     %d in the last 24 hours\n", s.Denials24h)
+		row(i18n.T("Denials"), fmt.Sprintf(i18n.T("%d in the last 24 hours"), s.Denials24h))
 	}
-	fmt.Fprintf(w, "  Disk /      %.1f %% used, %s free\n", s.DiskPct, diag.HumanBytes(int64(s.Disk.Free)))
-	if s.SnapshotsUnreadable {
-		fmt.Fprintln(w, "  Snapshots   only root can list them (sudo basalt status)")
-	} else if s.Snapshots == 0 {
-		fmt.Fprintln(w, "  Snapshots   none")
-	} else {
-		fmt.Fprintf(w, "  Snapshots   %d, newest %s\n", s.Snapshots, s.LastSnapshot)
+	row(i18n.T("Disk /"), fmt.Sprintf(i18n.T("%.1f %% used, %s free"), s.DiskPct, diag.HumanBytes(int64(s.Disk.Free))))
+	switch {
+	case s.SnapshotsUnreadable:
+		row(i18n.T("Snapshots"), i18n.T("only root can list them (sudo basalt status)"))
+	case s.Snapshots == 0:
+		row(i18n.T("Snapshots"), i18n.T("none"))
+	default:
+		row(i18n.T("Snapshots"), fmt.Sprintf(i18n.T("%d, newest %s"), s.Snapshots, s.LastSnapshot))
 	}
 	rb := s.RollbackState
-	switch rb {
-	case "none":
-		rb = "none waiting"
-	case "unknown":
-		rb = "only root can check (sudo basalt status)"
+	switch {
+	case rb == "none":
+		rb = i18n.T("none waiting")
+	case rb == "unknown":
+		rb = i18n.T("only root can check (sudo basalt status)")
+	case strings.HasPrefix(rb, "pending"):
+		rb = i18n.T("pending: reboot to use the rolled-back root")
 	}
-	fmt.Fprintf(w, "  Rollback    %s\n", rb)
-	fmt.Fprintf(w, "  Assistant   background service %s, %s\n", orNone(s.Daemon), plural(s.Pending, "proposal waiting", "proposals waiting"))
+	row(i18n.T("Rollback"), rb)
+	daemon := orNoneT(s.Daemon)
+	switch s.Daemon {
+	case "active":
+		daemon = i18n.T("active")
+	case "inactive":
+		daemon = i18n.T("inactive")
+	case "failed":
+		daemon = i18n.T("failed")
+	}
+	row(i18n.T("Assistant"), fmt.Sprintf(i18n.N("background service %s, %d proposal waiting", "background service %s, %d proposals waiting", s.Pending), daemon, s.Pending))
 	switch {
 	case auditErr != nil:
-		fmt.Fprintf(w, "  Audit log   CHAIN BROKEN: %v (basalt audit verify)\n", auditErr)
+		row(i18n.T("Audit log"), fmt.Sprintf(i18n.T("CHAIN BROKEN: %v (basalt audit verify)"), auditErr))
 	case auditN >= 0:
-		fmt.Fprintf(w, "  Audit log   %d records, chain intact\n", auditN)
+		row(i18n.T("Audit log"), fmt.Sprintf(i18n.N("%d record, chain intact", "%d records, chain intact", int(auditN)), auditN))
 	}
+}
+
+// statusShown is basalt status --json: the English status (the machine
+// reference, the same for MCP) and, when the reader's language translates
+// them, problems_local in the order of problems, for the desktop.
+type statusShown struct {
+	diag.Status
+	ProblemsLocal []string `json:"problems_local,omitempty"`
+}
+
+func statusLocalized(s diag.Status) statusShown {
+	out := statusShown{Status: s}
+	tr := i18n.Local()
+	if tr.English() {
+		return out
+	}
+	changed := false
+	for _, p := range s.Problems {
+		l := titles.Phrase(tr, p)
+		changed = changed || l != p
+		out.ProblemsLocal = append(out.ProblemsLocal, l)
+	}
+	if !changed {
+		out.ProblemsLocal = nil
+	}
+	return out
+}
+
+// orNoneT is orNone in the reader's language.
+func orNoneT(s string) string {
+	if s == "" {
+		return i18n.T("none")
+	}
+	return s
 }
 
 func plural(n int, one, many string) string {
@@ -801,13 +877,18 @@ func (a *app) pending() error {
 // language for the desktop to show: title_local (the title), report_local
 // (what is wrong, why and what applying will do, written from the facts),
 // status_local (the status word) and checks_local (what each check of
-// the result proves, in the order of result.checks).
+// the result proves, in the order of result.checks) with
+// checks_output_local (what each check observed, when that is a known word
+// such as "enabled").
 type shown struct {
 	*proposal.Proposal
 	TitleLocal  string   `json:"title_local,omitempty"`
 	ReportLocal string   `json:"report_local,omitempty"`
 	StatusLocal string   `json:"status_local,omitempty"`
 	ChecksLocal []string `json:"checks_local,omitempty"`
+	// ChecksOutputLocal is result.checks[].output in the reader's
+	// language, in the same order (a path or number stays as it is).
+	ChecksOutputLocal []string `json:"checks_output_local,omitempty"`
 }
 
 func localized(p *proposal.Proposal) shown {
@@ -834,6 +915,15 @@ func localized(p *proposal.Proposal) shown {
 		}
 		if changed {
 			s.ChecksLocal = cs
+		}
+		changed = false
+		outs := make([]string, len(p.Result.Checks))
+		for i, c := range p.Result.Checks {
+			outs[i] = titles.Phrase(tr, c.Output)
+			changed = changed || outs[i] != c.Output
+		}
+		if changed {
+			s.ChecksOutputLocal = outs
 		}
 	}
 	return s

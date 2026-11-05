@@ -61,8 +61,9 @@ has one.
 |---|---|---|
 | `edition` | `server` | `desktop` is accepted and marked experimental: the server system plus the desktop package set (`basalt-desktop`, `basalt-shell-selinux`, `basalt-greeter-selinux`, `basalt-voice`, `basalt-models`, `basalt-llm`, `basalt-llm-selinux`; no model: the desktop asks the person before it downloads one, see [models.md](models.md)) and `packages.extra`; the graphical boot splash (`rhgb quiet plymouth.ignore-serial-consoles` on the kernel command line; the serial console keeps working and can also answer the disk passphrase) and the Basalt login screen. A server keeps the text boot and console login |
 | `target.disk` | | the disk Basalt OS goes on |
-| `target.wipe` | `false` | `true` erases the whole disk; `false` keeps every partition on it and installs into its largest free region (dual boot, GPT only); a plan for an empty disk must say `true` |
-| `target.esp` | none | with `wipe: false`, an existing EFI system partition to share (for example Windows'); by default Basalt OS gets its own in the free space |
+| `target.wipe` | `false` | `true` erases the whole disk; `false` keeps every partition on it and installs into its largest free region (dual boot, GPT only); a plan for an empty disk must say `true` (the wizard sets it for an empty disk it suggests) |
+| `target.esp` | none | with `wipe: false`, an existing EFI system partition to share (for example Windows'); by default Basalt OS gets its own in the free space. Refused when the firmware's boot entries show another Fedora's `EFI/fedora` on it |
+| `target.system`, `target.boot` | none | with `wipe: false`, existing partitions of the disk the person chose to reuse (custom layout): they are formatted, nothing else is. Windows, NTFS, BitLocker, exFAT and EFI partitions, the adopted /home and mounted partitions are refused; a Linux file system or LUKS volume is accepted with a warning that its files are lost. Minimum 8 GiB (system) and 500 MiB (/boot) |
 | `layout.mode` | `automatic` | `manual`: `esp_mib`, `boot_mib`, `root_gib` (0 = rest), `subvolumes` (root, home and var_log required) |
 | `encryption.enabled` | `true` | LUKS2 under btrfs (ADR 0002) |
 | `encryption.scope` | `system` | `system` (everything), `home` (a new /home partition of its own only: the system, `/etc`, the logs and `/var` stay unencrypted; the system partition is 64 GiB unless `layout.root_gib` says otherwise) or `none` (servers in a controlled place; same as `enabled: false`) |
@@ -72,7 +73,7 @@ has one.
 | `encryption.store_recovery_key` | `false` | `true` also leaves the key in `/root/basalt-recovery-key.txt` on the disk it protects (labs; the kickstart's `basalt.recovery-key=store`) |
 | `encryption.recovery_key_media` | none | the label of a file system on a USB stick (removable or USB disk, FAT, exFAT, ext4, btrfs or XFS) that receives a copy of the key when the installation has succeeded; that counts as the acknowledgement, so nobody has to be there. The stick must be plugged in when the plan is validated |
 | `profile` | `auto` | `minimal` on a virtual machine, `standard` on bare metal (same rule as the kickstart) |
-| `hostname`, `timezone`, `locale`, `keymap` | `basalt`, `Etc/UTC`, `en_US.UTF-8`, `us` | |
+| `hostname`, `timezone`, `locale`, `keymap` | `basalt`, `Etc/UTC`, `en_US.UTF-8`, `us` | the wizard starts from the live session (boot line `basalt.inst.locale`, `keymap`, `timezone`; the session's `LANG` and XKB layout; `/etc/locale.conf`, `vconsole.conf`, `00-keyboard.conf`, `localtime`), and a language suggests its keyboard and time zone (pt_BR: ABNT2, America/Sao_Paulo). `keymap` is a console keymap (`br`, `us-intl`, legacy names such as `br-abnt2` are accepted): `vconsole.conf` gets it with its XKB layout, so the initramfs uses it at the disk passphrase prompt, and `/etc/X11/xorg.conf.d/00-keyboard.conf` gets the XKB layout for the login screen. The locale's `glibc-langpack-<lang>` is installed |
 | `lockdown` | `true` | `lockdown=integrity module.sig_enforce=1` on the kernel command line |
 | `accounts.root` | locked | `ssh_keys`, `password` or `password_hash` |
 | `accounts.user` | none | `name`, `password` or `password_hash`, `ssh_keys`, `admin` (wheel, default true), `home_dir` (default `/home/<name>`), `uid` and `gid` (the numbers of the files on an existing /home) |
@@ -111,6 +112,64 @@ boot); every frontend offers them and the plan records them.
   one (`target.esp`; then Fedora's boot files go into `EFI/fedora` on it).
   The firmware boot menu lists "Basalt OS" next to the other systems.
   Making room (shrinking Windows) is done beforehand, in Windows.
+- Custom: reuse partitions. With the free space option, the person may
+  also pick an existing partition of the disk for the system and one for
+  /boot (an old Linux, for example). Those two are formatted; every other
+  partition is left exactly as it is. Windows data (NTFS, BitLocker), EFI
+  system partitions and the adopted /home cannot be picked.
+- What the disks hold. The disk page shows each disk's model, serial
+  number, size and what is on it: the systems named by the firmware's
+  boot entries and Windows' partition types, LUKS and BitLocker volumes,
+  NTFS and Linux file systems, EFI system partitions. No disk is
+  preselected and picking one never erases it: the next screen asks. A
+  disk with another system, an encrypted volume or data carries a warning;
+  one where no partition table or known signature is found says that a
+  headerless encrypted disk (plain dm-crypt, VeraCrypt) or a locked
+  self-encrypting disk looks the same, and only Erase goes on from there.
+- The same disk at install time. The confirmation word is the disk's
+  serial number (the kernel name only for a disk without one; kernel
+  names can change between boots). Right before writing, the installer
+  probes again and refuses when the disk differs from the review in
+  serial, WWN, model, size, partition table ID or any partition's number,
+  ID, type, start or size, or when the adopted /home changed.
+  `target.disk` may be a kernel path, `serial:SERIAL` or a
+  `/dev/disk/by-id/` link.
+- A shared ESP that already holds EFI/fedora (another Fedora) is refused:
+  the preview mounts it read-only to look. The installer then makes its
+  own ESP and the other Fedora stays in the boot menu.
+- The review starts with what happens to each disk, with model and
+  serial: the partitions that are new, FORMATTED (chosen for reuse),
+  shared (the ESP), adopted (/home) and untouched, and every other disk as
+  untouched. Before anything runs, a safety check reads every generated
+  command and refuses the plan if one would write to anything else:
+  `sgdisk` only adds the new entries on the target disk (the whole table
+  only when the disk is erased), `wipefs`, `mkfs` and `cryptsetup
+  luksFormat` only touch the new and the chosen partitions, key slots
+  change only on the new volume (and on the adopted /home when its TPM
+  enrollment is asked for), `efibootmgr` only adds an entry, and raw
+  writers (`dd`, `blkdiscard`, `sfdisk`, `parted`, `mkswap` and others)
+  are never used (`internal/steps/safety.go`).
+- The other systems in the boot menu. Before GRUB's configuration is
+  generated, every other EFI system partition (on the kept disk and on the
+  other disks) is mounted read-only, searched for Windows' boot manager
+  and other distributions' shim, GRUB or systemd-boot, and unmounted;
+  `/etc/grub.d/35_basalt_other_systems` chainloads each one
+  (`basalt-installer other-systems`). Other file systems are never
+  mounted: os-prober is not used, because it mounts btrfs volumes
+  read-write. The firmware's own boot entries and their order are kept;
+  `efibootmgr --create` adds Basalt OS at the front.
+- Secure Boot and dual boot. Windows' boot manager is signed through the
+  Microsoft Windows Production PCA 2011 (and the Windows UEFI CA 2023),
+  other distributions' shim through the Microsoft UEFI CA 2011 (and 2023).
+  The default path (MOK mode, `basalt-secureboot enroll-mok`) changes only
+  shim's MOK list, never the firmware's db, so both keep booting. Custom
+  db mode (docs/secure-boot.md) replaces db and refuses them unless those
+  Microsoft certificates are put back in db; the installer reads the
+  firmware's db and warns when a system it found would be refused.
+- TPM unlock next to Windows. A Windows or firmware update that changes
+  the Secure Boot keys or the revocation list (dbx) changes PCR 7: the
+  next Basalt OS start asks for the recovery key and seals the TPM key
+  again. The review says so when Windows is on the machine.
 - What is encrypted. The whole system (default), only a new /home
   partition, or nothing. With "/home only" the wizard says what stays
   readable: the system, its settings, the logs and `/var` with containers,
@@ -291,7 +350,7 @@ Hardware and the boot menu:
 Kernel command line options of the live image: `basalt.inst.repo=URL`,
 `basalt.inst.installed-repo=URL`, `basalt.inst.hostname=`,
 `basalt.inst.unlock=`, `basalt.inst.finish=`, `basalt.inst.plan=PATH|URL`
-(start from a plan file), `basalt.inst.confirm=DISK` (see below),
+(start from a plan file), `basalt.inst.confirm=SERIAL` (see below),
 `basalt.inst.ui=auto|tui|gui`, `basalt.inst.debug-shell`. A plan at
 `basalt/plans/default.yaml` on the media (`LIVE_PLANS` when building) is
 the starting point when the boot line names none.
@@ -300,17 +359,21 @@ the starting point when the boot line names none.
 
 `basalt.inst.plan=` alone fills in the wizard: every screen shows the
 plan's values (the welcome screen names the plan, or says why it could not
-be read), and the person still reviews the steps and types the disk name.
+be read), and the person still reviews the steps and types the disk's
+serial number.
 
 An installation without questions needs the boot line to name the disk it
 erases as well, the way a person types it in the wizard:
 
 ```
-basalt.inst.plan=http://192.0.2.1/plans/web01.yaml basalt.inst.confirm=vda
+basalt.inst.plan=http://192.0.2.1/plans/web01.yaml basalt.inst.confirm=S4EWNX0R123456
 ```
 
-Then the engine service (`basalt-installer serve`) loads the plan,
-checks that `basalt.inst.confirm` names the plan's `target.disk`, makes the
+(the disk's serial number, `lsblk -o NAME,MODEL,SERIAL`; the kernel name
+only for a disk without a serial). Then the engine service
+(`basalt-installer serve`) loads the plan, checks that
+`basalt.inst.confirm` is the confirmation word of the plan's
+`target.disk`, makes the
 preview and installs; the screen and the serial console show the text
 installer following it (`basalt-installer tui --attach`). When the
 confirmation names another disk, or the plan cannot be read or is not
@@ -465,4 +528,9 @@ Basalt parts (encryption enrollment, snapshots setup, services) are in its
 - The tui-tools repository file moves into `basalt-third-party` once it
   exists (`basalt-tools` is already in `basalt-release`); the installer
   then only enables or disables it.
-- Translations and keyboard layouts in the frontends.
+- Translations of the graphical installer's own texts (the text installer
+  and the engine's messages are translated; the language, keyboard and
+  time zone of the installed system can be chosen in both).
+- Creating, deleting or resizing partitions by hand in the custom layout
+  (it reuses existing partitions and adds new ones in the largest free
+  region).

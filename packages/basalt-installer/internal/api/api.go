@@ -216,8 +216,13 @@ func (s *Server) handle(ctx context.Context, req Request) (any, error) {
 	case "facts":
 		return ss.Facts(ctx, true)
 	case "suggest":
-		p, f, err := ss.Suggest(ctx)
-		return map[string]any{"plan": p, "facts": f, "subvolumes": subvolumes()}, err
+		h, err := decode[session.Hints](req.Args)
+		if err != nil {
+			return nil, err
+		}
+		p, f, err := ss.SuggestWith(ctx, h)
+		return map[string]any{"plan": p, "facts": f, "subvolumes": subvolumes(),
+			"languages": plan.Languages(), "keyboards": plan.Keyboards()}, err
 	case "validate":
 		a, err := decode[struct{ Plan plan.Plan }](req.Args)
 		if err != nil {

@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.13.3
+Version:        0.13.4
 Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
@@ -207,6 +207,19 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Thu Nov 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.4-1
+- basalt fallback gnome|basalt: the GNOME fallback's login screen as a
+  proposal (desktop.fallback, gate 0.3.3): it enables the target display
+  manager first, then disables the other, checks both, and takes the
+  snapshot pair before applying.
+- basalt status and check results in the reader's language;
+  problems_local in basalt status --json next to the English problems.
+- busctl options end before the Notify arguments.
+- basalt apply asks and reports in the reader's language and accepts
+  their word for yes (the applier had no catalog: English only).
+- basalt status lines its values up under the translated labels (pt_BR
+  "Registro de auditoria" ran into its value), counting letters, not bytes.
+
 * Wed Oct 21 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.3-1
 - The body of proposals and reports in the reader's language: basalt
   show, pending and apply, and the proposal part of why, fix and disk,

@@ -591,6 +591,11 @@ func EffectIn(tr i18n.Tr, a action.Action) string {
 		return fmt.Sprintf(tr.T("add the software source %s (%s) and trust its signing key %s"), p["name"], p["url"], p["fingerprint"])
 	case action.SourceRemove:
 		return fmt.Sprintf(tr.T("remove the software source %s"), p["id"])
+	case action.DesktopFallback:
+		if p["target"] == "gnome" {
+			return tr.T("make GDM the login screen from the next start, so GNOME can lock the screen")
+		}
+		return tr.T("make the Basalt login screen (greetd) the login screen again from the next start")
 	case action.KeyboardSystem:
 		return fmt.Sprintf(tr.T("make %s the keyboard layouts of the login screen, the text console (%s) and new accounts"), p["layouts"], p["keymap"])
 	case action.AuditRun:

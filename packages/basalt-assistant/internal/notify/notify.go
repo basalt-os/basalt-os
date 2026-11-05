@@ -291,13 +291,16 @@ func Body(ev Event) string {
 }
 
 // BusctlArgs are the arguments of `busctl --user call` for the freedesktop
-// Notify method; severity 4 or more is critical urgency.
+// Notify method; severity 4 or more is critical urgency. "--" ends
+// busctl's options: busctl permutes its arguments (getopt), so without it
+// the expire timeout "-1" at the end is read as an option ("invalid option
+// -- '1'") and no notification is ever shown.
 func BusctlArgs(ev Event) []string {
 	urgency := "1"
 	if ev.Severity >= 4 {
 		urgency = "2"
 	}
-	return []string{"--user", "call", "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+	return []string{"--user", "--", "call", "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
 		"org.freedesktop.Notifications", "Notify", "susssasa{sv}i",
 		"Basalt OS", "0", "dialog-warning", Summary(ev), Body(ev), "0", "1", "urgency", "y", urgency, "-1"}
 }

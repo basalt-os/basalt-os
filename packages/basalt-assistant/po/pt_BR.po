@@ -2322,3 +2322,189 @@ msgstr "A mudança em si (%s) continua esperando por você: abra para tentar de 
 #: internal/titles/titles.go:220
 msgid "Nothing will be changed by this report."
 msgstr "Nada será alterado por este relatório."
+
+msgid "Everything looks fine."
+msgstr "Está tudo bem."
+
+msgid "%d thing needs your attention:"
+msgid_plural "%d things need your attention:"
+msgstr[0] "%d coisa precisa da sua atenção:"
+msgstr[1] "%d coisas precisam da sua atenção:"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "%s (protecting the system)"
+msgstr "%s (protegendo o sistema)"
+
+msgid "Services"
+msgstr "Serviços"
+
+msgid "none failed"
+msgstr "nenhum falhou"
+
+msgid "failed: %s"
+msgstr "falharam: %s"
+
+msgid "Denials"
+msgstr "Bloqueios"
+
+msgid "none in the last 24 hours"
+msgstr "nenhum nas últimas 24 horas"
+
+msgid "%d in the last 24 hours"
+msgstr "%d nas últimas 24 horas"
+
+msgid "%.1f %% used, %s free"
+msgstr "%.1f %% em uso, %s livres"
+
+msgid "Disk /"
+msgstr "Disco /"
+
+msgid "Snapshots"
+msgstr "Snapshots"
+
+msgid "only root can list them (sudo basalt status)"
+msgstr "só o root pode listá-los (sudo basalt status)"
+
+msgid "none"
+msgstr "nenhum"
+
+msgid "%d, newest %s"
+msgstr "%d, o mais novo %s"
+
+msgid "none waiting"
+msgstr "nenhum aguardando"
+
+msgid "only root can check (sudo basalt status)"
+msgstr "só o root pode verificar (sudo basalt status)"
+
+msgid "pending: reboot to use the rolled-back root"
+msgstr "pendente: reinicie para usar a raiz restaurada"
+
+msgid "Rollback"
+msgstr "Reversão"
+
+msgid "active"
+msgstr "ativo"
+
+msgid "inactive"
+msgstr "inativo"
+
+msgid "Assistant"
+msgstr "Assistente"
+
+msgid "background service %s, %d proposal waiting"
+msgid_plural "background service %s, %d proposals waiting"
+msgstr[0] "serviço em segundo plano %s, %d proposta aguardando"
+msgstr[1] "serviço em segundo plano %s, %d propostas aguardando"
+
+msgid "Audit log"
+msgstr "Registro de auditoria"
+
+msgid "CHAIN BROKEN: %v (basalt audit verify)"
+msgstr "CADEIA QUEBRADA: %v (basalt audit verify)"
+
+msgid "%d record, chain intact"
+msgid_plural "%d records, chain intact"
+msgstr[0] "%d registro, cadeia íntegra"
+msgstr[1] "%d registros, cadeia íntegra"
+
+msgid "SELinux is %s, not Enforcing, so it is not protecting the system"
+msgstr "O SELinux está em %s, não em Enforcing, então não está protegendo o sistema"
+
+msgid "%s has failed. See why: basalt why %s"
+msgstr "%s falhou. Veja por quê: basalt why %s"
+
+msgid "SELinux blocked something once in the last 24 hours. See what: basalt fix selinux --since 24h"
+msgstr "O SELinux bloqueou algo uma vez nas últimas 24 horas. Veja o quê: basalt fix selinux --since 24h"
+
+msgid "SELinux blocked something %d times in the last 24 hours. See what: basalt fix selinux --since 24h"
+msgstr "O SELinux bloqueou algo %d vezes nas últimas 24 horas. Veja o quê: basalt fix selinux --since 24h"
+
+msgid "The root file system is %.0f %% full. See what uses it: basalt disk"
+msgstr "O sistema de arquivos raiz está %.0f %% cheio. Veja o que o ocupa: basalt disk"
+
+msgid "Snapshots are off: the root file system has no snapper configuration yet, so updates cannot be undone. They are set up at the next start (basalt-snapshots-auto.service), or now with: sudo basalt-snapshots-setup. If they still are not, see why: journalctl -u basalt-snapshots-auto"
+msgstr "Os snapshots estão desligados: o sistema de arquivos raiz ainda não tem configuração do snapper, então as atualizações não podem ser desfeitas. Eles são configurados no próximo início (basalt-snapshots-auto.service), ou agora com: sudo basalt-snapshots-setup. Se ainda assim não forem, veja por quê: journalctl -u basalt-snapshots-auto"
+
+msgid "Snapshots are off: the root file system has no snapper configuration, so updates cannot be undone. See why: journalctl -u basalt-snapshots-auto"
+msgstr "Os snapshots estão desligados: o sistema de arquivos raiz não tem configuração do snapper, então as atualizações não podem ser desfeitas. Veja por quê: journalctl -u basalt-snapshots-auto"
+
+msgid "Snapshots are off: the root file system is %s, not btrfs, so updates cannot be undone from a snapshot. Basalt OS snapshots need btrfs (a new install of Basalt OS sets it up)"
+msgstr "Os snapshots estão desligados: o sistema de arquivos raiz é %s, não btrfs, então as atualizações não podem ser desfeitas por um snapshot. Os snapshots do Basalt OS precisam de btrfs (uma instalação nova do Basalt OS já o configura)"
+
+msgid "A package transaction did not finish (snapshot %s has no matching post snapshot). See: basalt snapshots"
+msgstr "Uma transação de pacotes não terminou (o snapshot %s não tem o snapshot posterior correspondente). Veja: basalt snapshots"
+
+msgid "A rollback is waiting: it takes effect at the next boot"
+msgstr "Uma reversão está aguardando: ela vale a partir do próximo boot"
+
+msgid "1 proposal is waiting for your decision. See: basalt pending"
+msgstr "1 proposta aguarda a sua decisão. Veja: basalt pending"
+
+msgid "%d proposals are waiting for your decision. See: basalt pending"
+msgstr "%d propostas aguardam a sua decisão. Veja: basalt pending"
+
+msgid "enabled"
+msgstr "ligado"
+
+msgid "disabled"
+msgstr "desligado"
+
+msgid "GNOME as a fallback: installed"
+msgstr "GNOME como alternativa: instalado"
+
+msgid "GNOME as a fallback: not installed (basalt-desktop-gnome-fallback)"
+msgstr "GNOME como alternativa: não instalado (basalt-desktop-gnome-fallback)"
+
+msgid "Login screen at the next start: %s"
+msgstr "Tela de login no próximo início: %s"
+
+msgid "make GDM the login screen from the next start, so GNOME can lock the screen"
+msgstr "fazer do GDM a tela de login a partir do próximo início, para o GNOME poder bloquear a tela"
+
+msgid "make the Basalt login screen (greetd) the login screen again from the next start"
+msgstr "voltar a usar a tela de login do Basalt (greetd) a partir do próximo início"
+
+msgid "choose the other login screen in Settings, About, or with basalt fallback; a snapshot is taken before and after as well."
+msgstr "escolha a outra tela de login em Configurações, Sobre, ou com basalt fallback; um snapshot também é feito antes e depois."
+
+msgid "%s is off"
+msgstr "%s está desligado"
+
+msgid "GDM starts as the login screen from the next start; the Basalt session stays in its list"
+msgstr "o GDM é a tela de login a partir do próximo início; a sessão Basalt continua na lista dele"
+
+msgid "the Basalt login screen starts again from the next start; GNOME stays installed"
+msgstr "a tela de login do Basalt volta a partir do próximo início; o GNOME continua instalado"
+
+msgid "the login screen from the next start is %s"
+msgstr "a tela de login a partir do próximo início é %s"
+
+msgid "GNOME's login screen (GDM) starts from the next start, so the GNOME session can lock the screen."
+msgstr "A tela de login do GNOME (GDM) é usada a partir do próximo início, para a sessão GNOME poder bloquear a tela."
+
+msgid "The Basalt session stays in its list."
+msgstr "A sessão Basalt continua na lista dela."
+
+msgid "To go back, choose the Basalt login screen again the same way."
+msgstr "Para voltar, escolha de novo a tela de login do Basalt do mesmo jeito."
+
+msgid "The Basalt login screen starts from the next start."
+msgstr "A tela de login do Basalt é usada a partir do próximo início."
+
+msgid "GNOME stays installed and in its list, without a screen lock."
+msgstr "O GNOME continua instalado e na lista dela, sem bloqueio de tela."
+
+msgid "use GDM as the login screen while GNOME is the fallback"
+msgstr "usar o GDM como tela de login enquanto o GNOME é a alternativa"
+
+msgid "use the Basalt login screen again"
+msgstr "usar de novo a tela de login do Basalt"
+
+msgid "turn off %s as the login screen"
+msgstr "desligar o %s como tela de login"
+
+msgid "make %s the login screen from the next start"
+msgstr "fazer do %s a tela de login a partir do próximo início"

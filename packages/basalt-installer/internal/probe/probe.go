@@ -34,6 +34,14 @@ type Facts struct {
 	// KeyMedia are the file systems on removable media (USB sticks, SD
 	// cards) that can take a copy of the recovery key.
 	KeyMedia []KeyMedium `json:"key_media"`
+	// BootEntries are the firmware's boot entries (efibootmgr), which name
+	// the systems on each EFI system partition.
+	BootEntries []BootEntry `json:"boot_entries,omitempty"`
+	// SecureBootDB says whether the firmware trusts Microsoft's
+	// certificates (Windows and other distributions' shim need them).
+	SecureBootDB SecureBootDB `json:"secure_boot_db"`
+	// Live is the language, keyboard and time zone of the live system.
+	Live LiveSettings `json:"live"`
 }
 
 // KeyMedium is a writable file system on a removable disk.
@@ -108,15 +116,21 @@ func ParseKeyMedia(data []byte) ([]KeyMedium, error) {
 
 // Disk is one whole disk.
 type Disk struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	SizeBytes  int64  `json:"size_bytes"`
-	Model      string `json:"model,omitempty"`
-	Serial     string `json:"serial,omitempty"`
-	Tran       string `json:"tran,omitempty"`
-	Removable  bool   `json:"removable"`
-	ReadOnly   bool   `json:"read_only"`
-	Rotational bool   `json:"rotational"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	Model     string `json:"model,omitempty"`
+	Serial    string `json:"serial,omitempty"`
+	// WWN is the disk's World Wide Name, when it has one.
+	WWN string `json:"wwn,omitempty"`
+	// PTUUID is the partition table's ID (the GPT disk GUID).
+	PTUUID string `json:"ptuuid,omitempty"`
+	// ByID are the disk's stable names in /dev/disk/by-id.
+	ByID       []string `json:"by_id,omitempty"`
+	Tran       string   `json:"tran,omitempty"`
+	Removable  bool     `json:"removable"`
+	ReadOnly   bool     `json:"read_only"`
+	Rotational bool     `json:"rotational"`
 	// Contents summarizes what is on the disk now ("empty", "3 partitions:
 	// vfat, ext4, crypto_LUKS").
 	Contents string `json:"contents"`
@@ -135,6 +149,17 @@ type Disk struct {
 	// Free lists the unused regions of a GPT disk large enough to matter
 	// (at least 1 MiB, aligned to 1 MiB), in disk order.
 	Free []Region `json:"free,omitempty"`
+	// Holds lists what is on the disk in words ("NTFS /dev/sda3 (Windows
+	// or data)", "LUKS encrypted volume /dev/sda2").
+	Holds []string `json:"holds,omitempty"`
+	// Systems names the operating systems found on the disk (the
+	// firmware's boot entries on its EFI system partitions, Windows'
+	// partition types).
+	Systems []string `json:"systems,omitempty"`
+	// Caution is set when erasing the disk loses something that matters:
+	// another operating system, an encrypted volume, file systems with
+	// data. "" for an empty disk.
+	Caution string `json:"caution,omitempty"`
 }
 
 // Partition is one existing partition.
@@ -145,10 +170,12 @@ type Partition struct {
 	Sectors int64  `json:"sectors"` // length in sectors
 	Bytes   int64  `json:"size_bytes"`
 	// Type is the GPT partition type GUID (lower case) or the MBR type.
-	Type       string `json:"type,omitempty"`
-	FSType     string `json:"fstype,omitempty"`
-	Label      string `json:"label,omitempty"`
-	UUID       string `json:"uuid,omitempty"`
+	Type   string `json:"type,omitempty"`
+	FSType string `json:"fstype,omitempty"`
+	Label  string `json:"label,omitempty"`
+	UUID   string `json:"uuid,omitempty"`
+	// PartUUID is the GPT partition's unique GUID (lower case).
+	PartUUID   string `json:"partuuid,omitempty"`
 	Mountpoint string `json:"mountpoint,omitempty"`
 	// Disk is the whole disk the partition is on.
 	Disk string `json:"disk"`
@@ -233,6 +260,9 @@ func (d Disk) Describe() string {
 	if d.Model != "" {
 		parts = append(parts, d.Model)
 	}
+	if d.Serial != "" {
+		parts = append(parts, "serial "+d.Serial)
+	}
 	if d.Tran != "" {
 		parts = append(parts, d.Tran)
 	}
@@ -254,14 +284,74 @@ func HumanSize(b int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-// Disk returns the disk with the given name or path.
+// Disk returns the disk with the given name or path: the kernel name
+// (/dev/nvme0n1, which can change between boots), a stable name in
+// /dev/disk/by-id, or "serial:" and the disk's serial number.
 func (f Facts) Disk(nameOrPath string) (Disk, bool) {
 	for _, d := range f.Disks {
-		if d.Path == nameOrPath || d.Name == nameOrPath || "/dev/"+d.Name == nameOrPath {
+		if d.Path == nameOrPath || d.Name == nameOrPath || "/dev/"+d.Name == nameOrPath ||
+			(d.Serial != "" && nameOrPath == "serial:"+d.Serial) {
 			return d, true
+		}
+		for _, id := range d.ByID {
+			if id == nameOrPath {
+				return d, true
+			}
 		}
 	}
 	return Disk{}, false
+}
+
+// SameDisk says how disk b differs from a, the same disk probed earlier
+// (the review): serial, WWN, model, size, partition table and every
+// partition's number, ID, type, start and size. "" when they are the same.
+// The kernel name alone proves nothing: it can point at another disk
+// after a restart or a hot-plug.
+func SameDisk(a, b Disk) string {
+	switch {
+	case a.Serial != b.Serial:
+		return fmt.Sprintf("serial %q, was %q", b.Serial, a.Serial)
+	case a.WWN != b.WWN:
+		return fmt.Sprintf("WWN %q, was %q", b.WWN, a.WWN)
+	case a.Model != b.Model:
+		return fmt.Sprintf("model %q, was %q", b.Model, a.Model)
+	case a.SizeBytes != b.SizeBytes:
+		return fmt.Sprintf("size %d bytes, was %d", b.SizeBytes, a.SizeBytes)
+	case a.Table != b.Table || a.PTUUID != b.PTUUID:
+		return fmt.Sprintf("partition table %s %s, was %s %s", b.Table, b.PTUUID, a.Table, a.PTUUID)
+	case len(a.Partitions) != len(b.Partitions):
+		return fmt.Sprintf("%d partitions, was %d", len(b.Partitions), len(a.Partitions))
+	}
+	for i := range a.Partitions {
+		x, y := a.Partitions[i], b.Partitions[i]
+		if x.Number != y.Number || x.PartUUID != y.PartUUID || x.Type != y.Type || x.Start != y.Start || x.Sectors != y.Sectors {
+			return fmt.Sprintf("partition %d (%s) changed", x.Number, x.Path)
+		}
+	}
+	return ""
+}
+
+// byID maps kernel disk names to their /dev/disk/by-id links (whole
+// disks only, no -partN links).
+func (p Prober) byID() map[string][]string {
+	out := map[string][]string{}
+	dir := p.path("/dev/disk/by-id")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), "-part") {
+			continue
+		}
+		t, err := os.Readlink(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		name := filepath.Base(t)
+		out[name] = append(out[name], "/dev/disk/by-id/"+e.Name())
+	}
+	return out
 }
 
 // Reader runs a read-only command and returns its standard output.
@@ -303,7 +393,7 @@ func (p Prober) Probe(ctx context.Context) (Facts, error) {
 	f.Release = osRelease(p.path("/etc/os-release"))
 	f.Interfaces = interfaces(p.path("/sys/class/net"))
 	out, err := p.Read(ctx, "lsblk", "--json", "--bytes", "--tree", "--output",
-		"NAME,PATH,SIZE,TYPE,RM,RO,ROTA,MODEL,SERIAL,TRAN,FSTYPE,MOUNTPOINTS,LABEL,UUID,PARTTYPE,PARTN,START,LOG-SEC,PTTYPE")
+		"NAME,PATH,SIZE,TYPE,RM,RO,ROTA,MODEL,SERIAL,WWN,TRAN,FSTYPE,MOUNTPOINTS,LABEL,UUID,PARTTYPE,PARTUUID,PARTN,START,LOG-SEC,PTTYPE,PTUUID")
 	if err != nil {
 		return f, fmt.Errorf("listing disks: %w", err)
 	}
@@ -321,7 +411,20 @@ func (p Prober) Probe(ctx context.Context) (Facts, error) {
 			}
 		}
 	}
+	if f.UEFI {
+		// Read-only: without arguments efibootmgr only lists the entries.
+		if out, err := p.Read(ctx, "efibootmgr"); err == nil {
+			f.BootEntries = ParseBootEntries(out)
+		}
+		f.SecureBootDB = ReadSecureBootDB(p.path("/sys/firmware/efi/efivars"))
+	}
+	byID := p.byID()
+	for i := range disks {
+		DescribeHolds(&disks[i], f.BootEntries)
+		disks[i].ByID = byID[disks[i].Name]
+	}
 	f.Disks = disks
+	f.Live = p.readLive()
 	f.KeyMedia, _ = ParseKeyMedia([]byte(out))
 	return f, nil
 }
@@ -488,12 +591,15 @@ type lsblkDev struct {
 	Rota        flexBool   `json:"rota"`
 	Model       *string    `json:"model"`
 	Serial      *string    `json:"serial"`
+	WWN         *string    `json:"wwn"`
+	PTUUID      *string    `json:"ptuuid"`
 	Tran        *string    `json:"tran"`
 	FSType      *string    `json:"fstype"`
 	Mountpoints []*string  `json:"mountpoints"`
 	Label       *string    `json:"label"`
 	UUID        *string    `json:"uuid"`
 	PartType    *string    `json:"parttype"`
+	PartUUID    *string    `json:"partuuid"`
 	PartN       flexInt    `json:"partn"`
 	Start       flexInt    `json:"start"`
 	LogSec      flexInt    `json:"log-sec"`
@@ -524,7 +630,7 @@ func ParseLsblk(data []byte) ([]Disk, error) {
 		}
 		disk := Disk{
 			Name: d.Name, Path: d.Path, SizeBytes: int64(d.Size),
-			Model: str(d.Model), Serial: str(d.Serial), Tran: str(d.Tran),
+			Model: str(d.Model), Serial: str(d.Serial), WWN: str(d.WWN), PTUUID: strings.ToLower(str(d.PTUUID)), Tran: str(d.Tran),
 			Removable: bool(d.RM), ReadOnly: bool(d.RO), Rotational: bool(d.Rota),
 		}
 		if disk.Path == "" {
@@ -534,6 +640,7 @@ func ParseLsblk(data []byte) ([]Disk, error) {
 		disk.InUse = inUse(d)
 		disk.Complex = complexReason(d)
 		partitions(&disk, d)
+		DescribeHolds(&disk, nil)
 		disks = append(disks, disk)
 	}
 	return disks, nil
@@ -626,7 +733,8 @@ func partitions(disk *Disk, d lsblkDev) {
 			continue
 		}
 		p := Partition{Path: c.Path, Number: int(c.PartN), Start: int64(c.Start), Bytes: int64(c.Size),
-			Type: strings.ToLower(str(c.PartType)), FSType: str(c.FSType), Label: str(c.Label), UUID: str(c.UUID), Disk: disk.Path}
+			Type: strings.ToLower(str(c.PartType)), FSType: str(c.FSType), Label: str(c.Label), UUID: str(c.UUID),
+			PartUUID: strings.ToLower(str(c.PartUUID)), Disk: disk.Path}
 		if p.Path == "" {
 			p.Path = "/dev/" + c.Name
 		}

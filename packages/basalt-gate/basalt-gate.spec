@@ -12,7 +12,7 @@
 %global debug_package %{nil}
 
 Name:           basalt-gate
-Version:        0.3.2
+Version:        0.3.3
 Release:        1%{?dist}
 Summary:        Approval gate: one decision point for every side effect
 License:        Apache-2.0 AND (MIT OR Apache-2.0)
@@ -147,6 +147,11 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_gate.if
 
 %changelog
+* Thu Nov 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.3-1
+- Registry: desktop.fallback (C2, group system.desktop, reversible by
+  snapshot), the login screen from the next start: GDM while GNOME is
+  the fallback session, or greetd and the Basalt login screen again.
+
 * Thu Oct 08 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.2-1
 - Registry: audit.run, risk.accept and risk.review (C2, group
   system.security), Security and Activity's actions through the system

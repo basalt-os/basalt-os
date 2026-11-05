@@ -52,7 +52,53 @@ const (
 	AuditRun          = "audit.run"          // run the AI audit suite on this computer (installing it first when asked)
 	RiskAccept        = "risk.accept"        // record that an administrator accepts a security risk (Security and Activity)
 	RiskReview        = "risk.review"        // forget an accepted risk: it is shown as a warning again
+	DesktopFallback   = "desktop.fallback"   // the display manager: GDM while GNOME is the fallback, greetd (Basalt) again
 )
+
+// FallbackPaths are the files desktop.fallback checks (tests move them):
+// GNOME's session and GDM's unit (both come with
+// basalt-desktop-gnome-fallback), and the display-manager.service link
+// systemctl enable writes.
+var FallbackPaths = struct {
+	GNOMESession   string
+	GDMUnits       []string
+	DisplayManager string
+}{"/usr/share/wayland-sessions/gnome.desktop", []string{"/usr/lib/systemd/system/gdm.service", "/etc/systemd/system/gdm.service"},
+	"/etc/systemd/system/display-manager.service"}
+
+// FallbackInstalled reports whether GNOME and GDM are installed (the
+// basalt-desktop-gnome-fallback package; no package query is needed, so
+// the desktop's read helper may ask).
+func FallbackInstalled() bool {
+	if _, err := os.Stat(FallbackPaths.GNOMESession); err != nil {
+		return false
+	}
+	for _, u := range FallbackPaths.GDMUnits {
+		if _, err := os.Stat(u); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// DisplayManager is the unit display-manager.service points at now
+// ("greetd", "gdm"), "" when none is set.
+func DisplayManager() string {
+	t, err := os.Readlink(FallbackPaths.DisplayManager)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSuffix(path.Base(t), ".service")
+}
+
+// fallbackUnits are the display managers of each desktop.fallback target:
+// the one turned on and the one turned off.
+func fallbackUnits(target string) (on, off string) {
+	if target == "gnome" {
+		return "gdm", "greetd"
+	}
+	return "greetd", "gdm"
+}
 
 // AuditSuitePkg is the package of the AI audit suite, from the Basalt
 // repositories (signed with the OpenBasalt release key).
@@ -384,6 +430,19 @@ func (a Action) Validate() error {
 		}
 	case KeyboardSystem:
 		return keyboardParams(p)
+	case DesktopFallback:
+		if err := onlyParams(a.Kind, p, "target"); err != nil {
+			return err
+		}
+		switch p["target"] {
+		case "gnome":
+			if !FallbackInstalled() {
+				return errors.New("GNOME and its login screen (GDM) are not installed: install basalt-desktop-gnome-fallback first")
+			}
+		case "basalt":
+		default:
+			return fmt.Errorf("target %q is not gnome or basalt", p["target"])
+		}
 	case AuditRun:
 		if !reRun.MatchString(p["run"]) {
 			return fmt.Errorf("run %q is not a time like 2026-10-08-101500", p["run"])
@@ -520,6 +579,15 @@ func (a Action) Commands() ([]runner.Command, error) {
 	case SourceRemove:
 		return []runner.Command{{Argv: []string{"basalt", "__source", "remove", "--id", p["id"]},
 			Description: "remove the source " + p["id"] + " (and its key, when no other repository of it is left)"}}, nil
+	case DesktopFallback:
+		on, off := fallbackUnits(p["target"])
+		// The new display manager first: when enabling it fails, the
+		// old one still starts. --force moves the display-manager.service
+		// link the other display manager holds.
+		return []runner.Command{
+			{Argv: []string{"systemctl", "enable", "--force", on + ".service"}, Description: "make " + on + " the login screen from the next start"},
+			{Argv: []string{"systemctl", "disable", off + ".service"}, Description: "turn off " + off + " as the login screen"},
+		}, nil
 	case KeyboardSystem:
 		cs, _ := keymap.ParseLayouts(p["layouts"])
 		layout, variant := keymap.XKBLists(cs)
@@ -744,6 +812,15 @@ func (a Action) verifyOther(since time.Time) []Check {
 			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
 				return sources.HasRecord(SourcePaths, sp.ID), SourcePaths.RecordPath(sp.ID)
 			}}}
+	case DesktopFallback:
+		on, off := fallbackUnits(p["target"])
+		return []Check{{Description: "the login screen from the next start is " + on,
+			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
+				dm := DisplayManager()
+				return dm == on, dm
+			}},
+			{Description: off + " is off", Argv: []string{"systemctl", "is-enabled", off + ".service"},
+				Want: []string{"disabled"}}}
 	case KeyboardSystem:
 		cs, _ := keymap.ParseLayouts(p["layouts"])
 		layout, variant := keymap.XKBLists(cs)

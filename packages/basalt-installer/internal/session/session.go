@@ -11,11 +11,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/engine"
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/othersys"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/probe"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/steps"
@@ -58,6 +60,33 @@ type Options struct {
 	KeyWriter KeyWriter
 	// HomeInspector reads an existing /home (default InspectReadOnly).
 	HomeInspector HomeInspector
+	// ESPHasFedora says whether an EFI system partition already holds
+	// EFI/fedora (default: mount it read-only and look, othersys).
+	ESPHasFedora func(ctx context.Context, dev string) (bool, error)
+}
+
+// checkSharedESP refuses to share an EFI system partition that holds
+// another Fedora's EFI/fedora: Basalt OS's boot files go there and would
+// replace that system's (a firmware boot entry does not always point at
+// it). A new ESP is the safe choice; the other Fedora stays in the menu.
+func (s *Session) checkSharedESP(ctx context.Context, p plan.Plan) error {
+	if p.Target.ESP == "" || p.Target.Wipe {
+		return nil
+	}
+	check := s.opt.ESPHasFedora
+	if check == nil {
+		check = func(ctx context.Context, dev string) (bool, error) {
+			return othersys.HasVendorDir(ctx, steps.DefaultWork, dev, "fedora")
+		}
+	}
+	has, err := check(ctx, p.Target.ESP)
+	if err != nil {
+		return fmt.Errorf("%s could not be checked for another Fedora: %v", p.Target.ESP, err)
+	}
+	if has {
+		return fmt.Errorf("%s already holds EFI/fedora (another Fedora): sharing it would replace that system's boot files; keep the partitions and let the installer create a new EFI system partition", p.Target.ESP)
+	}
+	return nil
 }
 
 // Session is safe for concurrent use.
@@ -143,6 +172,10 @@ func (s *Session) MakePreview(ctx context.Context, p plan.Plan) (Preview, error)
 	if err := issues.Err(); err != nil {
 		return Preview{Issues: issues}, err
 	}
+	if err := s.checkSharedESP(ctx, p); err != nil {
+		issues = append(issues, plan.Issue{Severity: plan.Error, Field: "target.esp", Message: err.Error()})
+		return Preview{Issues: issues}, issues.Err()
+	}
 	r, err := steps.Resolve(p, f, s.opt.Steps)
 	if err != nil {
 		return Preview{Issues: issues}, err
@@ -151,7 +184,9 @@ func (s *Session) MakePreview(ctx context.Context, p plan.Plan) (Preview, error)
 	if err != nil {
 		return Preview{Issues: issues}, err
 	}
-	text := steps.Preview(list)
+	// The disk plan comes first: what is created, formatted or left alone,
+	// with the disks' models and serial numbers.
+	text := steps.DiskPlan(r) + steps.Preview(list)
 	sum := sha256.Sum256([]byte(text + "\x00" + r.Plan.Redacted().JSON()))
 	pv := Preview{Resolved: r, Steps: list, Text: text, Issues: issues, Token: hex.EncodeToString(sum[:8])}
 	pv.Resolved.Plan = r.Plan // keep secrets for execution; Public() strips them
@@ -168,9 +203,41 @@ func (pv Preview) Public() Preview {
 	return out
 }
 
-// ConfirmWord is what the person types to confirm the wipe: the disk's
-// kernel name ("vda", "nvme0n1").
-func (pv Preview) ConfirmWord() string { return strings.TrimPrefix(pv.Resolved.Disk.Path, "/dev/") }
+// ConfirmWord is what the person types to confirm the installation: the
+// disk's serial number, which names that disk on every boot, or its
+// kernel name ("vda", "nvme0n1") when it reports no usable serial.
+func (pv Preview) ConfirmWord() string { return ConfirmWord(pv.Resolved.Disk) }
+
+// ConfirmWord is the confirmation word of a disk (see Preview.ConfirmWord).
+func ConfirmWord(d probe.Disk) string {
+	if s := strings.TrimSpace(d.Serial); reConfirmSerial.MatchString(s) {
+		return s
+	}
+	return strings.TrimPrefix(d.Path, "/dev/")
+}
+
+var reConfirmSerial = regexp.MustCompile(`^[A-Za-z0-9._:-]{2,64}$`)
+
+// sameMachineState says why the disks are not the ones of the preview:
+// the target disk (by serial, WWN, model, size, partition table and every
+// partition) and the adopted /home (by its file system UUID). "" when
+// nothing changed.
+func sameMachineState(pv Preview, f probe.Facts) string {
+	d, ok := f.Disk(pv.Resolved.Disk.Path)
+	if !ok {
+		return pv.Resolved.Disk.Path + " is gone"
+	}
+	if why := probe.SameDisk(pv.Resolved.Disk, d); why != "" {
+		return pv.Resolved.Disk.Path + ": " + why
+	}
+	if e := pv.Resolved.Existing; e != nil {
+		part, ok := f.Partition(e.Device)
+		if !ok || part.UUID != e.UUID {
+			return "the existing /home " + e.Device + " is not the one of the review"
+		}
+	}
+	return ""
+}
 
 // Install starts the installation of the preview with this token. confirm
 // must be the disk name (ConfirmWord). It returns at once; events follow.
@@ -192,7 +259,7 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 		return errors.New("the plan changed since the preview: review the new preview")
 	case confirm != pv.ConfirmWord():
 		s.mu.Unlock()
-		return fmt.Errorf("type %q to confirm that %s is erased", pv.ConfirmWord(), pv.Resolved.Disk.Path)
+		return fmt.Errorf("type %q (the disk %s) to confirm", pv.ConfirmWord(), plan.DescribeDisk(pv.Resolved.Disk))
 	}
 	prev := s.runExit
 	s.mu.Unlock()
@@ -213,6 +280,13 @@ func (s *Session) Install(ctx context.Context, token, confirm string) error {
 	}
 	if err := plan.Validate(pv.Resolved.Plan, &f, s.opt.ZoneinfoDir).Err(); err != nil {
 		return err
+	}
+	if err := s.checkSharedESP(ctx, pv.Resolved.Plan); err != nil {
+		return fmt.Errorf("target.esp: %w", err)
+	}
+	// The same disks as in the review, not only the same kernel names.
+	if why := sameMachineState(*pv, f); why != "" {
+		return fmt.Errorf("the disks changed since the review (%s): nothing was written; review again", why)
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	exit := make(chan struct{})

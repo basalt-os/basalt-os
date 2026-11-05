@@ -35,6 +35,7 @@ import (
 	_ "github.com/basalt-os/basalt-os/packages/basalt-installer/internal/earlyterm"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/engine"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/i18n"
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/othersys"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/probe"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/session"
@@ -52,13 +53,16 @@ Usage:
                                                      the installation of a running serve
   basalt-installer serve [--socket P] [--allow-user U] [--demo]
                                                      local JSON API for the GUI
-  basalt-installer install --plan FILE --confirm DISK [--recovery-key-out FILE] [--no-finish]
+  basalt-installer install --plan FILE --confirm SERIAL [--recovery-key-out FILE] [--no-finish]
                                                      non-interactive install
   basalt-installer plan template [--disk /dev/vda]   a commented plan to start from (YAML)
   basalt-installer plan validate FILE [--offline]    check a plan (against this machine unless --offline)
   basalt-installer plan preview FILE [--facts F]     the exact steps, nothing executed
   basalt-installer client OP [JSON] [--socket P]     one call to the API (scripts, debugging)
   basalt-installer facts                             what the installer sees (JSON)
+  basalt-installer other-systems --out FILE [--work DIR] DEV=FSUUID[:skip,...]...
+                                                     search EFI system partitions (read-only) for other
+                                                     systems' boot loaders; write GRUB menu entries
   basalt-installer log verify FILE                   check an install log's hash chain
   basalt-installer version
 `
@@ -88,6 +92,8 @@ func main() {
 		err = cmdPlan(os.Args[2:])
 	case "facts":
 		err = cmdFacts()
+	case "other-systems":
+		err = cmdOtherSystems(os.Args[2:])
 	case "client":
 		err = cmdClient(os.Args[2:])
 	case "log":
@@ -221,7 +227,7 @@ func cmdServe(args []string) error {
 func cmdInstall(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
 	planFile := fs.String("plan", "", "plan file (YAML or JSON)")
-	confirm := fs.String("confirm", "", "the target disk's name (vda, nvme0n1): confirms that it is erased")
+	confirm := fs.String("confirm", "", "the target disk's serial number (its kernel name, vda or nvme0n1, only when it has no serial): confirms the installation on it")
 	keyOut := fs.String("recovery-key-out", "", "write the recovery key to this file (mode 0400); \"-\" prints it")
 	noFinish := fs.Bool("no-finish", false, "do not reboot or power off at the end")
 	_ = fs.Parse(args)
@@ -443,6 +449,37 @@ func cmdFacts() error {
 	return nil
 }
 
+// cmdOtherSystems is the install step that lists the other systems in the
+// GRUB menu (internal/othersys): the EFI system partitions are mounted
+// read-only, one at a time, and nothing else is touched.
+func cmdOtherSystems(args []string) error {
+	fs := flag.NewFlagSet("other-systems", flag.ContinueOnError)
+	out := fs.String("out", "", "GRUB script to write (an /etc/grub.d file of the target)")
+	work := fs.String("work", steps.DefaultWork, "directory for the read-only mounts")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *out == "" {
+		return errors.New("other-systems: --out is required")
+	}
+	var parts []othersys.Partition
+	for _, a := range fs.Args() {
+		p, err := othersys.ParseArg(a)
+		if err != nil {
+			return err
+		}
+		parts = append(parts, p)
+	}
+	list := othersys.Find(context.Background(), *work, parts, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
+	if len(list) == 0 {
+		fmt.Println("no other boot loaders found")
+	}
+	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(*out, []byte(othersys.Script(list)), 0o755)
+}
+
 func cmdLog(args []string) error {
 	if len(args) != 2 || args[0] != "verify" {
 		return errors.New("log verify FILE")
@@ -466,8 +503,11 @@ func template(disk string) string {
 # Every field below shows its default; delete what you do not change.
 # Check it:    basalt-installer plan validate plan.yaml
 # See it:      basalt-installer plan preview plan.yaml   (the exact commands)
-# Install it:  basalt-installer install --plan plan.yaml --confirm ` + strings.TrimPrefix(disk, "/dev/") + ` --recovery-key-out /path/key.txt
-# Unattended from the boot menu: basalt.inst.plan=URL basalt.inst.confirm=` + strings.TrimPrefix(disk, "/dev/") + `
+# Install it:  basalt-installer install --plan plan.yaml --confirm SERIAL --recovery-key-out /path/key.txt
+# Unattended from the boot menu: basalt.inst.plan=URL basalt.inst.confirm=SERIAL
+# (SERIAL: the disk's serial number, lsblk -o NAME,MODEL,SERIAL; the kernel
+# name only for a disk without one. target.disk may also be serial:SERIAL
+# or a /dev/disk/by-id link.)
 apiVersion: basalt-install-plan/v1
 edition: server
 target:

@@ -85,7 +85,8 @@ func TestDualBootAndExistingHomeFlow(t *testing.T) {
 	if !strings.Contains(v, "Windows") || !strings.Contains(v, "free space") {
 		t.Fatalf("disk use screen:\n%s", v)
 	}
-	press(m, tea.KeyMsg{Type: tea.KeyDown})
+	// The cursor starts on keeping the partitions: nothing is erased
+	// unless the person moves to Erase.
 	press(m, key("enter"))
 	if m.p.Target.Wipe || m.scr != scHome {
 		t.Fatalf("free space chosen: wipe %v, screen %d", m.p.Target.Wipe, m.scr)
@@ -150,7 +151,7 @@ func TestDualBootAndExistingHomeFlow(t *testing.T) {
 	m.p.Accounts.User.Password = "a-password-123"
 	m.enter(scReview)
 	if m.preview.Token == "" {
-		t.Fatalf("no preview:\n%s", m.pager.Text)
+		t.Fatalf("no preview: scr %d err %q title %q:\n%s", m.scr, m.err, m.pager.Title, m.pager.Text)
 	}
 	text := m.preview.Text
 	for _, want := range []string{"sgdisk --new=5:", "luks-11111111-2222-3333-4444-555555555555", "--home-dir /home/edimar-basalt --uid 1000"} {
@@ -174,5 +175,40 @@ func TestScopeHomeOnly(t *testing.T) {
 	m.enter(scReview)
 	if m.preview.Token == "" || !strings.Contains(m.preview.Text, "--label basalt-home") {
 		t.Fatalf("home-only preview:\n%s", m.pager.Text)
+	}
+}
+
+// A disk without a partition table is never erased by picking it: the
+// next screen asks, and only "Erase" goes on.
+func TestBlankDiskAsks(t *testing.T) {
+	m := testModel(t, "")
+	m.p.Target.Wipe = false
+	m.enter(scDisk)
+	press(m, key("enter"))
+	if m.scr != scDiskUse || m.p.Target.Wipe {
+		t.Fatalf("blank disk: screen %d, wipe %v", m.scr, m.p.Target.Wipe)
+	}
+	v := fits(t, "blank disk", m, false)
+	if !strings.Contains(v, "signature") {
+		t.Fatalf("no warning about headerless data:\n%s", v)
+	}
+	press(m, key("enter"))
+	if !m.p.Target.Wipe {
+		t.Fatal("Erase did not set wipe")
+	}
+}
+
+// The reuse picker starts on "a new partition": one Enter formats nothing.
+func TestReusePickerStartsOnANewPartition(t *testing.T) {
+	m := testModelWith(t, "", lsblkDual, fakeInspector)
+	m.p.Target.Wipe = false
+	m.enterStorage(scReuse)
+	if m.diskUse.Cursor != 0 || !strings.Contains(strings.Join(m.diskUse.Rows[0].Cells, " "), "new partition") {
+		t.Fatalf("first row %v, cursor %d", m.diskUse.Rows[0].Cells, m.diskUse.Cursor)
+	}
+	m.scr = scReuse
+	m.onStorageKey(key("enter"))
+	if m.p.Target.System != "" {
+		t.Fatalf("one Enter chose %s", m.p.Target.System)
 	}
 }

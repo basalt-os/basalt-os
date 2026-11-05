@@ -348,8 +348,8 @@ msgstr "não foi possível ler o plano %s: %v"
 
 #: internal/session/unattended.go:98
 #, c-format
-msgid "basalt.inst.confirm=%s does not name the disk the plan erases (%s): nothing was written"
-msgstr "basalt.inst.confirm=%s não indica o disco que o plano apaga (%s): nada foi gravado"
+msgid "basalt.inst.confirm=%s does not name the disk the plan erases (%s): give %s; nothing was written"
+msgstr "basalt.inst.confirm=%s não indica o disco que o plano apaga (%s): use %s; nada foi gravado"
 
 #: internal/tui/app.go:1026
 msgid "Recovery key: write it down now"
@@ -781,3 +781,105 @@ msgstr "Abrir também com o TPM desta máquina (a frase-senha continua valendo)"
 #: internal/tui/storage.go:99
 msgid "Ask for its passphrase at every boot"
 msgstr "Pedir a frase-senha a cada boot"
+
+msgid "%s %s: erasing the disk deletes it"
+msgstr "%s %s: apagar o disco exclui isso"
+
+msgid "the firmware's Secure Boot db has no Microsoft Windows certificate (custom keys): Windows will not start while Secure Boot is on; restore the factory keys or add Microsoft's certificates to db"
+msgstr "o db do Secure Boot do firmware não tem o certificado Microsoft Windows (chaves próprias): o Windows não inicia com o Secure Boot ligado; restaure as chaves de fábrica ou adicione os certificados da Microsoft ao db"
+
+msgid "the firmware's Secure Boot db has no Microsoft UEFI CA (custom keys): other Linux systems booted through their own shim will be refused while Secure Boot is on"
+msgstr "o db do Secure Boot do firmware não tem a Microsoft UEFI CA (chaves próprias): outros sistemas Linux iniciados pelo próprio shim serão recusados com o Secure Boot ligado"
+
+msgid "%s already holds a Fedora boot loader (boot entry %q): sharing it would replace that system's; let the installer create a new EFI system partition"
+msgstr "%s já tem um carregador de boot do Fedora (entrada de boot %q): compartilhá-la substituiria o daquele sistema; deixe o instalador criar uma nova partição de sistema EFI"
+
+msgid "Windows is on this machine: a Windows or firmware update that changes the Secure Boot keys or revocations (PCR 7) makes the next Basalt OS start ask for the recovery key. Keep it at hand"
+msgstr "O Windows está neste computador: uma atualização do Windows ou do firmware que mude as chaves ou revogações do Secure Boot (PCR 7) faz o próximo início do Basalt OS pedir a chave de recuperação. Tenha-a à mão"
+
+msgid "%s is an EFI system partition: it is never formatted"
+msgstr "%s é uma partição de sistema EFI: ela nunca é formatada"
+
+msgid "%s is the existing /home, which is kept"
+msgstr "%s é o /home existente, que é mantido"
+
+msgid "%s holds Windows or NTFS/BitLocker data (%s): this installer never formats it; delete or shrink it from Windows first"
+msgstr "%s contém o Windows ou dados NTFS/BitLocker (%s): este instalador nunca a formata; exclua ou reduza a partição pelo Windows antes"
+
+msgid "%s is too small (%s, at least %s)"
+msgstr "%s é pequena demais (%s, no mínimo %s)"
+
+msgid "%s (%s) is formatted: everything on it is lost"
+msgstr "%s (%s) é formatada: tudo o que há nela é perdido"
+
+msgid "/boot and the system need two different partitions"
+msgstr "o /boot e o sistema precisam de duas partições diferentes"
+
+msgid "existing partitions can only be reused when the disk is not erased (wipe: false)"
+msgstr "partições existentes só podem ser reaproveitadas quando o disco não é apagado (wipe: false)"
+
+msgid "Check the model and serial number. A disk that holds other systems or data keeps its partitions unless you choose to erase it next. One local disk only; RAID, multipath and iSCSI installs use the kickstart installer."
+msgstr "Confira o modelo e o número de série. Um disco com outros sistemas ou dados mantém as partições, a menos que você escolha apagá-lo a seguir. Um disco local apenas; instalações em RAID, multipath e iSCSI usam o instalador kickstart."
+
+msgid "Model, serial"
+msgstr "Modelo, série"
+
+msgid "On it"
+msgstr "Conteúdo"
+
+msgid "Language of the installed system"
+msgstr "Idioma do sistema instalado"
+
+msgid "Keyboard (also at the disk passphrase prompt and the login screen)"
+msgstr "Teclado (também na senha do disco ao iniciar e na tela de login)"
+
+msgid "Erase %s and install Basalt OS?"
+msgstr "Apagar %s e instalar o Basalt OS?"
+
+msgid "Everything on %s (%s) is destroyed. Type %s to confirm."
+msgstr "Tudo em %s (%s) é destruído. Digite %s para confirmar."
+
+msgid "Install Basalt OS on %s next to what it holds?"
+msgstr "Instalar o Basalt OS em %s ao lado do que já existe nele?"
+
+msgid "Only the partitions listed as new or FORMATTED in the review are written; every other partition stays as it is. Type %s to confirm."
+msgstr "Só as partições listadas como new ou FORMATTED na revisão são gravadas; todas as outras ficam como estão. Digite %s para confirmar."
+
+msgid "Keep the partitions, share an EFI partition"
+msgstr "Manter as partições e compartilhar uma partição EFI"
+
+msgid "no EFI system partition on this disk"
+msgstr "não há partição de sistema EFI neste disco"
+
+msgid "Custom: reuse a partition for the system (it is formatted)"
+msgstr "Personalizado: reaproveitar uma partição para o sistema (ela é formatada)"
+
+msgid "no partition that can be reused"
+msgstr "nenhuma partição pode ser reaproveitada"
+
+msgid "Which partition becomes the Basalt OS system?"
+msgstr "Qual partição será o sistema do Basalt OS?"
+
+msgid "It is formatted and its files are lost. /boot and, when needed, the EFI partition are created in the free space. Every partition you do not choose is left exactly as it is."
+msgstr "Ela é formatada e seus arquivos são perdidos. O /boot e, se preciso, a partição EFI são criados no espaço livre. Toda partição que você não escolher fica exatamente como está."
+
+msgid "no partition table or known signature found"
+msgstr "nenhuma tabela de partições ou assinatura conhecida encontrada"
+
+msgid "Erase %s?"
+msgstr "Apagar %s?"
+
+msgid "This disk has no GPT partitions to keep: Basalt OS can only erase it."
+msgstr "Este disco não tem partições GPT para manter: o Basalt OS só pode apagá-lo."
+
+msgid "No partition table or known signature was found. A disk encrypted without a header (plain dm-crypt, VeraCrypt) or a locked self-encrypting disk looks the same: erase it only if you know it holds nothing you need."
+msgstr "Nenhuma tabela de partições ou assinatura conhecida foi encontrada. Um disco criptografado sem cabeçalho (dm-crypt simples, VeraCrypt) ou um disco autocriptografado bloqueado parece igual: apague-o só se souber que não há nada nele de que você precise."
+
+msgid "On it: %s."
+msgstr "Nele: %s."
+
+msgid "needs a GPT disk with partitions"
+msgstr "precisa de um disco GPT com partições"
+
+msgid "A new partition in the free space"
+msgstr "Uma partição nova no espaço livre"

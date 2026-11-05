@@ -89,6 +89,9 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	add := func(sev Severity, field, format string, a ...any) {
 		is = append(is, Issue{sev, field, fmt.Sprintf(format, a...)})
 	}
+	// A disk named by its serial number or a /dev/disk/by-id link is
+	// checked as the disk it is on this machine now.
+	p = Canonical(p, f)
 
 	if p.APIVersion != APIVersion {
 		add(Error, "apiVersion", "must be %q, got %q", APIVersion, p.APIVersion)
@@ -107,12 +110,17 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	// --- target disk ---------------------------------------------------------------
 	if p.Target.Disk == "" {
 		add(Error, "target.disk", "no target disk")
+	} else if strings.HasPrefix(p.Target.Disk, "serial:") {
+		// Resolved above when the disk exists; reported below otherwise.
 	} else if !strings.HasPrefix(p.Target.Disk, "/dev/") {
-		add(Error, "target.disk", "must be a device path such as /dev/vda, got %q", p.Target.Disk)
-	} else if isPartitionPath(p.Target.Disk) {
+		add(Error, "target.disk", "must be a device path such as /dev/vda, a /dev/disk/by-id link or serial:SERIAL, got %q", p.Target.Disk)
+	} else if isPartitionPath(p.Target.Disk) || (strings.HasPrefix(p.Target.Disk, "/dev/disk/by-id/") && strings.Contains(p.Target.Disk, "-part")) {
 		add(Error, "target.disk", "%s looks like a partition; give the whole disk (%s)", p.Target.Disk, KickstartHint)
 	} else if strings.HasPrefix(p.Target.Disk, "/dev/md") || strings.HasPrefix(p.Target.Disk, "/dev/mapper/") || strings.HasPrefix(p.Target.Disk, "/dev/dm-") {
 		add(Error, "target.disk", "%s is a RAID, multipath or device-mapper device: %s", p.Target.Disk, KickstartHint)
+	}
+	if p.Reuses() && p.Target.Wipe {
+		add(Error, "target.boot", "%s", i18n.T("existing partitions can only be reused when the disk is not erased (wipe: false)"))
 	}
 	if p.Target.ESP != "" && p.Target.Wipe {
 		add(Error, "target.esp", "%s", i18n.T("an existing EFI system partition can only be shared when the disk is not erased (wipe: false)"))
@@ -141,6 +149,10 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 		}
 		if haveDisk && !p.Target.Wipe {
 			validateFreeSpace(p, disk, add)
+			validateReuse(p, disk, add)
+		}
+		if haveDisk {
+			validateOtherSystems(p, disk, f, add)
 		}
 	}
 
@@ -485,6 +497,19 @@ var partitionPath = regexp.MustCompile(`^/dev/((sd|vd|hd|xvd)[a-z]+[0-9]+|(nvme[
 
 func isPartitionPath(s string) bool { return partitionPath.MatchString(s) }
 
+// Canonical returns the plan with target.disk as the kernel path of the
+// disk it names on this machine (a serial:SERIAL or /dev/disk/by-id name
+// is resolved; an unknown one is left as it is, for Validate to report).
+func Canonical(p Plan, f *probe.Facts) Plan {
+	if f == nil || p.Target.Disk == "" {
+		return p
+	}
+	if d, ok := f.Disk(p.Target.Disk); ok {
+		p.Target.Disk = d.Path
+	}
+	return p
+}
+
 // DefaultSubvolumeNames is the automatic layout's subvolume list for a
 // plan (without home when /home is a partition of its own).
 func DefaultSubvolumeNames(p Plan) []string {
@@ -516,7 +541,18 @@ func NeededBytes(p Plan) int64 {
 	if p.Layout.RootGiB > 0 {
 		sys = int64(p.Layout.RootGiB) << 30
 	}
-	need := esp + int64(p.Layout.BootMiB)<<20 + sys + 2<<20
+	boot := int64(p.Layout.BootMiB) << 20
+	// Reused partitions take no free space.
+	if p.Target.Boot != "" {
+		boot = 0
+	}
+	if p.Target.System != "" {
+		sys = 0
+	}
+	if esp+boot+sys == 0 && !p.EncryptsHome() {
+		return 0
+	}
+	need := esp + boot + sys + 2<<20
 	if p.EncryptsHome() {
 		need += int64(MinHomeGiB) << 30
 	}
@@ -534,7 +570,7 @@ func validateFreeSpace(p Plan, disk probe.Disk, add func(Severity, string, strin
 	}
 	free, ok := disk.LargestFree()
 	need := NeededBytes(p)
-	if !ok || free.Bytes < need {
+	if need > 0 && (!ok || free.Bytes < need) {
 		add(Error, "target.wipe", i18n.T("the largest free space on %s is %s; the new partitions need %s (shrink another system's partition first)"),
 			disk.Path, probe.HumanSize(free.Bytes), probe.HumanSize(need))
 	}

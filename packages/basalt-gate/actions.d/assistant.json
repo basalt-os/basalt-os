@@ -15,6 +15,7 @@
     "system.updates": ["update.install", "update.rollback"],
     "system.channels": ["repo.enable", "repo.disable", "source.remove"],
     "system.keyboard": ["keyboard.system"],
+    "system.desktop": ["desktop.fallback"],
     "system.security": ["audit.run", "risk.accept", "risk.review"]
   },
   "actions": [
@@ -138,6 +139,12 @@
       "resources": [ { "kind": "setting", "arg": "=keyboard" } ],
       "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
       "preview": { "show": ["layouts", "options", "keymap"] } },
+    { "id": "desktop.fallback", "class": "C2", "system": true, "reversible": "snapshot",
+      "description": "the login screen from the next start: GDM while GNOME is the fallback session (it can lock the screen), or greetd and the Basalt login screen again (systemctl disable/enable)",
+      "args": { "target": { "type": "string", "required": true, "enum": ["gnome", "basalt"] } },
+      "resources": [ { "kind": "setting", "arg": "=display-manager" } ],
+      "executor": "basalt-gate-exec", "requesters": ["system-assistant", "person"],
+      "preview": { "show": ["target"] } },
     { "id": "audit.run", "class": "C2", "system": true, "reversible": "none",
       "description": "run the public AI audit suite on this computer as its own unprivileged account (installing basalt-audit-suite from the Basalt repositories first when install is yes); results in /var/lib/basalt-audit/RUN",
       "args": { "run": { "type": "string", "required": true, "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}" },

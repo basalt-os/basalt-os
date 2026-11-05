@@ -62,7 +62,17 @@ type Target struct {
 	// (its path, for example the one Windows uses); empty creates a new
 	// one for Basalt OS in the free space.
 	ESP string `json:"esp,omitempty" yaml:"esp,omitempty"`
+	// Boot and System, with wipe false, are existing partitions of the
+	// disk that the person chose to reuse for /boot and for the system
+	// (custom layout): they are formatted and their contents are lost.
+	// Empty creates a new partition in the free space. Every partition
+	// not named here (or as the shared ESP) is left exactly as it is.
+	Boot   string `json:"boot,omitempty" yaml:"boot,omitempty"`
+	System string `json:"system,omitempty" yaml:"system,omitempty"`
 }
+
+// Reuses reports whether the plan formats existing partitions.
+func (p Plan) Reuses() bool { return p.Target.Boot != "" || p.Target.System != "" }
 
 // KeepsPartitions reports whether the plan installs next to existing
 // partitions instead of erasing the disk.
@@ -188,9 +198,9 @@ type Network struct {
 // Repos are the package repositories used at install time and configured
 // on the installed system (ADR 0005).
 type Repos struct {
-	Basalt     BasaltRepo `json:"basalt" yaml:"basalt"`
-	Fedora     FedoraRepo `json:"fedora,omitempty" yaml:"fedora,omitempty"`
-	Tools      *bool      `json:"tools,omitempty" yaml:"tools,omitempty"`
+	Basalt BasaltRepo `json:"basalt" yaml:"basalt"`
+	Fedora FedoraRepo `json:"fedora,omitempty" yaml:"fedora,omitempty"`
+	Tools  *bool      `json:"tools,omitempty" yaml:"tools,omitempty"`
 	// Testing turns the basalt-testing repository on (pre-release packages,
 	// off by default): at install time, read from the media when it carries
 	// basalt/testing, else from <URL>/testing (a lab or mirror) or

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -145,5 +146,36 @@ func TestBusctlArgs(t *testing.T) {
 	}
 	if a := BusctlArgs(Event{Severity: 2}); a[len(a)-2] != "1" {
 		t.Fatalf("normal urgency: %v", a)
+	}
+	// Only --user comes before "--": every positional argument after it,
+	// the "-1" expire timeout included, must not be read as an option.
+	if a[0] != "--user" || a[1] != "--" || a[2] != "call" {
+		t.Fatalf("options must end before the positional arguments: %v", a)
+	}
+	for _, s := range a[2:] {
+		if s == "--" {
+			t.Fatalf("a second -- would be a positional argument: %v", a)
+		}
+	}
+}
+
+// TestBusctlArgsParse runs the argument list through busctl's own parser
+// (when busctl is installed): the call fails for want of a bus, never for
+// an unknown option.
+func TestBusctlArgsParse(t *testing.T) {
+	bin, err := exec.LookPath("busctl")
+	if err != nil {
+		t.Skip("busctl is not installed")
+	}
+	dir := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, BusctlArgs(Event{Proposal: "p-1", Title: "t", Severity: 4})...)
+	// No session bus at this address: busctl gets past its parser and then
+	// fails to connect.
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "XDG_RUNTIME_DIR=" + dir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(dir, "no-bus")}
+	out, _ := cmd.CombinedOutput()
+	if s := string(out); strings.Contains(s, "invalid option") || strings.Contains(s, "unrecognized option") || strings.Contains(s, "Unknown") {
+		t.Fatalf("busctl rejected the arguments: %s", s)
 	}
 }

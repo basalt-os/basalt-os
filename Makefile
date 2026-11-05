@@ -238,7 +238,7 @@ eval-vsm: ## Decision-layer evaluation suite: rules vs the VSM backend (VSM_KNOW
 
 # --- installer (packages/basalt-installer, docs/installer.md) ------------------------
 
-.PHONY: rpm-installer installer-test live-iso live-desktop-iso lab-installer-iso lab-installer-tui lab-installer-gui
+.PHONY: rpm-installer installer-test live-iso live-desktop-iso release-live-desktop-iso lab-installer-iso lab-installer-tui lab-installer-gui
 
 rpm-installer: ## Build basalt-installer (+ -gui, source) with the upstream Go toolchain go.mod names
 	packages/basalt-installer/build.sh
@@ -251,6 +251,9 @@ live-iso: ## Live installer ISO (mkosi): runs from memory, Fedora's signed boot 
 
 live-desktop-iso: ## Live desktop ISO: the desktop edition with a live user, the installer as an app (needs basalt-desktop in REPO_DIR)
 	LIVE_PROFILE=desktop packages/basalt-installer/live/build-live.sh
+
+release-live-desktop-iso: ## Live desktop ISO from the published, signed repositories (obpkg.org basalt + basalt-testing, mirrored and verified)
+	LIVE_SOURCE=obpkg LIVE_PROFILE=desktop packages/basalt-installer/live/build-live.sh
 
 lab-installer-iso: ## Lab live ISO: a plan for the lab VM on the media, a root shell on the second serial port
 	packages/basalt-installer/tests/install-test.sh iso

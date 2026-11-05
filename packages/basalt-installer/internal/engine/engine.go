@@ -299,6 +299,11 @@ func (e *Engine) writeFile(w *steps.FileWrite) error {
 		}
 		content = data
 	}
+	if w.Parents {
+		if err := os.MkdirAll(filepath.Dir(w.Path), 0o755); err != nil {
+			return err
+		}
+	}
 	f, err := os.OpenFile(w.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(w.Mode))
 	if err != nil {
 		return err
