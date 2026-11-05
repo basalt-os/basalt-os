@@ -1,11 +1,14 @@
 # Release workflow: a skeleton, disabled by design.
 #
-# Basalt OS has no release keys yet (docs/key-ceremony.md). Until the key
-# ceremony has happened and a release signer exists, the gate job below
-# fails on purpose and nothing else runs. This file documents where signing
-# will happen, so that the pipeline is reviewed before it is needed.
+# The OpenBasalt release key exists (docs/key-ceremony.md) and signs the
+# published repositories on https://obpkg.org; that signing happens on the
+# release signer, outside GitHub (scripts/release/sign.sh and the rest of
+# scripts/release/). What is missing is the hand-off between this workflow
+# and the release signer, so the gate job below fails on purpose and
+# nothing else runs. This file documents where each step will happen, so
+# that the pipeline is reviewed before it is enabled.
 #
-# Intended flow once the keys exist:
+# Intended flow:
 #   1. build      same scripts as CI (scripts/ci/build.sh), from a tag, on a
 #                 GitHub-hosted runner; output: unsigned RPMs and SRPMs,
 #                 checksums, a provenance attestation.
@@ -18,9 +21,12 @@
 #                 signing key. No private key is ever stored as a GitHub
 #                 secret.
 #   3. iso        the installer ISO is built from the signed repository
-#                 (scripts/iso.sh build), checksums signed on the release
-#                 signer.
-#   4. publish    repository tree and ISO uploaded to the release mirror;
+#                 (scripts/iso.sh build), and the live desktop ISO from the
+#                 published, signed repositories (make
+#                 release-live-desktop-iso: obpkg.org basalt and
+#                 basalt-testing, mirrored and signature checked); checksums
+#                 signed on the release signer.
+#   4. publish    repository tree and ISOs uploaded to the release mirror;
 #                 a GitHub release with checksums. This job will need
 #                 `contents: write`, granted on that job only.
 name: Release
@@ -42,13 +48,13 @@ concurrency:
 
 jobs:
   gate:
-    name: Release keys present?
+    name: Release signer hand-off implemented?
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Release signing is not set up yet
         run: |
-          echo "::error title=Release disabled::Basalt OS has no release keys yet. Releases are disabled until the key ceremony (docs/key-ceremony.md) and the release signer exist. Remove this gate in the same change that implements the signing steps."
+          echo "::error title=Release disabled::The hand-off from this workflow to the release signer (docs/key-ceremony.md, scripts/release/) is not implemented. Releases stay disabled until it is; remove this gate in the same change that implements it."
           exit 1
 
   build:
@@ -68,4 +74,23 @@ jobs:
       - name: Hand-off point to the release signer (not implemented)
         run: |
           echo "::error::Signing happens on the release signer, outside GitHub (docs/key-ceremony.md). Not implemented yet."
+          exit 1
+
+  live-desktop-iso:
+    name: Live desktop ISO (from the published, signed repositories)
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PODMAN: sudo podman
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: Build the live desktop ISO (mirrors obpkg.org basalt and basalt-testing, checks their signatures)
+        run: make release-live-desktop-iso
+      - name: Hand-off point to the release signer (not implemented)
+        run: |
+          echo "::error::The ISO checksums are signed on the release signer, outside GitHub (docs/key-ceremony.md). Not implemented yet."
           exit 1
