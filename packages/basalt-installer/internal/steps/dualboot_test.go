@@ -90,6 +90,11 @@ func TestAlongsideTouchesOnlyNewPartitions(t *testing.T) {
 	if !strings.Contains(menu.Command(), "/dev/nvme0n1p1=") {
 		t.Errorf("the Windows ESP is not searched: %s", menu.Command())
 	}
+	// os-prober never runs: it mounts btrfs read-write.
+	_, dg := mustFind(t, list, "/etc/default/grub")
+	if !strings.Contains(dg.Write.Content, "GRUB_DISABLE_OS_PROBER=true") {
+		t.Errorf("/etc/default/grub lets os-prober run:\n%s", dg.Write.Content)
+	}
 	_, mk := find(list, "grub2-mkconfig")
 	if i, _ := find(list, "other-systems"); i < 0 || mk.Title == "" {
 		t.Fatal("no grub2-mkconfig after the other systems")

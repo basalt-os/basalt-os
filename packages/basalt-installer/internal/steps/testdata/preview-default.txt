@@ -146,7 +146,7 @@
      $ write /mnt/sysroot/etc/kernel/cmdline (mode 0644, 203 bytes)
        | root=UUID=ab125c07-ab12-4c07-ab12-5c07ab125c07 ro rootflags=subvol=root rd.luks.uuid=luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 console=tty0 console=ttyS0,115200n8 lockdown=integrity module.sig_enforce=1
  59. Write the GRUB settings
-     $ write /mnt/sysroot/etc/default/grub (mode 0644, 513 bytes)
+     $ write /mnt/sysroot/etc/default/grub (mode 0644, 541 bytes)
        | GRUB_TIMEOUT=5
        | GRUB_DISTRIBUTOR="$(sed 's, release .*$,,g' /etc/system-release)"
        | GRUB_DEFAULT=saved
@@ -158,6 +158,7 @@
        | GRUB_CMDLINE_LINUX="rd.luks.uuid=luks-ab125c07-ab12-4c07-ab12-5c07ab125c07 console=tty0 console=ttyS0,115200n8 lockdown=integrity module.sig_enforce=1"
        | GRUB_DISABLE_RECOVERY="true"
        | GRUB_ENABLE_BLSCFG=true
+       | GRUB_DISABLE_OS_PROBER=true
  60. Write the machine ID
      # boot loader entries are named after it
      $ write /mnt/sysroot/etc/machine-id (mode 0444, 33 bytes)

@@ -921,6 +921,10 @@ func (g *gen) keyboard() (vconsole, xorg string) {
 	return vconsole, xorg
 }
 
+// defaultGrub is /etc/default/grub. os-prober stays off: Fedora's
+// grub2-mkconfig runs it when it is installed (a weak dependency pulls it
+// in), and it mounts other systems' btrfs volumes read-write; the other
+// systems come from /etc/grub.d/35_basalt_other_systems instead.
 func (g *gen) defaultGrub() string {
 	return `GRUB_TIMEOUT=5
 GRUB_DISTRIBUTOR="$(sed 's, release .*$,,g' /etc/system-release)"
@@ -933,6 +937,7 @@ GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=
 GRUB_CMDLINE_LINUX="` + g.kernelCmdline(false) + `"
 GRUB_DISABLE_RECOVERY="true"
 GRUB_ENABLE_BLSCFG=true
+GRUB_DISABLE_OS_PROBER=true
 `
 }
 
