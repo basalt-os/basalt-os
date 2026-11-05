@@ -123,7 +123,7 @@ msgstr ""
 msgid "yes"
 msgstr ""
 
-#: internal/apply/apply.go:89 internal/cli/cli.go:1088
+#: internal/apply/apply.go:89 internal/cli/cli.go:1114
 msgid "ok"
 msgstr ""
 
@@ -181,23 +181,23 @@ msgstr ""
 msgid "%s is still staged: it installs when the computer restarts into it."
 msgstr ""
 
-#: internal/cli/cli.go:1001
+#: internal/cli/cli.go:1027
 #, c-format
 msgid "%s is closed without changing anything (recorded in the audit log)."
 msgstr ""
 
-#: internal/cli/cli.go:1090
+#: internal/cli/cli.go:1116
 msgid "FAILED"
 msgstr ""
 
-#: internal/cli/cli.go:1100
+#: internal/cli/cli.go:1126
 #, c-format
 msgid "%d hour"
 msgid_plural "%d hours"
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:1103
+#: internal/cli/cli.go:1129
 #, c-format
 msgid "%d minute"
 msgid_plural "%d minutes"
@@ -271,7 +271,7 @@ msgstr ""
 msgid "only root can list them (sudo basalt status)"
 msgstr ""
 
-#: internal/cli/cli.go:456 internal/cli/cli.go:491
+#: internal/cli/cli.go:456 internal/cli/cli.go:517
 msgid "none"
 msgstr ""
 
@@ -335,48 +335,48 @@ msgid_plural "%d records, chain intact"
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:556
+#: internal/cli/cli.go:582
 #, c-format
 msgid "SELinux blocked nothing in the last %s. Nothing to do."
 msgstr ""
 
-#: internal/cli/cli.go:559
+#: internal/cli/cli.go:585
 #, c-format
 msgid "SELinux blocked %d kind of access in the last %s. Each one is explained below."
 msgid_plural "SELinux blocked %d kinds of access in the last %s. Each one is explained below."
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:635
+#: internal/cli/cli.go:661
 #, c-format
 msgid "Checked as root. The hint %s is closed and stored as proposal %s, which you can apply."
 msgstr ""
 
-#: internal/cli/cli.go:813
+#: internal/cli/cli.go:839
 msgid "There are no proposals."
 msgstr ""
 
-#: internal/cli/cli.go:815
+#: internal/cli/cli.go:841
 msgid "Nothing is waiting for your decision."
 msgstr ""
 
-#: internal/cli/cli.go:823
+#: internal/cli/cli.go:849
 msgid "[review]: the assistant is not sure, read it first. [hint]: confirm it as root first. [report]: nothing to apply."
 msgstr ""
 
-#: internal/cli/cli.go:824
+#: internal/cli/cli.go:850
 msgid "Details: basalt show ID.   Then: sudo basalt apply ID, or sudo basalt ignore ID."
 msgstr ""
 
-#: internal/cli/cli.go:912
+#: internal/cli/cli.go:938
 msgid "it worked and every check passed"
 msgstr ""
 
-#: internal/cli/cli.go:914
+#: internal/cli/cli.go:940
 msgid "it did NOT verify"
 msgstr ""
 
-#: internal/cli/cli.go:916
+#: internal/cli/cli.go:942
 #, c-format
 msgid "Applied on %s UTC: %s (snapshots %d before, %d after; audit record #%d)"
 msgstr ""

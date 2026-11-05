@@ -406,7 +406,7 @@ func (a *app) status(ctx context.Context) error {
 	ps, _ := a.store.List(proposal.Pending)
 	s := a.env.GetStatus(ctx, len(ps))
 	if a.o.json {
-		return a.printJSON(s)
+		return a.printJSON(statusLocalized(s))
 	}
 	n, err := audit.Verify(a.cfg.AuditPath)
 	if err != nil && (os.IsNotExist(err) || os.IsPermission(err)) {
@@ -483,6 +483,32 @@ func writeStatus(w io.Writer, s diag.Status, auditN int64, auditErr error) {
 	case auditN >= 0:
 		row(i18n.T("Audit log"), fmt.Sprintf(i18n.N("%d record, chain intact", "%d records, chain intact", int(auditN)), auditN))
 	}
+}
+
+// statusShown is basalt status --json: the English status (the machine
+// reference, the same for MCP) and, when the reader's language translates
+// them, problems_local in the order of problems, for the desktop.
+type statusShown struct {
+	diag.Status
+	ProblemsLocal []string `json:"problems_local,omitempty"`
+}
+
+func statusLocalized(s diag.Status) statusShown {
+	out := statusShown{Status: s}
+	tr := i18n.Local()
+	if tr.English() {
+		return out
+	}
+	changed := false
+	for _, p := range s.Problems {
+		l := titles.Phrase(tr, p)
+		changed = changed || l != p
+		out.ProblemsLocal = append(out.ProblemsLocal, l)
+	}
+	if !changed {
+		out.ProblemsLocal = nil
+	}
+	return out
 }
 
 // orNoneT is orNone in the reader's language.

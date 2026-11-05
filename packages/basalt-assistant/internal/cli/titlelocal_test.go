@@ -158,3 +158,22 @@ func statusFixture() diag.Status {
 	return diag.Status{OS: diag.OSRelease{Name: "Basalt OS", Version: "44 (Server)"}, SELinux: "Enforcing",
 		Disk: diag.FSStat{Total: 32 << 30, Free: 21 << 30}, DiskPct: 34.4, RollbackState: "none", Daemon: "active"}
 }
+
+// basalt status --json keeps the English problems and adds problems_local.
+func TestStatusJSONLocal(t *testing.T) {
+	i18n.Use(&i18n.Catalog{Lang: "pt_BR", Messages: map[string][]string{
+		"%s has failed. See why: basalt why %s": {"%s falhou. Veja por quê: basalt why %s"}}})
+	t.Cleanup(i18n.Reset)
+	st := statusFixture()
+	st.Problems = []string{"nginx.service has failed. See why: basalt why nginx.service"}
+	b, _ := json.Marshal(statusLocalized(st))
+	s := string(b)
+	if !strings.Contains(s, `"problems":["nginx.service has failed. See why: basalt why nginx.service"]`) ||
+		!strings.Contains(s, `"problems_local":["nginx.service falhou. Veja por quê: basalt why nginx.service"]`) {
+		t.Errorf("%s", s)
+	}
+	i18n.Use(&i18n.Catalog{Messages: map[string][]string{}})
+	if b, _ := json.Marshal(statusLocalized(st)); strings.Contains(string(b), "problems_local") {
+		t.Errorf("English got problems_local: %s", b)
+	}
+}
