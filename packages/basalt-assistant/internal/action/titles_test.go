@@ -43,6 +43,7 @@ func TestDescriptionsAreKnownTitles(t *testing.T) {
 		{AuditRun, map[string]string{"run": "2026-10-08-101500", "install": "yes"}},
 		{RiskAccept, map[string]string{"item": "encryption", "by": "edimar"}},
 		{RiskReview, map[string]string{"item": "tpm"}},
+		{DesktopFallback, map[string]string{"target": "basalt"}},
 	}
 	kinds := map[string]bool{}
 	for _, a := range all {

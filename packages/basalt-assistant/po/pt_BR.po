@@ -2451,3 +2451,60 @@ msgstr "ligado"
 
 msgid "disabled"
 msgstr "desligado"
+
+msgid "no snapshot: the login screen is one setting, and choosing the other one changes it back; it takes effect at the next start"
+msgstr "sem snapshot: a tela de login é uma configuração só, e escolher a outra a desfaz; vale a partir do próximo início"
+
+msgid "GNOME as a fallback: installed"
+msgstr "GNOME como alternativa: instalado"
+
+msgid "GNOME as a fallback: not installed (basalt-desktop-gnome-fallback)"
+msgstr "GNOME como alternativa: não instalado (basalt-desktop-gnome-fallback)"
+
+msgid "Login screen at the next start: %s"
+msgstr "Tela de login no próximo início: %s"
+
+msgid "make GDM the login screen from the next start, so GNOME can lock the screen"
+msgstr "fazer do GDM a tela de login a partir do próximo início, para o GNOME poder bloquear a tela"
+
+msgid "make the Basalt login screen (greetd) the login screen again from the next start"
+msgstr "voltar a usar a tela de login do Basalt (greetd) a partir do próximo início"
+
+msgid "choose the other login screen in Settings, About, or with basalt fallback; no snapshot is needed for one setting."
+msgstr "escolha a outra tela de login em Configurações, Sobre, ou com basalt fallback; não é preciso snapshot para uma configuração só."
+
+msgid "GDM starts as the login screen from the next start; the Basalt session stays in its list"
+msgstr "o GDM é a tela de login a partir do próximo início; a sessão Basalt continua na lista dele"
+
+msgid "the Basalt login screen starts again from the next start; GNOME stays installed"
+msgstr "a tela de login do Basalt volta a partir do próximo início; o GNOME continua instalado"
+
+msgid "the login screen from the next start is %s"
+msgstr "a tela de login a partir do próximo início é %s"
+
+msgid "GNOME's login screen (GDM) starts from the next start, so the GNOME session can lock the screen."
+msgstr "A tela de login do GNOME (GDM) é usada a partir do próximo início, para a sessão GNOME poder bloquear a tela."
+
+msgid "The Basalt session stays in its list."
+msgstr "A sessão Basalt continua na lista dela."
+
+msgid "To go back, choose the Basalt login screen again the same way."
+msgstr "Para voltar, escolha de novo a tela de login do Basalt do mesmo jeito."
+
+msgid "The Basalt login screen starts from the next start."
+msgstr "A tela de login do Basalt é usada a partir do próximo início."
+
+msgid "GNOME stays installed and in its list, without a screen lock."
+msgstr "O GNOME continua instalado e na lista dela, sem bloqueio de tela."
+
+msgid "use GDM as the login screen while GNOME is the fallback"
+msgstr "usar o GDM como tela de login enquanto o GNOME é a alternativa"
+
+msgid "use the Basalt login screen again"
+msgstr "usar de novo a tela de login do Basalt"
+
+msgid "turn off %s as the login screen"
+msgstr "desligar o %s como tela de login"
+
+msgid "make %s the login screen from the next start"
+msgstr "fazer do %s a tela de login a partir do próximo início"

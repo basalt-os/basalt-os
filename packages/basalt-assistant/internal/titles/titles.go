@@ -50,6 +50,12 @@ var forms = []string{
 	i18n.M("add the software source %s"),
 	i18n.M("remove the software source %s"),
 	i18n.M("use %s for the login screen, the console and new accounts"),
+	// basalt fallback: the proposal titles and the commands of
+	// desktop.fallback.
+	i18n.M("use GDM as the login screen while GNOME is the fallback"),
+	i18n.M("use the Basalt login screen again"),
+	i18n.M("turn off %s as the login screen"),
+	i18n.M("make %s the login screen from the next start"),
 	i18n.M("run the AI audit suite on this computer"),
 	i18n.M("accept the risk of %s"),
 	i18n.M("review the risk of %s again"),
@@ -173,6 +179,8 @@ var phrases = []string{
 	// What a check observed, at the end of its line (internal/action).
 	i18n.M("enabled"),
 	i18n.M("disabled"),
+	// desktop.fallback (internal/action).
+	i18n.M("the login screen from the next start is %s"),
 	// The reasons of hints (internal/diag, internal/engine, internal/mcp,
 	// internal/cli).
 	i18n.M("snapshot %d holds a different copy of %s (%s)"),
@@ -212,6 +220,12 @@ var sentences = []string{
 	i18n.M("Basalt does not know this source: check the fingerprint with its publisher before you trust it."),
 	i18n.M("Its packages and its package lists are signed."),
 	i18n.M("Its packages are signed; its package lists are not (the source does not sign them), so they come from a metalink over HTTPS."),
+	// The GNOME fallback's login screen (internal/cli, basalt fallback).
+	i18n.M("GNOME's login screen (GDM) starts from the next start, so the GNOME session can lock the screen."),
+	i18n.M("The Basalt session stays in its list."),
+	i18n.M("To go back, choose the Basalt login screen again the same way."),
+	i18n.M("The Basalt login screen starts from the next start."),
+	i18n.M("GNOME stays installed and in its list, without a screen lock."),
 	// The keyboard (internal/cli).
 	i18n.M("The login screen, the text console and accounts created from now on type with %s (the first is the default; the console uses the keymap %s)."),
 	i18n.M("People who chose their own layouts in Settings, Keyboard keep them."),

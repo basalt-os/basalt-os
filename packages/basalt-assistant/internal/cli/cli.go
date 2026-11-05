@@ -51,6 +51,7 @@ Look (no changes, no confirmation):
   basalt updates check                download the newest package lists (update.check; as root)
   basalt channels                     Basalt's channels, added software sources, their signing keys
   basalt keyboard                     the system's keyboard (the login screen, the console, new accounts)
+  basalt fallback                     GNOME as a fallback: installed? which login screen starts next?
   basalt security risks               the security risks an administrator accepted (Security and Activity)
 
 Change (as root; you see the exact commands first and confirm them):
@@ -78,6 +79,9 @@ Change (as root; you see the exact commands first and confirm them):
   basalt keyboard set LAYOUTS [--options OPTIONS]
                                       the keyboard of the login screen, the console and new accounts,
                                       e.g. br,us(intl) (keyboard.system; people's own settings stay)
+  basalt fallback gnome|basalt        GDM as the login screen while GNOME is the fallback (it can lock
+                                      the screen), or the Basalt login screen again (desktop.fallback;
+                                      from the next start)
   basalt security audit               run the AI audit suite on this computer (audit.run; installs it first)
   basalt security accept|review ITEM  accept the risk of a warning, or count it again (risk.accept,
                                       risk.review; ITEM: encryption, secure_boot, tpm, audit, ledger)
@@ -317,6 +321,8 @@ func (a *app) dispatch(ctx context.Context) error {
 		return a.channels(ctx)
 	case "keyboard":
 		return a.keyboard(ctx)
+	case "fallback":
+		return a.fallback(ctx)
 	case "security":
 		return a.security(ctx)
 	case "__risk":

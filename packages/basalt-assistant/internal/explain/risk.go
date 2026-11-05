@@ -86,6 +86,11 @@ func riskOf(tr i18n.Tr, a action.Action) (int, string) {
 		return RiskHigh, fmt.Sprintf(tr.T("software from %s can change the whole system: its signing key becomes trusted"), p["name"])
 	case action.SourceRemove:
 		return RiskLow, fmt.Sprintf(tr.T("no more software comes from %s; what is installed from it stays"), p["id"])
+	case action.DesktopFallback:
+		if p["target"] == "gnome" {
+			return RiskLow, tr.T("GDM starts as the login screen from the next start; the Basalt session stays in its list")
+		}
+		return RiskLow, tr.T("the Basalt login screen starts again from the next start; GNOME stays installed")
 	case action.KeyboardSystem:
 		return RiskLow, fmt.Sprintf(tr.T("the login screen and the console type with %s; people's own keyboard settings stay"), p["layouts"])
 	case action.AuditRun:
@@ -136,6 +141,9 @@ func UndoIn(tr i18n.Tr, acts []action.Action) (text string, rollbackCmd bool) {
 	}
 	if toggles {
 		return tr.T("turn the channel back the other way in Settings, Updates and channels, or with basalt channels; no snapshot is needed for one setting, and every update takes its own."), false
+	}
+	if len(acts) == 1 && acts[0].Kind == action.DesktopFallback {
+		return tr.T("choose the other login screen in Settings, About, or with basalt fallback; no snapshot is needed for one setting."), false
 	}
 	if len(acts) == 1 && acts[0].Kind == action.KeyboardSystem {
 		return tr.T("choose other layouts in Settings, Keyboard, or with basalt keyboard set; no snapshot is needed for one setting."), false
