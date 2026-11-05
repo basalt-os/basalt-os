@@ -133,8 +133,11 @@ func Packages(r Resolved) (install, exclude []string) {
 			install = append(install, p)
 		}
 	}
+	// os-prober is kept out: grub2-mkconfig would run it, and it mounts
+	// other systems' btrfs volumes read-write (35_basalt_other_systems
+	// lists them instead).
 	exclude = []string{"fedora-release", "fedora-release-common", "fedora-release-identity-basic",
-		"fedora-logos", "fedora-logos-httpd", "generic-release", "generic-logos"}
+		"fedora-logos", "fedora-logos-httpd", "generic-release", "generic-logos", "os-prober"}
 	if r.Profile == "minimal" {
 		exclude = append(exclude, "linux-firmware", "linux-firmware-whence", "*-firmware", "microcode_ctl", "fwupd*", "flashrom")
 	}

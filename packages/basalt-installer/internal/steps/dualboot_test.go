@@ -90,7 +90,10 @@ func TestAlongsideTouchesOnlyNewPartitions(t *testing.T) {
 	if !strings.Contains(menu.Command(), "/dev/nvme0n1p1=") {
 		t.Errorf("the Windows ESP is not searched: %s", menu.Command())
 	}
-	// os-prober never runs: it mounts btrfs read-write.
+	// os-prober is not installed and never runs: it mounts btrfs read-write.
+	if _, dnfStep := mustFind(t, list, "dnf --assumeyes"); !strings.Contains(dnfStep.Command(), "--exclude=os-prober") {
+		t.Error("os-prober is not excluded")
+	}
 	_, dg := mustFind(t, list, "/etc/default/grub")
 	if !strings.Contains(dg.Write.Content, "GRUB_DISABLE_OS_PROBER=true") {
 		t.Errorf("/etc/default/grub lets os-prober run:\n%s", dg.Write.Content)
@@ -202,6 +205,9 @@ func TestCheckSafetyRefuses(t *testing.T) {
 		{Title: "boot order", Argv: []string{"efibootmgr", "--bootorder", "0001"}},
 		{Title: "mount NTFS", Argv: []string{"mount", "/dev/nvme0n1p4", "/mnt"}},
 		{Title: "in chroot", Argv: []string{"chroot", "/mnt/sysroot", "mkfs.ext4", "/dev/nvme0n1p5"}},
+		{Title: "unknown tool", Argv: []string{"blkdiscard", "/dev/nvme1n1"}},
+		{Title: "unknown tool in chroot", Argv: []string{"chroot", "/mnt/sysroot", "sh", "-c", "true"}},
+		{Title: "partition editor", Argv: []string{"parted", "-s", "/dev/nvme0n1", "print"}},
 	} {
 		if err := CheckSafety(r, append(append([]Step{}, list...), bad)); err == nil {
 			t.Errorf("%q passed the safety check", bad.Title)

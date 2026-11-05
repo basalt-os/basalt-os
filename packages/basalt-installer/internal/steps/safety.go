@@ -20,8 +20,8 @@ import (
 //   - LUKS key slots: the new volume, and the existing /home only when the
 //     plan asks to enroll this machine's TPM there;
 //   - firmware boot entries: only added, never deleted or reordered;
-//   - tools that write raw blocks (dd, blkdiscard, sfdisk, parted, mkswap,
-//     ...) are not used at all.
+//   - only the commands of the allow-list below run at all (anything else,
+//     dd, blkdiscard, sfdisk, parted, mkswap included, is refused).
 //
 // Every other partition, on every disk, is left exactly as it is: an NTFS
 // or BitLocker Windows, another Linux, an encrypted volume, the shared EFI
@@ -82,6 +82,10 @@ func CheckSafety(r Resolved, list []Step) error {
 			return
 		}
 		cmd := filepath.Base(argv[0])
+		if !allowed[cmd] {
+			bad(s, "%s is not a command the installer uses", cmd)
+			return
+		}
 		switch {
 		case cmd == "sgdisk":
 			whole := false
@@ -142,8 +146,6 @@ func CheckSafety(r Resolved, list []Step) error {
 					bad(s, "mounts %s, which the plan does not use", d)
 				}
 			}
-		case rawWriters[cmd]:
-			bad(s, "%s writes raw blocks; the installer never uses it", cmd)
 		}
 		if undo && cmd == "sgdisk" {
 			for _, a := range argv[1:] {
@@ -166,8 +168,17 @@ func CheckSafety(r Resolved, list []Step) error {
 	return nil
 }
 
-var rawWriters = map[string]bool{"dd": true, "blkdiscard": true, "sfdisk": true, "parted": true, "fdisk": true, "gdisk": true,
-	"cfdisk": true, "mkswap": true, "shred": true, "sgdisk-zap": true, "partprobe": false, "badblocks": true, "ntfsresize": true,
-	"resize2fs": true, "btrfstune": true, "tune2fs": true, "e2label": true, "fatlabel": true, "ntfslabel": true}
+// allowed are the commands the generator uses (inside the target with
+// chroot or on the live system). The write-capable ones are checked
+// above; a command not listed here never runs.
+var allowed = map[string]bool{
+	"udevadm": true, "install": true, "mkdir": true, "chmod": true, "chown": true, "rm": true, "sync": true, "lsblk": true,
+	"sgdisk": true, "wipefs": true, "mkfs.vfat": true, "mkfs.ext4": true, "mkfs.btrfs": true, "btrfs": true,
+	"cryptsetup": true, "systemd-cryptenroll": true, "clevis": true, "mount": true, "umount": true,
+	"dnf": true, "rpm": true, "dracut": true, "setfiles": true, "restorecon": true, "systemctl": true,
+	"plymouth-set-default-theme": true, "grub2-editenv": true, "grub2-mkconfig": true, "efibootmgr": true,
+	"basalt-snapshots-setup": true, "basalt-installer": true,
+	"usermod": true, "useradd": true, "groupadd": true, "chpasswd": true,
+}
 
 var reDevPath = regexp.MustCompile(`^/dev/`)
