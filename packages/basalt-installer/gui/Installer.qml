@@ -42,6 +42,9 @@ Item {
     property var languages: []
     property var keyboards: []
     property string kbNote: ""
+    // The custom layout is open: nothing is chosen for reuse until the
+    // person picks a partition.
+    property bool customMode: false
 
     function targetDisk() {
         if (!root.facts || !root.plan) return null;
@@ -138,9 +141,11 @@ Item {
     // Partitions a custom layout may reuse (formatted): not the ESP, not
     // Windows or NTFS/BitLocker data (the engine refuses them too).
     function reusable(d) {
-        const win = ["e3c9e316-0b5c-4db8-817d-f92df00215ae", "de94bba4-06d1-4d40-a16a-bfd50179d6ac"];
-        return (d && d.partitions ? d.partitions : []).filter(x => x.type !== "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" && win.indexOf(x.type) < 0 &&
-            ["ntfs", "BitLocker", "exfat"].indexOf(x.fstype || "") < 0 && !x.mountpoint);
+        // ESP, BIOS boot, Microsoft reserved and Windows recovery types.
+        const never = ["c12a7328-f81f-11d2-ba4b-00a0c93ec93b", "21686148-6449-6e6f-744e-656564454649",
+            "e3c9e316-0b5c-4db8-817d-f92df00215ae", "de94bba4-06d1-4d40-a16a-bfd50179d6ac"];
+        return (d && d.partitions ? d.partitions : []).filter(x => never.indexOf(x.type) < 0 &&
+            ["ntfs", "BitLocker", "exfat", "refs"].indexOf(x.fstype || "") < 0 && !x.mountpoint && x.size_bytes >= 500 * 1024 * 1024);
     }
     function partLine(x) { return x.path + "    " + root.human(x.size_bytes) + (x.fstype ? "    " + x.fstype : "") + (x.label ? "    \"" + x.label + "\"" : ""); }
     // The live session's keyboard follows the choice, so the passphrases
@@ -363,7 +368,7 @@ Item {
                         checked: root.plan && root.plan.target.disk === modelData.path
                         // An empty disk is erased (nothing to keep); a disk with
                         // partitions starts by keeping them.
-                        onPicked: root.edit(p => { p.target.disk = modelData.path; p.target.wipe = root.isEmptyDisk(modelData); delete p.target.esp; delete p.target.boot; delete p.target.system; })
+                        onPicked: { root.customMode = false; root.edit(p => { p.target.disk = modelData.path; p.target.wipe = root.isEmptyDisk(modelData); delete p.target.esp; delete p.target.boot; delete p.target.system; }); }
                     }
                 }
             }
@@ -378,27 +383,29 @@ Item {
                     visible: { const d = root.targetDisk(); return d !== null && d.table === "gpt" && (d.partitions || []).length > 0; }
                     detail: { const d = root.targetDisk(); return d ? qsTr("%1 holds: %2").arg(root.diskName(d)).arg(root.diskHolds(d)) : ""; }
                     Choice { width: pageCol.width; title: qsTr("Erase the whole disk"); detail: qsTr("Everything on it is deleted")
+                        onCheckedChanged: if (checked) root.customMode = false
                         warning: { const d = root.targetDisk(); return d && d.caution ? qsTr("This disk %1: it is lost.").arg(d.caution) : ""; }
                         checked: root.plan && root.plan.target.wipe
                         onPicked: root.edit(p => { p.target.wipe = true; delete p.target.esp; delete p.target.boot; delete p.target.system; }) }
                     Choice { width: pageCol.width; title: qsTr("Install alongside: keep every partition, use the free space (dual boot)")
                         detail: qsTr("Free: %1. The other systems and their EFI partition are not touched; they are listed in the boot menu.").arg(root.human(root.largestFree(root.targetDisk())))
-                        checked: root.plan && !root.plan.target.wipe && !root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
-                        onPicked: root.edit(p => { p.target.wipe = false; delete p.target.esp; delete p.target.boot; delete p.target.system; }) }
+                        checked: root.plan && !root.customMode && !root.plan.target.wipe && !root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
+                        onPicked: { root.customMode = false; root.edit(p => { p.target.wipe = false; delete p.target.esp; delete p.target.boot; delete p.target.system; }); } }
                     Choice { width: pageCol.width; visible: root.existingESP(root.targetDisk()) !== ""
                         title: qsTr("Install alongside and share the EFI partition %1").arg(root.existingESP(root.targetDisk()))
                         detail: qsTr("Not formatted: Basalt OS adds its boot files in EFI/fedora (another Fedora there would be replaced)")
-                        checked: root.plan && !root.plan.target.wipe && !!root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
-                        onPicked: root.edit(p => { p.target.wipe = false; p.target.esp = root.existingESP(root.targetDisk()); delete p.target.boot; delete p.target.system; }) }
+                        checked: root.plan && !root.customMode && !root.plan.target.wipe && !!root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
+                        onPicked: { root.customMode = false; root.edit(p => { p.target.wipe = false; p.target.esp = root.existingESP(root.targetDisk()); delete p.target.boot; delete p.target.system; }); } }
                     Choice { width: pageCol.width; title: qsTr("Custom: choose partitions to reuse")
                         detail: qsTr("Reuse an existing partition for the system or /boot (it is formatted); everything you do not choose is left exactly as it is")
-                        checked: root.plan && !root.plan.target.wipe && (!!root.plan.target.boot || !!root.plan.target.system)
-                        onPicked: { const r = root.reusable(root.targetDisk()); if (r.length) root.edit(p => { p.target.wipe = false; p.target.system = r[r.length - 1].path; }); } }
+                        enabled: root.reusable(root.targetDisk()).length > 0
+                        checked: root.plan && !root.plan.target.wipe && (root.customMode || !!root.plan.target.boot || !!root.plan.target.system)
+                        onPicked: { root.customMode = true; root.edit(p => { p.target.wipe = false; }); } }
                     Txt { width: pageCol.width; role: "small"; color: Theme.warning
-                        visible: root.plan && !root.plan.target.wipe && (!!root.plan.target.boot || !!root.plan.target.system)
+                        visible: root.plan && !root.plan.target.wipe && (root.customMode || !!root.plan.target.boot || !!root.plan.target.system)
                         text: qsTr("The partitions chosen below are formatted and their files are lost. Windows, NTFS, BitLocker and EFI partitions cannot be chosen.") }
                     Repeater {
-                        model: root.plan && !root.plan.target.wipe && (root.plan.target.boot || root.plan.target.system) ? [
+                        model: root.plan && !root.plan.target.wipe && (root.customMode || root.plan.target.boot || root.plan.target.system) ? [
                             { field: "system", t: qsTr("System (btrfs, encrypted unless turned off below)") },
                             { field: "boot", t: qsTr("/boot (ext4)") }] : []
                         Column {

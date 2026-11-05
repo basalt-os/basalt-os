@@ -70,6 +70,11 @@ func ReadSecureBootDB(efivars string) SecureBootDB {
 		UEFICA:    has("Microsoft Corporation UEFI CA 2011") || has("Microsoft UEFI CA 2023")}
 }
 
+// linuxRoot are the GPT root partition types of the Discoverable
+// Partitions Specification (x86-64, aarch64, x86).
+var linuxRoot = map[string]bool{"4f68bce3-e8cd-4db1-96e7-fbcaf984b709": true, "b921b045-1df0-41c3-af44-4c6f280d3fae": true,
+	"44479540-f297-41b2-9af7-d131d5f0458a": true}
+
 // Linux file systems that may hold another installed system.
 var linuxFS = map[string]bool{"ext4": true, "ext3": true, "ext2": true, "xfs": true, "btrfs": true, "f2fs": true}
 
@@ -108,6 +113,15 @@ func DescribeHolds(d *Disk, entries []BootEntry) {
 		case linuxFS[fs]:
 			data = true
 			add(&holds, "Linux file system "+p.Path+" ("+fs+labelSuffix(p.Label)+")")
+			// The Discoverable Partitions root types name an installed
+			// Linux system even without a firmware boot entry.
+			if linuxRoot[p.Type] {
+				name := "Linux"
+				if p.Label != "" {
+					name += " (" + p.Label + ")"
+				}
+				add(&systems, name)
+			}
 		case fs == "swap":
 			add(&holds, "swap "+p.Path)
 		case fs != "":

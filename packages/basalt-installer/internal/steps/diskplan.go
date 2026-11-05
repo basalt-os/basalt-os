@@ -28,7 +28,11 @@ func DiskPlan(r Resolved) string {
 		fmt.Fprintf(&b, "  %s: keeps its partitions; only what is listed as new or formatted changes\n", plan.DescribeDisk(d))
 	}
 	for _, np := range r.NewParts {
-		fmt.Fprintf(&b, "      new        %-16s %10s  %s (formatted)\n", np.Dev, probe.HumanSize(np.Bytes), partRole(np.Role))
+		size := probe.HumanSize(np.Bytes)
+		if np.Bytes == 0 {
+			size = "the rest" // sgdisk's size 0 on an erased disk
+		}
+		fmt.Fprintf(&b, "      new        %-16s %10s  %s (formatted)\n", np.Dev, size, partRole(np.Role))
 	}
 	if !r.Plan.Target.Wipe {
 		for _, part := range d.Partitions {
