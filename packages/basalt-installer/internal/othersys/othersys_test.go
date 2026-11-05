@@ -62,3 +62,18 @@ func TestParseArg(t *testing.T) {
 		t.Fatal("not a device")
 	}
 }
+
+// Names that could break out of the GRUB script are skipped, not escaped.
+func TestScanSkipsUnsafeNames(t *testing.T) {
+	root := t.TempDir()
+	touch(t, root, "EFI/evil dir/shimx64.efi", "EFI/x;reboot/grubx64.efi", "EFI/q'uote/grubx64.efi", "EFI/ok-1.2/grubx64.efi")
+	got := Scan(root, "/dev/sda1", "ABCD-1234", nil)
+	if len(got) != 1 || got[0].Path != "/EFI/ok-1.2/grubx64.efi" {
+		t.Fatalf("%+v", got)
+	}
+	s := Script([]Loader{{Name: "x", Dev: "/dev/sda1", FSUUID: "ABCD-1234", Path: "/EFI/a b/x.efi", Class: "os"},
+		{Name: "y", Dev: "/dev/sda1", FSUUID: "AB$(x)", Path: "/EFI/y/y.efi", Class: "os"}})
+	if strings.Contains(s, "menuentry") {
+		t.Errorf("unsafe loader written:\n%s", s)
+	}
+}

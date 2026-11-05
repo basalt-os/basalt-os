@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -34,6 +35,12 @@ var names = map[string]string{
 	"manjaro": "Manjaro", "pop": "Pop!_OS", "linuxmint": "Linux Mint", "systemd": "Linux (systemd-boot)",
 	"nixos": "NixOS", "elementary": "elementary OS", "kali": "Kali Linux", "gentoo": "Gentoo",
 }
+
+// safeName is what a directory or file name on an ESP may be to reach the
+// GRUB script: it is written unquoted after chainloader and inside the
+// entry title, so anything else (spaces, quotes, $, ;, newlines) is
+// skipped, never escaped.
+var safeName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // loaders in order of preference inside a vendor directory: shim first, so
 // a Secure Boot chain stays the vendor's.
@@ -58,12 +65,12 @@ func Scan(root, dev, fsUUID string, skip []string) []Loader {
 			continue
 		}
 		vendor := strings.ToLower(e.Name())
-		if vendor == "boot" || contains(skip, vendor) {
+		if !safeName.MatchString(e.Name()) || vendor == "boot" || contains(skip, vendor) {
 			continue
 		}
 		dir := filepath.Join(efi, e.Name())
 		if vendor == "microsoft" {
-			if b := findDir(dir, "Boot"); b != "" {
+			if b := findDir(dir, "Boot"); b != "" && safeName.MatchString(filepath.Base(b)) {
 				if f := findFile(b, "bootmgfw.efi"); f != "" {
 					out = append(out, Loader{Name: names[vendor], Dev: dev, FSUUID: fsUUID, Class: "windows",
 						Path: "/EFI/" + e.Name() + "/" + filepath.Base(b) + "/" + filepath.Base(f)})
@@ -102,7 +109,7 @@ func findEntry(parent, name string, dir bool) string {
 		return ""
 	}
 	for _, e := range entries {
-		if strings.EqualFold(e.Name(), name) && e.IsDir() == dir {
+		if strings.EqualFold(e.Name(), name) && e.IsDir() == dir && safeName.MatchString(e.Name()) {
 			return filepath.Join(parent, e.Name())
 		}
 	}
@@ -125,6 +132,11 @@ func Script(list []Loader) string {
 	b.WriteString("#!/usr/bin/sh\n# Written by the Basalt OS installer: the other systems found on this machine's\n" +
 		"# EFI system partitions when Basalt OS was installed (read-only search).\n# Remove this file to drop them from the boot menu.\nset -e\ncat <<'EOF'\n")
 	for _, l := range list {
+		if !regexp.MustCompile(`^[A-Za-z0-9 ._()!-]{1,64}$`).MatchString(l.Name) ||
+			!regexp.MustCompile(`^/EFI(/[A-Za-z0-9._-]{1,64}){1,3}$`).MatchString(l.Path) ||
+			!regexp.MustCompile(`^[0-9A-Fa-f-]{4,40}$`).MatchString(l.FSUUID) || !regexp.MustCompile(`^/dev/[A-Za-z0-9/_-]+$`).MatchString(l.Dev) {
+			continue // written unquoted into a shell heredoc and a GRUB script
+		}
 		title := fmt.Sprintf("%s (%s)", l.Name, l.Dev)
 		class := "--class os"
 		if l.Class != "os" {
