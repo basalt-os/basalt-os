@@ -16,12 +16,10 @@ func TestSuggestDiskSkipsDisksWithData(t *testing.T) {
 	probe.DescribeHolds(&luks, nil)
 	empty := probe.Disk{Name: "nvme1n1", Path: "/dev/nvme1n1", SizeBytes: 500 << 30, Contents: "empty"}
 	f := probe.Facts{Disks: []probe.Disk{luks, empty}}
-	if got := SuggestDisk(f); got != "/dev/nvme1n1" {
-		t.Fatalf("suggested %q", got)
-	}
-	f.Disks = f.Disks[:1]
+	// Not even the blank-looking disk: it may hold headerless encrypted
+	// data the probe cannot see. The person always picks the disk.
 	if got := SuggestDisk(f); got != "" {
-		t.Fatalf("a LUKS disk must be chosen knowingly, suggested %q", got)
+		t.Fatalf("suggested %q", got)
 	}
 }
 
@@ -36,8 +34,8 @@ func TestSuggestLocalizes(t *testing.T) {
 	if p.Locale != "pt_BR.UTF-8" || p.Keymap != "br" || p.Timezone != "America/Sao_Paulo" {
 		t.Fatalf("boot line: %s %s %s", p.Locale, p.Keymap, p.Timezone)
 	}
-	if p.Target.Disk != "/dev/vda" || !p.Target.Wipe {
-		t.Fatalf("empty vda: %+v", p.Target)
+	if p.Target.Disk != "" || p.Target.Wipe {
+		t.Fatalf("nothing is chosen or erased by the suggestion: %+v", p.Target)
 	}
 	r = newRig(t, "", "quiet")
 	p, _, _ = r.ss.SuggestWith(context.Background(), Hints{Locale: "pt_BR.utf8", XKBLayout: "us", XKBVariant: "intl"})

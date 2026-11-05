@@ -348,8 +348,8 @@ msgstr "não foi possível ler o plano %s: %v"
 
 #: internal/session/unattended.go:98
 #, c-format
-msgid "basalt.inst.confirm=%s does not name the disk the plan erases (%s): nothing was written"
-msgstr "basalt.inst.confirm=%s não indica o disco que o plano apaga (%s): nada foi gravado"
+msgid "basalt.inst.confirm=%s does not name the disk the plan erases (%s): give %s; nothing was written"
+msgstr "basalt.inst.confirm=%s não indica o disco que o plano apaga (%s): use %s; nada foi gravado"
 
 #: internal/tui/app.go:1026
 msgid "Recovery key: write it down now"
@@ -862,3 +862,24 @@ msgstr "Qual partição será o sistema do Basalt OS?"
 
 msgid "It is formatted and its files are lost. /boot and, when needed, the EFI partition are created in the free space. Every partition you do not choose is left exactly as it is."
 msgstr "Ela é formatada e seus arquivos são perdidos. O /boot e, se preciso, a partição EFI são criados no espaço livre. Toda partição que você não escolher fica exatamente como está."
+
+msgid "no partition table or known signature found"
+msgstr "nenhuma tabela de partições ou assinatura conhecida encontrada"
+
+msgid "Erase %s?"
+msgstr "Apagar %s?"
+
+msgid "This disk has no GPT partitions to keep: Basalt OS can only erase it."
+msgstr "Este disco não tem partições GPT para manter: o Basalt OS só pode apagá-lo."
+
+msgid "No partition table or known signature was found. A disk encrypted without a header (plain dm-crypt, VeraCrypt) or a locked self-encrypting disk looks the same: erase it only if you know it holds nothing you need."
+msgstr "Nenhuma tabela de partições ou assinatura conhecida foi encontrada. Um disco criptografado sem cabeçalho (dm-crypt simples, VeraCrypt) ou um disco autocriptografado bloqueado parece igual: apague-o só se souber que não há nada nele de que você precise."
+
+msgid "On it: %s."
+msgstr "Nele: %s."
+
+msgid "needs a GPT disk with partitions"
+msgstr "precisa de um disco GPT com partições"
+
+msgid "A new partition in the free space"
+msgstr "Uma partição nova no espaço livre"

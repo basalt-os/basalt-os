@@ -317,6 +317,9 @@ func (m *model) enter(s screen) {
 				model = strings.TrimSpace(model + " " + d.Serial)
 			}
 			on := d.Contents
+			if on == "empty" {
+				on = i18n.T("no partition table or known signature found")
+			}
 			if len(d.Systems) > 0 {
 				on = strings.Join(d.Systems, ", ") + "; " + on
 			}
@@ -782,12 +785,12 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.goBack()
 				break
 			}
-			// An empty disk is erased (nothing to keep); a disk with
-			// partitions is asked about next (scDiskUse), keeping them
-			// unless the person chooses to erase it. The typed disk name
-			// after the review is the confirmation that authorizes it.
+			// Nothing is erased by picking a disk: the next screen
+			// (scDiskUse) asks, for every disk, whether to erase it or
+			// keep its partitions. The typed confirmation after the
+			// review authorizes what was chosen.
 			d := m.facts.Disks[m.diskPicker.Cursor]
-			p.Target.Disk, p.Target.Wipe = d.Path, len(d.Partitions) == 0
+			p.Target.Disk, p.Target.Wipe = d.Path, false
 			p.Target.ESP, p.Target.Boot, p.Target.System = "", "", ""
 			return m, m.afterDisk()
 		}

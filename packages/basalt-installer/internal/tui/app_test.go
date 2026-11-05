@@ -67,7 +67,8 @@ func testModelWith(t *testing.T, cmdline, lsblk string, inspector session.HomeIn
 		t.Fatal(s.err)
 	}
 	m.p, m.facts, m.note = s.p, s.f, s.note
-	m.p.Target.Wipe = true
+	// No disk is suggested: the tests pick the first one, erased.
+	m.p.Target.Disk, m.p.Target.Wipe = m.facts.Disks[0].Path, true
 	m.p.Accounts.Root.SSHKeys = []string{"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl lab@basalt"}
 	return m
 }

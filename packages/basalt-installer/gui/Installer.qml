@@ -135,9 +135,15 @@ Item {
         const parts = [];
         if (d.systems && d.systems.length) parts.push(qsTr("Systems: %1").arg(d.systems.join(", ")));
         if (d.holds && d.holds.length) parts.push(d.holds.join("; "));
-        return parts.length ? parts.join(". ") : d.contents;
+        if (parts.length) return parts.join(". ");
+        return d.contents === "empty" ? qsTr("No partition table or known signature found") : d.contents;
     }
-    function isEmptyDisk(d) { return d && (d.partitions || []).length === 0 && d.contents === "empty"; }
+    // No partition table or known signature: it may still hold data the
+    // probe cannot see (plain dm-crypt, VeraCrypt, a locked self-encrypting
+    // disk). Erasing it is always the person's explicit choice.
+    function isBlankLooking(d) { return d && (d.partitions || []).length === 0 && d.contents === "empty"; }
+    // Keeping partitions (dual boot, custom) needs a GPT disk with some.
+    function canKeep(d) { return d && d.table === "gpt" && (d.partitions || []).length > 0; }
     // Partitions a custom layout may reuse (formatted): not the ESP, not
     // Windows or NTFS/BitLocker data (the engine refuses them too).
     function reusable(d) {
@@ -368,7 +374,7 @@ Item {
                         checked: root.plan && root.plan.target.disk === modelData.path
                         // An empty disk is erased (nothing to keep); a disk with
                         // partitions starts by keeping them.
-                        onPicked: { root.customMode = false; root.edit(p => { p.target.disk = modelData.path; p.target.wipe = root.isEmptyDisk(modelData); delete p.target.esp; delete p.target.boot; delete p.target.system; }); }
+                        onPicked: { root.customMode = false; root.edit(p => { p.target.disk = modelData.path; p.target.wipe = false; delete p.target.esp; delete p.target.boot; delete p.target.system; }); }
                     }
                 }
             }
@@ -380,23 +386,27 @@ Item {
                 spacing: Theme.s6
                 Section {
                     title: qsTr("Disk use")
-                    visible: { const d = root.targetDisk(); return d !== null && d.table === "gpt" && (d.partitions || []).length > 0; }
+                    visible: root.targetDisk() !== null
                     detail: { const d = root.targetDisk(); return d ? qsTr("%1 holds: %2").arg(root.diskName(d)).arg(root.diskHolds(d)) : ""; }
+                    Txt { width: pageCol.width; role: "small"; color: Theme.warning; visible: !root.canKeep(root.targetDisk()) && !(root.plan && root.plan.target.wipe)
+                        text: root.isBlankLooking(root.targetDisk())
+                            ? qsTr("No partition table or known signature was found on this disk. A disk encrypted without a header (plain dm-crypt, VeraCrypt) or a locked self-encrypting disk looks the same: choose Erase only if you know it holds nothing you need.")
+                            : qsTr("This disk has no GPT partitions to keep: Basalt OS can only erase it. Choose Erase to go on.") }
                     Choice { width: pageCol.width; title: qsTr("Erase the whole disk"); detail: qsTr("Everything on it is deleted")
                         onCheckedChanged: if (checked) root.customMode = false
                         warning: { const d = root.targetDisk(); return d && d.caution ? qsTr("This disk %1: it is lost.").arg(d.caution) : ""; }
                         checked: root.plan && root.plan.target.wipe
                         onPicked: root.edit(p => { p.target.wipe = true; delete p.target.esp; delete p.target.boot; delete p.target.system; }) }
-                    Choice { width: pageCol.width; title: qsTr("Install alongside: keep every partition, use the free space (dual boot)")
+                    Choice { width: pageCol.width; visible: root.canKeep(root.targetDisk()); title: qsTr("Install alongside: keep every partition, use the free space (dual boot)")
                         detail: qsTr("Free: %1. The other systems and their EFI partition are not touched; they are listed in the boot menu.").arg(root.human(root.largestFree(root.targetDisk())))
                         checked: root.plan && !root.customMode && !root.plan.target.wipe && !root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
                         onPicked: { root.customMode = false; root.edit(p => { p.target.wipe = false; delete p.target.esp; delete p.target.boot; delete p.target.system; }); } }
-                    Choice { width: pageCol.width; visible: root.existingESP(root.targetDisk()) !== ""
+                    Choice { width: pageCol.width; visible: root.canKeep(root.targetDisk()) && root.existingESP(root.targetDisk()) !== ""
                         title: qsTr("Install alongside and share the EFI partition %1").arg(root.existingESP(root.targetDisk()))
                         detail: qsTr("Not formatted: Basalt OS adds its boot files in EFI/fedora (another Fedora there would be replaced)")
                         checked: root.plan && !root.customMode && !root.plan.target.wipe && !!root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
                         onPicked: { root.customMode = false; root.edit(p => { p.target.wipe = false; p.target.esp = root.existingESP(root.targetDisk()); delete p.target.boot; delete p.target.system; }); } }
-                    Choice { width: pageCol.width; title: qsTr("Custom: choose partitions to reuse")
+                    Choice { width: pageCol.width; visible: root.canKeep(root.targetDisk()); title: qsTr("Custom: choose partitions to reuse")
                         detail: qsTr("Reuse an existing partition for the system or /boot (it is formatted); everything you do not choose is left exactly as it is")
                         enabled: root.reusable(root.targetDisk()).length > 0
                         checked: root.plan && !root.plan.target.wipe && (root.customMode || !!root.plan.target.boot || !!root.plan.target.system)
@@ -730,12 +740,12 @@ Item {
                 text: root.page === 3 ? "Review the plan" : "Continue"
                 variant: "primary"
                 visible: root.page < 4
-                enabled: root.plan !== null && (root.page !== 1 || root.plan.target.disk !== "")
+                // Options: a disk without GPT partitions to keep goes on only
+                // once the person chose to erase it.
+                enabled: root.plan !== null && (root.page !== 1 || root.plan.target.disk !== "") &&
+                    (root.page !== 2 || root.plan.target.wipe || root.canKeep(root.targetDisk()))
                 onClicked: {
                     root.error = "";
-                    // The suggested disk counts as chosen: an empty one is
-                    // erased (there is nothing to keep).
-                    if (root.page === 1 && root.isEmptyDisk(root.targetDisk()) && !root.plan.target.wipe) root.edit(p => { p.target.wipe = true; });
                     if (root.page === 3) root.makePreview();
                     root.page++;
                 }

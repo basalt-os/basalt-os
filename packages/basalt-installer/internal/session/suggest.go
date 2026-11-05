@@ -58,18 +58,12 @@ type Hints struct {
 	XKBVariant string `json:"xkb_variant,omitempty"`
 }
 
-// SuggestDisk picks the disk to offer first: an empty disk that can take
-// the installation; never one that holds another system, an encrypted
-// volume or data (Caution), which the person must choose knowingly. ""
-// when every disk holds something.
-func SuggestDisk(f probe.Facts) string {
-	for _, d := range f.Disks {
-		if d.Complex == "" && d.InUse == "" && !d.ReadOnly && !d.Removable && d.SizeGiB() >= plan.MinDiskGiB && d.Caution == "" {
-			return d.Path
-		}
-	}
-	return ""
-}
+// SuggestDisk is the disk offered first: none. A disk that holds another
+// system, an encrypted volume or data must be chosen knowingly, and one
+// where no partition table or known signature is found may still hold
+// data the probe cannot see (plain dm-crypt, VeraCrypt, a locked
+// self-encrypting disk), so the person always picks the disk.
+func SuggestDisk(f probe.Facts) string { return "" }
 
 // Suggest returns a starting plan for this machine (SuggestWith without
 // hints).
@@ -77,12 +71,10 @@ func (s *Session) Suggest(ctx context.Context) (plan.Plan, probe.Facts, error) {
 	return s.SuggestWith(ctx, Hints{})
 }
 
-// SuggestWith returns a starting plan for this machine: an empty disk (see
+// SuggestWith returns a starting plan for this machine: no disk (see
 // SuggestDisk), the language, keyboard and time zone of the live session,
-// and the defaults from the kernel command line. A disk that holds
-// partitions is never wiped without the person choosing it again (the
-// plan's wipe flag stays false); an empty disk has nothing to keep, so the
-// plan erases it (the typed confirmation is still required).
+// and the defaults from the kernel command line. Nothing is erased
+// without the person choosing it (the plan's wipe flag stays false).
 func (s *Session) SuggestWith(ctx context.Context, h Hints) (plan.Plan, probe.Facts, error) {
 	f, err := s.Facts(ctx, true)
 	if err != nil {
@@ -115,7 +107,6 @@ func (s *Session) SuggestWith(ctx context.Context, h Hints) (plan.Plan, probe.Fa
 				loaded.Target.Disk = disk
 			}
 			s.localize(&loaded, f, h, c)
-			emptyWipe(&loaded, f)
 			return loaded, f, nil
 		}
 		// The wizard starts from the defaults and says why.
@@ -139,16 +130,7 @@ func (s *Session) SuggestWith(ctx context.Context, h Hints) (plan.Plan, probe.Fa
 		p.Encryption.Unlock = "recovery-only"
 	}
 	s.localize(&p, f, h, c)
-	emptyWipe(&p, f)
 	return p, f, nil
-}
-
-// emptyWipe erases a disk without a partition table: there is nothing to
-// keep, and "keep the partitions" is not possible there.
-func emptyWipe(p *plan.Plan, f probe.Facts) {
-	if d, ok := f.Disk(p.Target.Disk); ok && d.Table == "" && len(d.Partitions) == 0 && d.Contents == "empty" {
-		p.Target.Wipe = true
-	}
 }
 
 // localize fills the language, keyboard and time zone the plan leaves at

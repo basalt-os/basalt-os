@@ -151,16 +151,15 @@ func TestInstallOverTheSocket(t *testing.T) {
 	}
 	b, _ := json.Marshal(r.Result)
 	_ = json.Unmarshal(b, &sug)
-	if sug.Plan.Target.Disk != "/dev/vda" || sug.Plan.Repos.Basalt.URL != "http://10.0.2.2:8098" || sug.Plan.Hostname != "lab1" || !sug.Facts.TPM2 {
+	if sug.Plan.Target.Disk != "" || sug.Plan.Repos.Basalt.URL != "http://10.0.2.2:8098" || sug.Plan.Hostname != "lab1" || !sug.Facts.TPM2 {
 		t.Fatalf("suggestion: %+v %+v", sug.Plan, sug.Facts)
 	}
 	p := sug.Plan
-	// vda is empty: nothing to keep, so the suggestion erases it (the
-	// typed confirmation still authorizes it). Without that the review
-	// failed with a raw "target.wipe" error on an untouched empty disk.
-	if !p.Target.Wipe {
-		t.Fatalf("an empty suggested disk must be erased by the plan: %+v", p.Target)
+	// No disk is suggested and nothing is erased until the person says so.
+	if p.Target.Wipe {
+		t.Fatalf("the suggestion erases a disk: %+v", p.Target)
 	}
+	p.Target.Disk, p.Target.Wipe = "/dev/vda", true
 	p.Accounts.Root.SSHKeys = []string{"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl lab"}
 	p.Accounts.User = &plan.User{Name: "ana", Password: "secret-password"}
 	r = cl.call("preview", map[string]any{"plan": p})

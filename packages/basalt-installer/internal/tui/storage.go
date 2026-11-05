@@ -61,16 +61,13 @@ func (m *model) targetDisk() probe.Disk {
 	return d
 }
 
-// afterDisk goes on from the disk screen: a disk with partitions offers to
-// keep them; an empty one is erased.
+// afterDisk goes on from the disk screen to the question of what to do
+// with the disk: never erased without the person choosing it there (a disk
+// without a partition table may still hold data the probe cannot see).
 func (m *model) afterDisk() tea.Cmd {
-	d := m.targetDisk()
-	if d.Table == "gpt" && len(d.Partitions) > 0 {
-		m.go_(scDiskUse)
-		return nil
-	}
-	m.p.Target.Wipe, m.p.Target.ESP = true, ""
-	return m.toHome()
+	m.p.Target.Wipe, m.p.Target.ESP = false, ""
+	m.go_(scDiskUse)
+	return nil
 }
 
 // toHome opens the /home screen when there are partitions to adopt.
@@ -147,6 +144,27 @@ func (m *model) enterStorage(s screen) {
 		if free.Bytes < need {
 			noRoom = fmt.Sprintf(i18n.T("needs %s of free space"), probe.HumanSize(need))
 		}
+		if d.Table != "gpt" || len(d.Partitions) == 0 {
+			// Nothing to keep: erasing is the only choice, and it is the
+			// person's (a blank-looking disk may hold headerless
+			// encrypted data).
+			title := fmt.Sprintf(i18n.T("Erase %s?"), plan.DescribeDisk(d))
+			body := i18n.T("This disk has no GPT partitions to keep: Basalt OS can only erase it.")
+			if d.Contents == "empty" {
+				body = i18n.T("No partition table or known signature was found. A disk encrypted without a header (plain dm-crypt, VeraCrypt) or a locked self-encrypting disk looks the same: erase it only if you know it holds nothing you need.")
+			} else {
+				body += " " + fmt.Sprintf(i18n.T("On it: %s."), d.Contents)
+			}
+			m.diskUse = kit.RowPicker{Title: title, Body: body,
+				Columns: []ui.Column{{Title: i18n.T("Use of the disk"), Width: 40, Flex: true}, {Title: i18n.T("Space"), Width: 12}}}
+			m.diskUse.Rows = []kit.Row{
+				{Cells: []string{i18n.T("Erase the whole disk"), probe.HumanSize(d.SizeBytes)}},
+				{Cells: []string{i18n.T("Keep the partitions, use the free space"), ""}, Disabled: i18n.T("needs a GPT disk with partitions")},
+				{Cells: []string{i18n.T("Keep the partitions, share an EFI partition"), ""}, Disabled: i18n.T("needs a GPT disk with partitions")},
+				{Cells: []string{i18n.T("Custom: reuse a partition for the system (it is formatted)"), ""}, Disabled: i18n.T("needs a GPT disk with partitions")},
+			}
+			break
+		}
 		m.diskUse.Rows = []kit.Row{
 			{Cells: []string{i18n.T("Erase the whole disk"), probe.HumanSize(d.SizeBytes)}},
 			{Cells: []string{i18n.T("Keep the partitions, use the free space"), probe.HumanSize(free.Bytes)}, Disabled: noRoom},
@@ -175,10 +193,15 @@ func (m *model) enterStorage(s screen) {
 		m.diskUse = kit.RowPicker{Title: i18n.T("Which partition becomes the Basalt OS system?"),
 			Body:    i18n.T("It is formatted and its files are lost. /boot and, when needed, the EFI partition are created in the free space. Every partition you do not choose is left exactly as it is."),
 			Columns: []ui.Column{{Title: i18n.T("Partition"), Width: 16}, {Title: i18n.T("Size"), Width: 10}, {Title: i18n.T("Contents"), Width: 14}, {Title: i18n.T("Label"), Width: 12, Flex: true}}}
+		// The first row (and the cursor) is a new partition: one Enter
+		// never formats an existing one.
+		free, _ := d.LargestFree()
+		m.diskUse.Rows = []kit.Row{{Cells: []string{i18n.T("A new partition in the free space"), probe.HumanSize(free.Bytes), "", ""}}}
+		m.diskUse.Cursor = 0
 		for i, c := range reusable(d) {
 			m.diskUse.Rows = append(m.diskUse.Rows, kit.Row{Cells: []string{c.Path, probe.HumanSize(c.Bytes), c.FSType, c.Label}})
 			if c.Path == p.Target.System {
-				m.diskUse.Cursor = i
+				m.diskUse.Cursor = i + 1
 			}
 		}
 	case scHome:
@@ -296,8 +319,9 @@ func (m *model) onStorageKey(k tea.KeyMsg) tea.Cmd {
 			m.goBack()
 			return nil
 		}
-		if list := reusable(m.targetDisk()); m.diskUse.Cursor < len(list) {
-			p.Target.System = list[m.diskUse.Cursor].Path
+		p.Target.System = ""
+		if list := reusable(m.targetDisk()); m.diskUse.Cursor >= 1 && m.diskUse.Cursor-1 < len(list) {
+			p.Target.System = list[m.diskUse.Cursor-1].Path
 		}
 		return m.toHome()
 	case scHome:
