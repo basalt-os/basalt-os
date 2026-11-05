@@ -9,7 +9,7 @@
 # grub2-mkconfig writes /boot/grub2/grub.cfg from /etc/grub.d.
 
 Name:           basalt-logos
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        Basalt OS logos and icons
 License:        CC-BY-SA-4.0
@@ -44,6 +44,9 @@ test pages, with the Basalt OS mark.
 Summary:        Basalt OS boot splash theme for Plymouth
 Requires:       plymouth-plugin-script
 Requires:       plymouth-plugin-label
+# The initramfs font (plymouth-populate-initrd copies fc-match's default):
+# Noto Sans covers the Portuguese letters.
+Requires:       google-noto-sans-fonts
 Requires:       plymouth-scripts
 Requires(postun): plymouth-scripts
 
@@ -160,6 +163,9 @@ fi
 %license %{_datadir}/licenses/%{name}/COPYING
 %{_datadir}/plymouth/themes/basalt/
 %{_datadir}/plymouth/themes/basalt-pt_BR/
+%dir %{_prefix}/lib/systemd/system/plymouth-start.service.d
+%{_prefix}/lib/systemd/system/plymouth-start.service.d/50-basalt-utf8.conf
+%{_prefix}/lib/dracut/dracut.conf.d/50-basalt-plymouth.conf
 
 %files -n basalt-grub2-theme
 %license %{_datadir}/licenses/%{name}/COPYING
@@ -196,6 +202,15 @@ fi
 %{_datadir}/plymouth/themes/spinner/watermark.png
 
 %changelog
+* Thu Nov 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.1-1
+- Boot splash under pt_BR: letters such as "ç" and "ã" showed as missing
+  glyphs in the initramfs. plymouthd runs there in the C locale (the
+  system locale's data is not in the initramfs) and decodes text with
+  mbrtowc; a plymouth-start.service drop-in, installed in the initramfs
+  through a dracut configuration file, gives it LC_ALL=C.UTF-8 (built into
+  glibc). plymouth-theme-basalt requires google-noto-sans-fonts, the
+  font the initramfs gets.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.3.0-1
 - New boot splash, matching the GRUB theme and the login screen: the GRUB
   menu's basalt-column background, the mark drawing in (ring, core, then
