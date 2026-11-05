@@ -217,6 +217,8 @@ fi
 - busctl options end before the Notify arguments.
 - basalt apply asks and reports in the reader's language and accepts
   their word for yes (the applier had no catalog: English only).
+- basalt status lines its values up under the translated labels (pt_BR
+  "Registro de auditoria" ran into its value), counting letters, not bytes.
 
 * Wed Oct 21 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.3-1
 - The body of proposals and reports in the reader's language: basalt

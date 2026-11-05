@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/apply"
@@ -436,7 +437,21 @@ func writeStatus(w io.Writer, s diag.Status, auditN int64, auditErr error) {
 		}
 	}
 	fmt.Fprintln(w)
-	row := func(label, value string) { fmt.Fprintf(w, "  %-11s %s\n", label, value) }
+	// The rows are printed once all are known, so the values line up
+	// whatever the length of the translated labels (counted in runes:
+	// "Serviços" is 8 letters, 9 bytes).
+	type statusRow struct{ label, value string }
+	var rows []statusRow
+	row := func(label, value string) { rows = append(rows, statusRow{label, value}) }
+	defer func() {
+		width := 11
+		for _, r := range rows {
+			width = max(width, utf8.RuneCountInString(r.label))
+		}
+		for _, r := range rows {
+			fmt.Fprintf(w, "  %s%s %s\n", r.label, strings.Repeat(" ", width-utf8.RuneCountInString(r.label)), r.value)
+		}
+	}()
 	row(i18n.T("System"), s.OS.String())
 	selinux := s.SELinux
 	if s.SELinux == "Enforcing" {

@@ -188,3 +188,32 @@ func TestApplierInReadersLanguage(t *testing.T) {
 		t.Errorf("the applier translates yes as %q, want sim", got)
 	}
 }
+
+// basalt status lines its values up under translated labels longer than
+// the English ones, counting letters, not bytes; English keeps its layout.
+func TestStatusColumnsInReadersLanguage(t *testing.T) {
+	check := func(col int) {
+		var b bytes.Buffer
+		writeStatus(&b, diag.Status{SELinux: "Enforcing", RollbackState: "none"}, 3, nil)
+		n := 0
+		for _, line := range strings.Split(b.String(), "\n") {
+			r := []rune(line)
+			if !strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "  - ") || len(r) <= col {
+				continue
+			}
+			n++
+			if r[col-1] != ' ' || r[col] == ' ' {
+				t.Errorf("the value does not start at column %d: %q", col, line)
+			}
+		}
+		if n < 8 {
+			t.Errorf("%d rows:\n%s", n, b.String())
+		}
+	}
+	check(2 + 11 + 1)
+	i18n.Use(&i18n.Catalog{Lang: "pt_BR", Messages: map[string][]string{
+		"Services": {"Serviços"}, "Audit log": {"Registro de auditoria"}, "Rollback": {"Reversão"},
+	}})
+	t.Cleanup(i18n.Reset)
+	check(2 + len([]rune("Registro de auditoria")) + 1)
+}
