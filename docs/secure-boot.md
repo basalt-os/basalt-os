@@ -214,6 +214,13 @@ What it changes:
   (shim signed by Microsoft only) is refused with "Access Denied".
 - PCR 7 changes (it measures PK, KEK, db and the certificate that verified
   each boot loader), so the TPM2 disk key must be sealed again (below).
+- Dual boot: Windows' boot manager is signed through the Microsoft
+  Windows Production PCA 2011 (and the Windows UEFI CA 2023), other
+  distributions' shim through the Microsoft UEFI CA 2011 (and 2023). With
+  Basalt's db alone neither starts. On a dual-boot machine keep those
+  Microsoft certificates in db next to the Basalt db certificate, or stay
+  in MOK mode, which never changes db (the installer warns when the db it
+  reads lacks them and it found such a system).
 - Option ROMs: plug-in cards (network, RAID, GPU) carry firmware signed by
   Microsoft's UEFI CA. A db without that CA may stop them from
   initializing. On such machines add Microsoft's UEFI CA to db and accept
