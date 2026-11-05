@@ -155,10 +155,12 @@ func TestInstallOverTheSocket(t *testing.T) {
 		t.Fatalf("suggestion: %+v %+v", sug.Plan, sug.Facts)
 	}
 	p := sug.Plan
-	if r := cl.call("preview", map[string]any{"plan": p}); r.OK || !strings.Contains(r.Error, "target.wipe") {
-		t.Fatalf("a suggested plan must not be installable before the wipe is confirmed: %+v", r)
+	// vda is empty: nothing to keep, so the suggestion erases it (the
+	// typed confirmation still authorizes it). Without that the review
+	// failed with a raw "target.wipe" error on an untouched empty disk.
+	if !p.Target.Wipe {
+		t.Fatalf("an empty suggested disk must be erased by the plan: %+v", p.Target)
 	}
-	p.Target.Wipe = true
 	p.Accounts.Root.SSHKeys = []string{"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl lab"}
 	p.Accounts.User = &plan.User{Name: "ana", Password: "secret-password"}
 	r = cl.call("preview", map[string]any{"plan": p})

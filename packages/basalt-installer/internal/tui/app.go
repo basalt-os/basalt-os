@@ -95,6 +95,9 @@ const (
 	scHomeUser
 	scHomeTPM
 	scScope
+	scLanguage
+	scKeyboard
+	scReuse
 )
 
 type model struct {
@@ -296,8 +299,8 @@ func (m *model) enter(s screen) {
 	switch s {
 	case scDisk:
 		m.diskPicker = kit.RowPicker{Title: "Where should Basalt OS be installed?",
-			Body:    "The whole disk is used and erased. Only one local disk is supported here; RAID, multipath and iSCSI installs use the kickstart installer.",
-			Columns: []ui.Column{{Title: "Disk", Width: 14}, {Title: "Size", Width: 10}, {Title: "Model", Width: 18, Flex: true}, {Title: "Contents", Width: 22, Flex: true}}}
+			Body:    i18n.T("Check the model and serial number. A disk that holds other systems or data keeps its partitions unless you choose to erase it next. One local disk only; RAID, multipath and iSCSI installs use the kickstart installer."),
+			Columns: []ui.Column{{Title: "Disk", Width: 14}, {Title: "Size", Width: 10}, {Title: i18n.T("Model, serial"), Width: 22, Flex: true}, {Title: i18n.T("On it"), Width: 26, Flex: true}}}
 		for i, d := range m.facts.Disks {
 			reason := d.Complex
 			if reason == "" {
@@ -309,7 +312,18 @@ func (m *model) enter(s screen) {
 			if reason == "" && d.SizeGiB() < plan.MinDiskGiB {
 				reason = fmt.Sprintf("smaller than %d GiB", plan.MinDiskGiB)
 			}
-			m.diskPicker.Rows = append(m.diskPicker.Rows, kit.Row{Cells: []string{d.Path, probe.HumanSize(d.SizeBytes), d.Model, d.Contents}, Disabled: reason})
+			model := d.Model
+			if d.Serial != "" {
+				model = strings.TrimSpace(model + " " + d.Serial)
+			}
+			on := d.Contents
+			if len(d.Systems) > 0 {
+				on = strings.Join(d.Systems, ", ") + "; " + on
+			}
+			if d.Caution != "" && reason == "" {
+				on = "! " + on
+			}
+			m.diskPicker.Rows = append(m.diskPicker.Rows, kit.Row{Cells: []string{d.Path, probe.HumanSize(d.SizeBytes), model, on}, Disabled: reason})
 			if d.Path == p.Target.Disk {
 				m.diskPicker.Cursor = i
 			}
@@ -363,6 +377,35 @@ func (m *model) enter(s screen) {
 		hn, tz := kit.TextField("Host name", p.Hostname, "basalt"), kit.TextField("Time zone", p.Timezone, "Etc/UTC")
 		tz.Help = "As in /usr/share/zoneinfo, for example America/Sao_Paulo"
 		m.form = kit.NewForm("System", "", hn, tz)
+	case scLanguage:
+		var names []string
+		cur := ""
+		for _, l := range plan.Languages() {
+			names = append(names, l.Name)
+			if l.Locale == p.Locale {
+				cur = l.Name
+			}
+		}
+		if cur == "" {
+			// A plan's own locale stays when nothing else is picked.
+			cur = p.Locale
+			names = append([]string{p.Locale}, names...)
+		}
+		m.picker = ui.NewPicker(i18n.T("Language of the installed system"), names, cur)
+	case scKeyboard:
+		var names []string
+		cur := ""
+		for _, kb := range plan.Keyboards() {
+			names = append(names, kb.Name)
+			if kb.Keymap == p.Keymap {
+				cur = kb.Name
+			}
+		}
+		if cur == "" {
+			cur = p.Keymap
+			names = append([]string{p.Keymap}, names...)
+		}
+		m.picker = ui.NewPicker(i18n.T("Keyboard (also at the disk passphrase prompt and the login screen)"), names, cur)
 	case scProfile:
 		opts := []string{"auto", "minimal", "standard"}
 		m.picker = ui.NewPicker(fmt.Sprintf("Package profile (auto picks %s on this machine)", autoProfile(m.facts)), opts, p.Profile)
@@ -418,12 +461,18 @@ func (m *model) enter(s screen) {
 		// the first line of the text, where it wraps.
 		m.pager.Title = fmt.Sprintf(i18n.N("Review: %d step, exactly what will run", "Review: %d steps, exactly what will run", len(pv.Steps)), len(pv.Steps))
 		m.pager.Text = "# " + m.p.Summary() + "\n\n" + issuesText(pv.Issues) + pv.Text
-	case scDiskUse, scHome, scHomePick, scHomePass, scHomeOwner, scHomeUser, scHomeTPM, scScope:
+	case scDiskUse, scHome, scHomePick, scHomePass, scHomeOwner, scHomeUser, scHomeTPM, scScope, scReuse:
 		m.enterStorage(s)
 	case scConfirm:
 		word := m.preview.ConfirmWord()
-		m.confirm = ui.NewInput(fmt.Sprintf("Erase %s and install Basalt OS?", m.preview.Resolved.Disk.Path), "", "")
-		m.confirm.Help = fmt.Sprintf("Everything on %s (%s) is destroyed. Type %s to confirm.", m.preview.Resolved.Disk.Path, m.preview.Resolved.Disk.Contents, word)
+		d := m.preview.Resolved.Disk
+		if m.preview.Resolved.Plan.Target.Wipe {
+			m.confirm = ui.NewInput(fmt.Sprintf(i18n.T("Erase %s and install Basalt OS?"), plan.DescribeDisk(d)), "", "")
+			m.confirm.Help = fmt.Sprintf(i18n.T("Everything on %s (%s) is destroyed. Type %s to confirm."), plan.DescribeDisk(d), d.Contents, word)
+		} else {
+			m.confirm = ui.NewInput(fmt.Sprintf(i18n.T("Install Basalt OS on %s next to what it holds?"), plan.DescribeDisk(d)), "", "")
+			m.confirm.Help = fmt.Sprintf(i18n.T("Only the partitions listed as new or FORMATTED in the review are written; every other partition stays as it is. Type %s to confirm."), word)
+		}
 	}
 }
 
@@ -733,10 +782,13 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.goBack()
 				break
 			}
-			// Choosing the disk on a screen that says it is erased sets the
-			// plan's wipe flag; the typed disk name after the review is the
-			// confirmation that authorizes it.
-			p.Target.Disk, p.Target.Wipe = m.facts.Disks[m.diskPicker.Cursor].Path, true
+			// An empty disk is erased (nothing to keep); a disk with
+			// partitions is asked about next (scDiskUse), keeping them
+			// unless the person chooses to erase it. The typed disk name
+			// after the review is the confirmation that authorizes it.
+			d := m.facts.Disks[m.diskPicker.Cursor]
+			p.Target.Disk, p.Target.Wipe = d.Path, len(d.Partitions) == 0
+			p.Target.ESP, p.Target.Boot, p.Target.System = "", "", ""
 			return m, m.afterDisk()
 		}
 	case scLayout:
@@ -801,16 +853,16 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			switch m.picker.Selected() {
 			case off:
 				p.Encryption.Enabled = plan.Bool(false)
-				m.go_(scSystem)
+				m.go_(scLanguage)
 			case recovery:
 				p.Encryption.Unlock = "recovery-only"
-				m.go_(scSystem)
+				m.go_(scLanguage)
 			case tang, tpmTang:
 				p.Encryption.Unlock = map[string]string{tang: "tang", tpmTang: "tpm2+tang"}[m.picker.Selected()]
 				m.go_(scTang)
 			default:
 				p.Encryption.Unlock = "tpm2"
-				m.go_(scSystem)
+				m.go_(scLanguage)
 			}
 		}
 	case scTang:
@@ -821,9 +873,45 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				break
 			}
 			p.Encryption.Tang = plan.Tang{URL: m.form.Value(0), Thumbprint: m.form.Value(1)}
-			m.go_(scSystem)
+			m.go_(scLanguage)
 		}
 		return m, cmd
+	case scLanguage:
+		m.picker.Update(k)
+		if m.picker.Done {
+			if !m.picker.Accepted {
+				m.goBack()
+				break
+			}
+			for _, l := range plan.Languages() {
+				if l.Name == m.picker.Selected() && l.Locale != p.Locale {
+					old, _ := plan.LookupLanguage(p.Locale)
+					p.Locale = l.Locale
+					// The keyboard and zone follow unless changed by hand.
+					if p.Keymap == old.Keymap || p.Keymap == plan.DefaultKeymap {
+						p.Keymap = l.Keymap
+					}
+					if l.Timezone != "" && (p.Timezone == old.Timezone || p.Timezone == plan.DefaultTimezone) {
+						p.Timezone = l.Timezone
+					}
+				}
+			}
+			m.go_(scKeyboard)
+		}
+	case scKeyboard:
+		m.picker.Update(k)
+		if m.picker.Done {
+			if !m.picker.Accepted {
+				m.goBack()
+				break
+			}
+			for _, kb := range plan.Keyboards() {
+				if kb.Name == m.picker.Selected() {
+					p.Keymap = kb.Keymap
+				}
+			}
+			m.go_(scSystem)
+		}
 	case scSystem:
 		cmd, _ := m.form.Update(k)
 		if m.form.Done {
@@ -957,7 +1045,7 @@ func (m *model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.startInstall()
 		}
 		return m, cmd
-	case scDiskUse, scHome, scHomePick, scHomePass, scHomeOwner, scHomeUser, scHomeTPM, scScope:
+	case scDiskUse, scHome, scHomePick, scHomePass, scHomeOwner, scHomeUser, scHomeTPM, scScope, scReuse:
 		if m.scr == scHomePass {
 			m.homePass = ""
 			if len(m.form.Fields) > 0 {
@@ -1098,7 +1186,7 @@ func (m *model) View() string {
 		scNetwork: "network", scStatic: "network", scRepos: "repositories", scRepoURL: "repositories", scReview: "review",
 		scConfirm: "confirm", scProgress: "installing", scDone: "done", scFailed: "failed", scWaiting: "unattended",
 		scDiskUse: "disk", scHome: "home", scHomePick: "home", scHomePass: "home", scHomeOwner: "home", scHomeUser: "home",
-		scHomeTPM: "home", scScope: "encryption"}[m.scr]
+		scHomeTPM: "home", scScope: "encryption", scLanguage: "language", scKeyboard: "keyboard", scReuse: "disk"}[m.scr]
 	f := m.facts
 	var facts []ui.Fact
 	if m.remote == nil {
@@ -1153,11 +1241,11 @@ func (m *model) View() string {
 		body = center(lines, w, bodyH)
 	case scDisk:
 		body = m.diskPicker.View(t, w, bodyH)
-	case scLayout, scEncryption, scProfile, scNetwork, scHome, scHomeTPM, scScope:
+	case scLayout, scEncryption, scProfile, scNetwork, scHome, scHomeTPM, scScope, scLanguage, scKeyboard:
 		body = m.picker.View(t, w, bodyH)
 	case scLayoutSizes, scTang, scSystem, scAccounts, scStatic, scRepoURL, scHomePass, scHomeUser:
 		body = m.form.View(t, w, bodyH)
-	case scDiskUse:
+	case scDiskUse, scReuse:
 		body = m.diskUse.View(t, w, bodyH)
 	case scHomePick:
 		body = m.homePick.View(t, w, bodyH)

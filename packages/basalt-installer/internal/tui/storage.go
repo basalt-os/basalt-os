@@ -25,7 +25,26 @@ const (
 	useErase = iota
 	useFree
 	useFreeSharedESP
+	useCustom
 )
+
+// reusable lists the partitions of d a custom layout may format for the
+// system: not the EFI system partition, not Windows or NTFS/BitLocker
+// data, not mounted (the plan's validation refuses those too).
+func reusable(d probe.Disk) []probe.Partition {
+	var out []probe.Partition
+	for _, p := range d.Partitions {
+		fs := strings.ToLower(p.FSType)
+		if p.Type == probe.TypeESP || p.Type == probe.TypeMSR || p.Type == probe.TypeWinRecov || fs == "ntfs" || fs == "bitlocker" || fs == "exfat" || p.Mountpoint != "" {
+			continue
+		}
+		if p.Bytes < int64(plan.MinSystemGiB)<<30 {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
 
 type inspectedMsg struct {
 	res session.HomeInspection
@@ -117,8 +136,12 @@ func (m *model) enterStorage(s screen) {
 		}
 		free, _ := d.LargestFree()
 		need := plan.NeededBytes(*p)
-		m.diskUse = kit.RowPicker{Title: fmt.Sprintf(i18n.T("%s already holds partitions"), d.Path),
-			Body:    fmt.Sprintf(i18n.T("On it: %s. Basalt OS can erase the whole disk, or go into its free space and leave every other partition as it is (dual boot)."), strings.Join(kept, ", ")),
+		on := strings.Join(kept, ", ")
+		if len(d.Systems) > 0 {
+			on = strings.Join(d.Systems, ", ") + "; " + on
+		}
+		m.diskUse = kit.RowPicker{Title: fmt.Sprintf(i18n.T("%s already holds partitions"), plan.DescribeDisk(d)),
+			Body:    fmt.Sprintf(i18n.T("On it: %s. Basalt OS can erase the whole disk, or go into its free space and leave every other partition as it is (dual boot)."), on),
 			Columns: []ui.Column{{Title: i18n.T("Use of the disk"), Width: 40, Flex: true}, {Title: i18n.T("Space"), Width: 12}}}
 		noRoom := ""
 		if free.Bytes < need {
@@ -128,14 +151,35 @@ func (m *model) enterStorage(s screen) {
 			{Cells: []string{i18n.T("Erase the whole disk"), probe.HumanSize(d.SizeBytes)}},
 			{Cells: []string{i18n.T("Keep the partitions, use the free space"), probe.HumanSize(free.Bytes)}, Disabled: noRoom},
 		}
-		if esp := existingESP(d); esp != "" {
-			m.diskUse.Rows = append(m.diskUse.Rows, kit.Row{Cells: []string{fmt.Sprintf(i18n.T("Keep the partitions, share the EFI partition %s"), esp), probe.HumanSize(free.Bytes)}, Disabled: noRoom})
+		esp := existingESP(d)
+		sharedRow := kit.Row{Cells: []string{fmt.Sprintf(i18n.T("Keep the partitions, share the EFI partition %s"), esp), probe.HumanSize(free.Bytes)}, Disabled: noRoom}
+		if esp == "" {
+			sharedRow = kit.Row{Cells: []string{i18n.T("Keep the partitions, share an EFI partition"), ""}, Disabled: i18n.T("no EFI system partition on this disk")}
 		}
+		m.diskUse.Rows = append(m.diskUse.Rows, sharedRow)
+		customRow := kit.Row{Cells: []string{i18n.T("Custom: reuse a partition for the system (it is formatted)"), ""}}
+		if len(reusable(d)) == 0 {
+			customRow.Disabled = i18n.T("no partition that can be reused")
+		}
+		m.diskUse.Rows = append(m.diskUse.Rows, customRow)
 		switch {
+		case !p.Target.Wipe && p.Target.System != "":
+			m.diskUse.Cursor = useCustom
 		case !p.Target.Wipe && p.Target.ESP != "":
 			m.diskUse.Cursor = useFreeSharedESP
 		case !p.Target.Wipe:
 			m.diskUse.Cursor = useFree
+		}
+	case scReuse:
+		d := m.targetDisk()
+		m.diskUse = kit.RowPicker{Title: i18n.T("Which partition becomes the Basalt OS system?"),
+			Body:    i18n.T("It is formatted and its files are lost. /boot and, when needed, the EFI partition are created in the free space. Every partition you do not choose is left exactly as it is."),
+			Columns: []ui.Column{{Title: i18n.T("Partition"), Width: 16}, {Title: i18n.T("Size"), Width: 10}, {Title: i18n.T("Contents"), Width: 14}, {Title: i18n.T("Label"), Width: 12, Flex: true}}}
+		for i, c := range reusable(d) {
+			m.diskUse.Rows = append(m.diskUse.Rows, kit.Row{Cells: []string{c.Path, probe.HumanSize(c.Bytes), c.FSType, c.Label}})
+			if c.Path == p.Target.System {
+				m.diskUse.Cursor = i
+			}
 		}
 	case scHome:
 		fresh, existing := homeLabels()
@@ -228,6 +272,7 @@ func (m *model) onStorageKey(k tea.KeyMsg) tea.Cmd {
 			m.goBack()
 			return nil
 		}
+		p.Target.Boot, p.Target.System = "", ""
 		switch m.diskUse.Cursor {
 		case useErase:
 			p.Target.Wipe, p.Target.ESP = true, ""
@@ -235,6 +280,24 @@ func (m *model) onStorageKey(k tea.KeyMsg) tea.Cmd {
 			p.Target.Wipe, p.Target.ESP = false, ""
 		case useFreeSharedESP:
 			p.Target.Wipe, p.Target.ESP = false, existingESP(m.targetDisk())
+		case useCustom:
+			p.Target.Wipe, p.Target.ESP = false, ""
+			m.go_(scReuse)
+			return nil
+		}
+		return m.toHome()
+	case scReuse:
+		m.diskUse.Update(k)
+		if !m.diskUse.Done {
+			return nil
+		}
+		m.diskUse.Done = false
+		if !m.diskUse.Accepted {
+			m.goBack()
+			return nil
+		}
+		if list := reusable(m.targetDisk()); m.diskUse.Cursor < len(list) {
+			p.Target.System = list[m.diskUse.Cursor].Path
 		}
 		return m.toHome()
 	case scHome:

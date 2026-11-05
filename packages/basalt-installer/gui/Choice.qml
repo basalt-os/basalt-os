@@ -5,6 +5,8 @@ Rectangle {
     id: c
     property string title: ""
     property string detail: ""
+    // A caution line under the detail (another system, encrypted data).
+    property string warning: ""
     property bool checked: false
     property bool enabled: true
     property string e2e: ""
@@ -36,6 +38,7 @@ Rectangle {
         spacing: 2
         Txt { text: c.title; width: parent.width; font.weight: Font.Medium }
         Txt { text: c.detail; width: parent.width; role: "small"; color: Theme.textMuted; visible: c.detail !== "" }
+        Txt { text: c.warning; width: parent.width; role: "small"; color: Theme.warning; visible: c.warning !== "" }
     }
     MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; onClicked: if (c.enabled) c.picked() }
     Keys.onSpacePressed: if (c.enabled) c.picked()

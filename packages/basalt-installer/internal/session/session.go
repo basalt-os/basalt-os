@@ -151,7 +151,9 @@ func (s *Session) MakePreview(ctx context.Context, p plan.Plan) (Preview, error)
 	if err != nil {
 		return Preview{Issues: issues}, err
 	}
-	text := steps.Preview(list)
+	// The disk plan comes first: what is created, formatted or left alone,
+	// with the disks' models and serial numbers.
+	text := steps.DiskPlan(r) + steps.Preview(list)
 	sum := sha256.Sum256([]byte(text + "\x00" + r.Plan.Redacted().JSON()))
 	pv := Preview{Resolved: r, Steps: list, Text: text, Issues: issues, Token: hex.EncodeToString(sum[:8])}
 	pv.Resolved.Plan = r.Plan // keep secrets for execution; Public() strips them

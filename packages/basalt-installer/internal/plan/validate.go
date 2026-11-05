@@ -114,6 +114,9 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	} else if strings.HasPrefix(p.Target.Disk, "/dev/md") || strings.HasPrefix(p.Target.Disk, "/dev/mapper/") || strings.HasPrefix(p.Target.Disk, "/dev/dm-") {
 		add(Error, "target.disk", "%s is a RAID, multipath or device-mapper device: %s", p.Target.Disk, KickstartHint)
 	}
+	if p.Reuses() && p.Target.Wipe {
+		add(Error, "target.boot", "%s", i18n.T("existing partitions can only be reused when the disk is not erased (wipe: false)"))
+	}
 	if p.Target.ESP != "" && p.Target.Wipe {
 		add(Error, "target.esp", "%s", i18n.T("an existing EFI system partition can only be shared when the disk is not erased (wipe: false)"))
 	}
@@ -141,6 +144,10 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 		}
 		if haveDisk && !p.Target.Wipe {
 			validateFreeSpace(p, disk, add)
+			validateReuse(p, disk, add)
+		}
+		if haveDisk {
+			validateOtherSystems(p, disk, f, add)
 		}
 	}
 
@@ -516,7 +523,18 @@ func NeededBytes(p Plan) int64 {
 	if p.Layout.RootGiB > 0 {
 		sys = int64(p.Layout.RootGiB) << 30
 	}
-	need := esp + int64(p.Layout.BootMiB)<<20 + sys + 2<<20
+	boot := int64(p.Layout.BootMiB) << 20
+	// Reused partitions take no free space.
+	if p.Target.Boot != "" {
+		boot = 0
+	}
+	if p.Target.System != "" {
+		sys = 0
+	}
+	if esp+boot+sys == 0 && !p.EncryptsHome() {
+		return 0
+	}
+	need := esp + boot + sys + 2<<20
 	if p.EncryptsHome() {
 		need += int64(MinHomeGiB) << 30
 	}
@@ -534,7 +552,7 @@ func validateFreeSpace(p Plan, disk probe.Disk, add func(Severity, string, strin
 	}
 	free, ok := disk.LargestFree()
 	need := NeededBytes(p)
-	if !ok || free.Bytes < need {
+	if need > 0 && (!ok || free.Bytes < need) {
 		add(Error, "target.wipe", i18n.T("the largest free space on %s is %s; the new partitions need %s (shrink another system's partition first)"),
 			disk.Path, probe.HumanSize(free.Bytes), probe.HumanSize(need))
 	}

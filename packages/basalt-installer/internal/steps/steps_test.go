@@ -160,8 +160,13 @@ func TestPlainAndBareMetal(t *testing.T) {
 	mustFind(t, list, "/dev/nvme0n1p1")
 	mustFind(t, list, "mkfs.btrfs --force --label basalt --uuid "+r.BtrfsUUID+" /dev/nvme0n1p3")
 	_, dnf := mustFind(t, list, "dnf --assumeyes")
-	if strings.Contains(dnf.Command(), "linux-firmware") {
+	if strings.Contains(dnf.Command(), "--exclude=linux-firmware") {
 		t.Fatal("the standard profile keeps the firmware")
+	}
+	for _, pkg := range StandardPackages {
+		if !strings.Contains(dnf.Command(), " "+pkg) {
+			t.Errorf("the standard profile does not install %s", pkg)
+		}
 	}
 	_, part := mustFind(t, list, "sgdisk --clear")
 	if !strings.Contains(part.Command(), "--typecode=3:8300") {

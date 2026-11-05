@@ -74,6 +74,8 @@ type FileWrite struct {
 	FromLog bool `json:"from_log,omitempty"`
 	// Symlink makes Path a symbolic link to this target instead.
 	Symlink string `json:"symlink,omitempty"`
+	// Parents creates the missing parent directories (mode 0755) first.
+	Parents bool `json:"parents,omitempty"`
 }
 
 // Command renders the step the way the preview, the TUI confirmation and

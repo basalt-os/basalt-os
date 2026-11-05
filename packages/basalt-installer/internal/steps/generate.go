@@ -42,8 +42,42 @@ var assistantServices = []string{"basalt-assistantd", "basalt-notify", "basalt-a
 // the shell's SELinux module, voice (whisper.cpp), the consented model
 // downloads and the local model service. No model is installed: the
 // desktop asks the person before it downloads one (basalt-models).
+//
+// The approval gate, the Security and Activity app and the audit suite come
+// with it: on the desktop, AI actions go through the gate only (ADR 0016,
+// 0020), never straight to polkit.
 var DesktopPackages = []string{"basalt-desktop", "basalt-shell-selinux", "basalt-greeter-selinux", "basalt-voice", "basalt-models",
-	"basalt-llm", "basalt-llm-selinux"}
+	"basalt-llm", "basalt-llm-selinux", "basalt-gate", "basalt-security-activity", "basalt-audit-suite"}
+
+// StandardPackages are the hardware support of the standard profile, named
+// rather than left to weak dependencies: the firmware the live image
+// carries (linux-firmware and the vendor Wi-Fi and network firmware), CPU
+// microcode, fwupd, and NetworkManager's Wi-Fi support, so the profile is
+// what the installer says it is ("with firmware, microcode and fwupd") and
+// a laptop has Wi-Fi after the first boot. The minimal profile excludes all
+// of it.
+var StandardPackages = []string{"linux-firmware", "microcode_ctl", "fwupd",
+	"iwlwifi-mvm-firmware", "iwlwifi-mld-firmware", "iwlwifi-dvm-firmware", "realtek-firmware", "atheros-firmware",
+	"brcmfmac-firmware", "mt7xxx-firmware", "nxpwireless-firmware",
+	"NetworkManager-wifi", "wpa_supplicant", "wireless-regdb"}
+
+// StandardDesktopPackages are added for the desktop edition on the
+// standard profile: Intel SOF audio firmware and the ALSA use case files
+// (laptop speakers and microphones), the power profiles service Fedora 44
+// uses (tuned-ppd, enabled by the presets with tuned) and thermald.
+var StandardDesktopPackages = []string{"alsa-sof-firmware", "alsa-ucm", "tuned-ppd", "thermald"}
+
+// Langpack is the glibc language pack of a locale ("pt_BR.UTF-8" gives
+// glibc-langpack-pt), "" for C and POSIX.
+func Langpack(locale string) string {
+	lang, _, _ := strings.Cut(locale, ".")
+	lang, _, _ = strings.Cut(lang, "@")
+	lang, _, _ = strings.Cut(lang, "_")
+	if lang == "" || lang == "C" || lang == "POSIX" {
+		return ""
+	}
+	return "glibc-langpack-" + strings.ToLower(lang)
+}
 
 // SplashTheme is the boot splash theme for the system's locale. Plymouth
 // cannot know the language in the initramfs, so each language is its own
@@ -82,7 +116,19 @@ func Packages(r Resolved) (install, exclude []string) {
 	if r.Plan.Edition == "desktop" {
 		install = append(install, DesktopPackages...)
 	}
-	for _, p := range r.Plan.Packages.Extra {
+	if r.Profile == "standard" {
+		install = append(install, StandardPackages...)
+		if r.Plan.Edition == "desktop" {
+			install = append(install, StandardDesktopPackages...)
+		}
+	}
+	// The language of the system (English is always there, for the logs
+	// and the fallback).
+	extra := r.Plan.Packages.Extra
+	if lp := Langpack(r.Plan.Locale); lp != "" {
+		extra = append([]string{lp}, extra...)
+	}
+	for _, p := range extra {
 		if !slices.Contains(install, p) {
 			install = append(install, p)
 		}
@@ -107,6 +153,11 @@ func InstalledRepoURLs(r Resolved) (basalt, tools string) {
 func Generate(r Resolved) ([]Step, error) {
 	g := &gen{r: r, T: r.Root}
 	if err := g.all(); err != nil {
+		return nil, err
+	}
+	// The last line of defense: nothing in the list may write to a disk or
+	// partition the plan did not choose.
+	if err := CheckSafety(r, g.out); err != nil {
 		return nil, err
 	}
 	for i := range g.out {
@@ -192,22 +243,31 @@ func (g *gen) all() error {
 			}
 			kept = append(kept, d)
 		}
-		argv := []string{"sgdisk"}
-		undo := []string{"sgdisk"}
-		for _, np := range r.NewParts {
-			argv = append(argv, fmt.Sprintf("--new=%d:%d:%d", np.Number, np.Start, np.End), fmt.Sprintf("--typecode=%d:%s", np.Number, np.TypeCode),
-				fmt.Sprintf("--change-name=%d:%s", np.Number, np.Name))
-			undo = append(undo, fmt.Sprintf("--delete=%d", np.Number))
+		var reused []string
+		for _, rp := range r.Reused {
+			reused = append(reused, rp.Path)
 		}
-		s := g.run("Add the Basalt OS partitions to the free space of "+disk, append(argv, disk)...)
-		s.ID, s.Undo = "new-partitions", append(undo, disk)
-		var made []string
-		for _, np := range r.NewParts {
-			made = append(made, fmt.Sprintf("%s %s (%s, sectors %d-%d)", np.Dev, probe.HumanSize(np.Bytes), partRole(np.Role), np.Start, np.End))
-		}
-		s.Note = "kept as they are: partitions " + strings.Join(kept, "; ") + ". New: " + strings.Join(made, "; ")
-		if r.ESPShared {
-			s.Note += ". The EFI system partition " + r.ESPDev + " is shared, not formatted"
+		if len(r.NewParts) > 0 {
+			argv := []string{"sgdisk"}
+			undo := []string{"sgdisk"}
+			for _, np := range r.NewParts {
+				argv = append(argv, fmt.Sprintf("--new=%d:%d:%d", np.Number, np.Start, np.End), fmt.Sprintf("--typecode=%d:%s", np.Number, np.TypeCode),
+					fmt.Sprintf("--change-name=%d:%s", np.Number, np.Name))
+				undo = append(undo, fmt.Sprintf("--delete=%d", np.Number))
+			}
+			s := g.run("Add the Basalt OS partitions to the free space of "+disk, append(argv, disk)...)
+			s.ID, s.Undo = "new-partitions", append(undo, disk)
+			var made []string
+			for _, np := range r.NewParts {
+				made = append(made, fmt.Sprintf("%s %s (%s, sectors %d-%d)", np.Dev, probe.HumanSize(np.Bytes), partRole(np.Role), np.Start, np.End))
+			}
+			s.Note = "kept as they are: partitions " + strings.Join(kept, "; ") + ". New: " + strings.Join(made, "; ")
+			if r.ESPShared {
+				s.Note += ". The EFI system partition " + r.ESPDev + " is shared, not formatted"
+			}
+			if len(reused) > 0 {
+				s.Note += ". Reused and formatted (chosen): " + strings.Join(reused, ", ")
+			}
 		}
 	}
 	g.run("Wait for the new partitions", "udevadm", "settle", "--timeout=30")
@@ -215,7 +275,14 @@ func (g *gen) all() error {
 	for _, np := range r.NewParts {
 		newDevs = append(newDevs, np.Dev)
 	}
-	g.run("Erase old signatures at the start of each new partition", append([]string{"wipefs", "--all", "--force"}, newDevs...)...)
+	for _, rp := range r.Reused {
+		newDevs = append(newDevs, rp.Path)
+	}
+	title := "Erase old signatures at the start of each new partition"
+	if len(r.Reused) > 0 {
+		title = "Erase old signatures on the new partitions and on the reused ones you chose"
+	}
+	g.run(title, append([]string{"wipefs", "--all", "--force"}, newDevs...)...)
 	if !r.ESPShared {
 		g.run("Format the EFI system partition (FAT32)", "mkfs.vfat", "-F", "32", "-n", "EFI", "-i", r.ESPVolID, r.ESPDev)
 	}
@@ -300,7 +367,12 @@ func (g *gen) all() error {
 		"boot loader entries are named after it"
 	g.write("Set the host name", g.t("/etc/hostname"), 0o644, p.Hostname+"\n")
 	g.write("Set the locale", g.t("/etc/locale.conf"), 0o644, "LANG="+p.Locale+"\n")
-	g.write("Set the console keymap", g.t("/etc/vconsole.conf"), 0o644, "KEYMAP="+p.Keymap+"\n")
+	keymap, xkb := g.keyboard()
+	g.write("Set the keyboard of the console, the disk passphrase prompt and the login screen", g.t("/etc/vconsole.conf"), 0o644, keymap).Note =
+		"dracut copies it into the initramfs, so the passphrase prompt at boot uses this keyboard"
+	if xkb != "" {
+		g.write("Set the keyboard of the graphical login and the desktop (as localectl does)", g.t("/etc/X11/xorg.conf.d/00-keyboard.conf"), 0o644, xkb).Write.Parents = true
+	}
 	g.add(Step{Title: "Set the time zone", Write: &FileWrite{Path: g.t("/etc/localtime"), Symlink: "../usr/share/zoneinfo/" + p.Timezone}})
 	if u := g.installedRepoURL(); u != "" {
 		g.write("Point the Basalt repository at its URL", g.t("/etc/dnf/vars/basalt_repo_url"), 0o644, u+"\n")
@@ -368,6 +440,22 @@ func (g *gen) all() error {
 	g.write("Point the signed GRUB on the ESP at /boot", g.t("/boot/efi/EFI/fedora/grub.cfg"), 0o600, g.espGrubStub()).Note =
 		"the boot chain is Fedora's signed shim, GRUB and kernel, so Secure Boot stays on"
 	g.chroot("Show the boot menu", "grub2-editenv", "-", "unset", "menu_auto_hide").Optional = true
+	if r.DualBoot() {
+		argv := []string{"basalt-installer", "other-systems", "--work", r.Work, "--out", g.t("/etc/grub.d/35_basalt_other_systems")}
+		var devs []string
+		for _, e := range r.OtherESPs {
+			a := e.Path + "=" + strings.ToUpper(e.UUID)
+			if r.ESPShared && e.Path == r.ESPDev {
+				a += ":fedora" // Basalt OS's own boot files on the shared ESP
+			}
+			argv = append(argv, a)
+			devs = append(devs, e.Path)
+		}
+		s := g.run("List the other systems in the boot menu (Windows, other Linux)", argv...)
+		s.Optional = true
+		s.Note = "each EFI system partition (" + strings.Join(devs, ", ") + ") is mounted read-only, searched for boot loaders and unmounted; " +
+			"other file systems are not mounted (os-prober is not used: it mounts btrfs read-write)"
+	}
 	g.chroot("Generate the GRUB configuration", "grub2-mkconfig", "-o", "/boot/grub2/grub.cfg")
 	g.run("Add a firmware boot entry", "efibootmgr", "--create", "--disk", disk, "--part", fmt.Sprint(r.ESPNumber),
 		"--label", "Basalt OS", "--loader", `\EFI\fedora\shimx64.efi`).Optional = true
@@ -786,12 +874,19 @@ func (g *gen) kernelCmdline(withRoot bool) string {
 	if p.EncryptsSystem() {
 		args = append(args, "rd.luks.uuid="+r.CryptName())
 	}
-	args = append(args, "console=tty0", "console=ttyS0,115200n8")
 	if p.Edition == "desktop" {
+		// The last console= is /dev/console: on a desktop it is the
+		// screen, so an emergency shell and the boot's prompts land where
+		// the person is (most laptops have no serial port). The serial
+		// console still gets the kernel messages.
+		args = append(args, "console=ttyS0,115200n8", "console=tty0")
 		// The graphical boot splash and its passphrase card, also with the
 		// serial console on (plymouth otherwise falls back to text there).
 		// Servers keep the plain text boot.
 		args = append(args, "rhgb", "quiet", "plymouth.ignore-serial-consoles")
+	} else {
+		// Servers: the serial console last, for consoles over a BMC.
+		args = append(args, "console=tty0", "console=ttyS0,115200n8")
 	}
 	if p.Lockdown == nil || *p.Lockdown {
 		args = append(args, "lockdown=integrity", "module.sig_enforce=1")
@@ -800,6 +895,30 @@ func (g *gen) kernelCmdline(withRoot bool) string {
 		args = append(args, "rd.neednet=1")
 	}
 	return strings.Join(args, " ")
+}
+
+// keyboard returns /etc/vconsole.conf and, for a keyboard the installer
+// knows, the X11 configuration localectl would write (read by the login
+// screen and the session).
+func (g *gen) keyboard() (vconsole, xorg string) {
+	km := g.r.Plan.Keymap
+	kb, known := plan.LookupKeyboard(km)
+	if !known {
+		return "KEYMAP=" + km + "\n", ""
+	}
+	vconsole = "KEYMAP=" + kb.Keymap + "\nXKBLAYOUT=" + kb.Layout + "\n"
+	opts := "\tOption \"XkbLayout\" \"" + kb.Layout + "\"\n"
+	if kb.Model != "" {
+		vconsole += "XKBMODEL=" + kb.Model + "\n"
+		opts += "\tOption \"XkbModel\" \"" + kb.Model + "\"\n"
+	}
+	if kb.Variant != "" {
+		vconsole += "XKBVARIANT=" + kb.Variant + "\n"
+		opts += "\tOption \"XkbVariant\" \"" + kb.Variant + "\"\n"
+	}
+	xorg = "# Written by the Basalt OS installer (the format of systemd-localed;\n# change it with localectl set-x11-keymap).\n" +
+		"Section \"InputClass\"\n\tIdentifier \"system-keyboard\"\n\tMatchIsKeyboard \"on\"\n" + opts + "EndSection\n"
+	return vconsole, xorg
 }
 
 func (g *gen) defaultGrub() string {

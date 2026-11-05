@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 
 // The installer flow: welcome, disk, options, accounts, review (the exact
 // step list and a typed confirmation), install (progress, recovery key with
@@ -36,6 +38,10 @@ Item {
     property var homeOwners: []
     property string homePass: ""
     property string homeNote: ""
+    // Language, keyboard and time zone: what the engine offers.
+    property var languages: []
+    property var keyboards: []
+    property string kbNote: ""
 
     function targetDisk() {
         if (!root.facts || !root.plan) return null;
@@ -112,6 +118,51 @@ Item {
         while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
         return (i === 0 ? b : b.toFixed(1)) + " " + u[i];
     }
+    // A disk the way a person recognizes it: model, serial and size, not
+    // only the kernel name (which can change between boots).
+    function diskName(d) {
+        if (!d) return "";
+        let s = d.path + "    " + root.human(d.size_bytes);
+        if (d.model) s += "    " + d.model;
+        if (d.serial) s += "    " + qsTr("serial %1").arg(d.serial);
+        return s;
+    }
+    function diskHolds(d) {
+        if (!d) return "";
+        const parts = [];
+        if (d.systems && d.systems.length) parts.push(qsTr("Systems: %1").arg(d.systems.join(", ")));
+        if (d.holds && d.holds.length) parts.push(d.holds.join("; "));
+        return parts.length ? parts.join(". ") : d.contents;
+    }
+    function isEmptyDisk(d) { return d && (d.partitions || []).length === 0 && d.contents === "empty"; }
+    // Partitions a custom layout may reuse (formatted): not the ESP, not
+    // Windows or NTFS/BitLocker data (the engine refuses them too).
+    function reusable(d) {
+        const win = ["e3c9e316-0b5c-4db8-817d-f92df00215ae", "de94bba4-06d1-4d40-a16a-bfd50179d6ac"];
+        return (d && d.partitions ? d.partitions : []).filter(x => x.type !== "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" && win.indexOf(x.type) < 0 &&
+            ["ntfs", "BitLocker", "exfat"].indexOf(x.fstype || "") < 0 && !x.mountpoint);
+    }
+    function partLine(x) { return x.path + "    " + root.human(x.size_bytes) + (x.fstype ? "    " + x.fstype : "") + (x.label ? "    \"" + x.label + "\"" : ""); }
+    // The live session's keyboard follows the choice, so the passphrases
+    // typed here are the ones typed at boot.
+    function applyKeyboard(k) {
+        if (!Quickshell.env("SWAYSOCK")) { root.kbNote = ""; return; }
+        kbProc.command = ["swaymsg", "input", "type:keyboard", "xkb_layout", k.layout, ",", "input", "type:keyboard", "xkb_variant", k.variant || "\"\""];
+        kbProc.running = true;
+        root.kbNote = qsTr("This session now types with %1 too, so the passphrases you type here match the ones at boot.").arg(k.name);
+    }
+    function pickLanguage(l) {
+        root.edit(p => {
+            const old = root.languages.find(x => x.locale === p.locale);
+            p.locale = l.locale;
+            // Keyboard and zone follow the language unless changed by hand.
+            if (!old || p.keymap === old.keymap || p.keymap === "us") p.keymap = l.keymap;
+            if (l.timezone && (!old || p.timezone === old.timezone || p.timezone === "Etc/UTC")) p.timezone = l.timezone;
+        });
+        const k = root.keyboards.find(x => x.keymap === root.plan.keymap);
+        if (k) root.applyKeyboard(k);
+    }
+    Process { id: kbProc }
     function diskBlocker(d) {
         if (d.complex) return d.complex + ": use the kickstart installer";
         if (d.in_use) return "in use: " + d.in_use;
@@ -125,10 +176,13 @@ Item {
         return s.split(/\n+/).map(x => x.trim()).filter(x => x !== "");
     }
     function load() {
-        Api.call("suggest", {}, (ok, res) => {
+        const hints = { locale: Quickshell.env("LANG") || "", xkb_layout: Quickshell.env("XKB_DEFAULT_LAYOUT") || "", xkb_variant: Quickshell.env("XKB_DEFAULT_VARIANT") || "" };
+        Api.call("suggest", hints, (ok, res) => {
             if (!ok) { root.error = res; return; }
             root.facts = res.facts;
             root.subvols = res.subvolumes;
+            root.languages = res.languages || [];
+            root.keyboards = res.keyboards || [];
             root.plan = res.plan;
         });
     }
@@ -260,6 +314,33 @@ Item {
                     text: qsTr("A Fedora remix with server and desktop editions: SELinux enforcing, btrfs with a snapshot before every update, LUKS2 encryption unlocked by the TPM, and a local assistant that only proposes changes.") + "\n\n" + qsTr("You choose a disk and a few settings, then review the exact list of commands before anything is written. Nothing changes until you type the disk name.")
                 }
                 Txt { width: parent.width; role: "small"; color: Theme.textMuted; text: "The Fedora packages come from the network. A text installer with the same steps runs on the serial console." }
+                Section {
+                    title: qsTr("Language, keyboard and time zone")
+                    detail: qsTr("For the installed system: the keyboard is also the one of the disk passphrase prompt at boot and of the login screen.")
+                    visible: root.plan !== null
+                    Flow {
+                        width: pageCol.width; spacing: Theme.s2
+                        Repeater {
+                            model: root.languages
+                            Btn { text: modelData.name; e2e: "lang-" + modelData.locale
+                                variant: root.plan && root.plan.locale === modelData.locale ? "primary" : "outline"
+                                onClicked: root.pickLanguage(modelData) }
+                        }
+                    }
+                    Flow {
+                        width: pageCol.width; spacing: Theme.s2
+                        Repeater {
+                            model: root.keyboards
+                            Btn { text: modelData.name; e2e: "kbd-" + modelData.keymap
+                                variant: root.plan && root.plan.keymap === modelData.keymap ? "primary" : "outline"
+                                onClicked: { root.edit(p => { p.keymap = modelData.keymap; }); root.applyKeyboard(modelData); } }
+                        }
+                    }
+                    Txt { width: pageCol.width; role: "small"; color: Theme.textMuted; text: root.kbNote; visible: root.kbNote !== "" }
+                    Field { width: pageCol.width / 2; label: qsTr("Time zone (as in /usr/share/zoneinfo, for example America/Sao_Paulo)")
+                        text: root.plan ? root.plan.timezone : ""
+                        onTextChanged: if (root.plan && text !== root.plan.timezone) root.edit(p => { p.timezone = text; }) }
+                }
             }
 
             // 1 disk
@@ -268,17 +349,21 @@ Item {
                 width: parent.width
                 spacing: Theme.s3
                 Txt { text: "Where should Basalt OS be installed?"; role: "title"; width: parent.width }
-                Txt { width: parent.width; color: Theme.textMuted; text: "The whole disk is used and erased. One local disk only: RAID, multipath and iSCSI installs use the kickstart installer." }
+                Txt { width: parent.width; color: Theme.textMuted; text: qsTr("Check the model and serial number. A disk that holds other systems or data keeps its partitions unless you choose to erase it on the next page. One local disk only: RAID, multipath and iSCSI installs use the kickstart installer.") }
                 Repeater {
                     model: root.facts ? root.facts.disks : []
                     Choice {
                         readonly property string blocker: root.diskBlocker(modelData)
                         width: pageCol.width
-                        title: modelData.path + "    " + root.human(modelData.size_bytes) + (modelData.model ? "    " + modelData.model : "")
-                        detail: blocker !== "" ? "Not available: " + blocker : modelData.contents
+                        e2e: "disk-" + modelData.name
+                        title: root.diskName(modelData)
+                        detail: blocker !== "" ? "Not available: " + blocker : root.diskHolds(modelData)
+                        warning: blocker === "" && modelData.caution ? qsTr("Careful: this disk %1.").arg(modelData.caution) : ""
                         enabled: blocker === ""
                         checked: root.plan && root.plan.target.disk === modelData.path
-                        onPicked: root.edit(p => { p.target.disk = modelData.path; p.target.wipe = true; })
+                        // An empty disk is erased (nothing to keep); a disk with
+                        // partitions starts by keeping them.
+                        onPicked: root.edit(p => { p.target.disk = modelData.path; p.target.wipe = root.isEmptyDisk(modelData); delete p.target.esp; delete p.target.boot; delete p.target.system; })
                     }
                 }
             }
@@ -291,19 +376,47 @@ Item {
                 Section {
                     title: qsTr("Disk use")
                     visible: { const d = root.targetDisk(); return d !== null && d.table === "gpt" && (d.partitions || []).length > 0; }
-                    detail: { const d = root.targetDisk(); return d ? qsTr("%1 holds partitions: %2").arg(d.path).arg((d.partitions || []).map(x => x.path + " " + root.human(x.size_bytes) + " " + (x.fstype || "")).join(", ")) : ""; }
+                    detail: { const d = root.targetDisk(); return d ? qsTr("%1 holds: %2").arg(root.diskName(d)).arg(root.diskHolds(d)) : ""; }
                     Choice { width: pageCol.width; title: qsTr("Erase the whole disk"); detail: qsTr("Everything on it is deleted")
+                        warning: { const d = root.targetDisk(); return d && d.caution ? qsTr("This disk %1: it is lost.").arg(d.caution) : ""; }
                         checked: root.plan && root.plan.target.wipe
-                        onPicked: root.edit(p => { p.target.wipe = true; delete p.target.esp; }) }
-                    Choice { width: pageCol.width; title: qsTr("Keep the partitions, use the free space (dual boot)")
-                        detail: qsTr("Free: %1. The other systems and their EFI partition are not touched.").arg(root.human(root.largestFree(root.targetDisk())))
-                        checked: root.plan && !root.plan.target.wipe && !root.plan.target.esp
-                        onPicked: root.edit(p => { p.target.wipe = false; delete p.target.esp; }) }
+                        onPicked: root.edit(p => { p.target.wipe = true; delete p.target.esp; delete p.target.boot; delete p.target.system; }) }
+                    Choice { width: pageCol.width; title: qsTr("Install alongside: keep every partition, use the free space (dual boot)")
+                        detail: qsTr("Free: %1. The other systems and their EFI partition are not touched; they are listed in the boot menu.").arg(root.human(root.largestFree(root.targetDisk())))
+                        checked: root.plan && !root.plan.target.wipe && !root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
+                        onPicked: root.edit(p => { p.target.wipe = false; delete p.target.esp; delete p.target.boot; delete p.target.system; }) }
                     Choice { width: pageCol.width; visible: root.existingESP(root.targetDisk()) !== ""
-                        title: qsTr("Keep the partitions, share the EFI partition %1").arg(root.existingESP(root.targetDisk()))
-                        detail: qsTr("Fedora's boot files go into EFI/fedora on it")
-                        checked: root.plan && !root.plan.target.wipe && !!root.plan.target.esp
-                        onPicked: root.edit(p => { p.target.wipe = false; p.target.esp = root.existingESP(root.targetDisk()); }) }
+                        title: qsTr("Install alongside and share the EFI partition %1").arg(root.existingESP(root.targetDisk()))
+                        detail: qsTr("Not formatted: Basalt OS adds its boot files in EFI/fedora (another Fedora there would be replaced)")
+                        checked: root.plan && !root.plan.target.wipe && !!root.plan.target.esp && !root.plan.target.boot && !root.plan.target.system
+                        onPicked: root.edit(p => { p.target.wipe = false; p.target.esp = root.existingESP(root.targetDisk()); delete p.target.boot; delete p.target.system; }) }
+                    Choice { width: pageCol.width; title: qsTr("Custom: choose partitions to reuse")
+                        detail: qsTr("Reuse an existing partition for the system or /boot (it is formatted); everything you do not choose is left exactly as it is")
+                        checked: root.plan && !root.plan.target.wipe && (!!root.plan.target.boot || !!root.plan.target.system)
+                        onPicked: { const r = root.reusable(root.targetDisk()); if (r.length) root.edit(p => { p.target.wipe = false; p.target.system = r[r.length - 1].path; }); } }
+                    Txt { width: pageCol.width; role: "small"; color: Theme.warning
+                        visible: root.plan && !root.plan.target.wipe && (!!root.plan.target.boot || !!root.plan.target.system)
+                        text: qsTr("The partitions chosen below are formatted and their files are lost. Windows, NTFS, BitLocker and EFI partitions cannot be chosen.") }
+                    Repeater {
+                        model: root.plan && !root.plan.target.wipe && (root.plan.target.boot || root.plan.target.system) ? [
+                            { field: "system", t: qsTr("System (btrfs, encrypted unless turned off below)") },
+                            { field: "boot", t: qsTr("/boot (ext4)") }] : []
+                        Column {
+                            width: pageCol.width; spacing: Theme.s2
+                            readonly property string field: modelData.field
+                            Txt { text: modelData.t; font.weight: Font.Medium; width: parent.width }
+                            Choice { width: pageCol.width; title: qsTr("A new partition in the free space (%1 free)").arg(root.human(root.largestFree(root.targetDisk())))
+                                checked: root.plan && !root.plan.target[parent.field]
+                                onPicked: { const f = parent.field; root.edit(p => { delete p.target[f]; }); } }
+                            Repeater {
+                                model: root.reusable(root.targetDisk())
+                                Choice { width: pageCol.width; title: root.partLine(modelData); detail: qsTr("Formatted: its files are lost")
+                                    readonly property string field: parent.field
+                                    checked: root.plan && root.plan.target[field] === modelData.path
+                                    onPicked: { const f = field, v = modelData.path; root.edit(p => { p.target[f] = v; }); } }
+                            }
+                        }
+                    }
                 }
                 Section {
                     title: qsTr("Home directories (/home)")
@@ -556,9 +669,12 @@ Item {
                         id: confirmCol
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: Theme.s4 }
                         spacing: Theme.s3
-                        Txt { width: parent.width; font.weight: Font.DemiBold; text: root.preview ? "Everything on " + root.preview.resolved.disk.path + " (" + root.preview.resolved.disk.contents + ") will be erased." : "" }
+                        Txt { width: parent.width; font.weight: Font.DemiBold
+                            text: !root.preview ? "" : (root.preview.resolved.plan.target.wipe
+                                ? qsTr("Everything on %1 will be erased (%2).").arg(root.diskName(root.preview.resolved.disk)).arg(root.diskHolds(root.preview.resolved.disk))
+                                : qsTr("On %1 only the partitions listed as new or FORMATTED at the top of the review are written; every other partition stays as it is.").arg(root.diskName(root.preview.resolved.disk))) }
                         Field { width: parent.width; label: root.preview ? "Type " + root.preview.confirm_word + " to confirm" : ""; text: root.confirmText; onTextChanged: root.confirmText = text }
-                        Btn { text: "Erase and install"; variant: "danger"; enabled: root.preview && root.confirmText === root.preview.confirm_word; onClicked: root.install() }
+                        Btn { text: root.preview && !root.preview.resolved.plan.target.wipe ? qsTr("Install") : qsTr("Erase and install"); variant: "danger"; enabled: root.preview && root.confirmText === root.preview.confirm_word; onClicked: root.install() }
                     }
                 }
             }
@@ -610,6 +726,9 @@ Item {
                 enabled: root.plan !== null && (root.page !== 1 || root.plan.target.disk !== "")
                 onClicked: {
                     root.error = "";
+                    // The suggested disk counts as chosen: an empty one is
+                    // erased (there is nothing to keep).
+                    if (root.page === 1 && root.isEmptyDisk(root.targetDisk()) && !root.plan.target.wipe) root.edit(p => { p.target.wipe = true; });
                     if (root.page === 3) root.makePreview();
                     root.page++;
                 }

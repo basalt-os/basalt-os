@@ -80,7 +80,20 @@ type Resolved struct {
 	HomeBtrfsUUID string `json:"home_btrfs_uuid,omitempty"`
 	// Existing is the adopted /home partition.
 	Existing *ExistingHome `json:"existing_home,omitempty"`
+	// Reused are the existing partitions the plan formats (target.boot,
+	// target.system); nothing else that exists is written to.
+	Reused []probe.Partition `json:"reused_partitions,omitempty"`
+	// OtherESPs are the EFI system partitions of other systems (every disk
+	// that is not erased), searched at install time for boot loaders to
+	// list in the GRUB menu. Read-only.
+	OtherESPs []probe.Partition `json:"other_esps,omitempty"`
+	// OtherDisks are the disks the installation leaves alone, as probed.
+	OtherDisks []probe.Disk `json:"other_disks,omitempty"`
 }
+
+// DualBoot reports whether other systems may be on the machine after the
+// installation (their boot loaders get GRUB menu entries).
+func (r Resolved) DualBoot() bool { return len(r.OtherESPs) > 0 }
 
 // NewPart is one partition the installation creates.
 type NewPart struct {
@@ -248,7 +261,9 @@ func (r *Resolved) layoutPartitions(f probe.Facts) error {
 	if p.Target.ESP == "" {
 		specs = append(specs, spec{"esp", "EF00", "EFI System Partition", int64(p.Layout.ESPMiB) << 20})
 	}
-	specs = append(specs, spec{"boot", "8300", "boot", int64(p.Layout.BootMiB) << 20})
+	if p.Target.Boot == "" {
+		specs = append(specs, spec{"boot", "8300", "boot", int64(p.Layout.BootMiB) << 20})
+	}
 	sysBytes := int64(p.Layout.RootGiB) << 30
 	space := disk.SizeBytes
 	if !p.Target.Wipe {
@@ -261,9 +276,13 @@ func (r *Resolved) layoutPartitions(f probe.Facts) error {
 			sysBytes = half &^ (1<<20 - 1)
 		}
 	}
-	specs = append(specs, spec{"system", sysType, "basalt", sysBytes})
+	if p.Target.System == "" {
+		specs = append(specs, spec{"system", sysType, "basalt", sysBytes})
+	}
 	if p.EncryptsHome() {
-		specs[len(specs)-1].bytes = sysBytes
+		if p.Target.System == "" {
+			specs[len(specs)-1].bytes = sysBytes
+		}
 		specs = append(specs, spec{"home", "8309", "basalt-home", 0})
 	}
 	// The last partition takes the rest when its size is 0.
@@ -307,7 +326,9 @@ func (r *Resolved) layoutPartitions(f probe.Facts) error {
 			np.Bytes = sp.bytes
 		} else {
 			n := sp.bytes / sector
-			if sp.bytes == 0 || (last && sp.role != "home" && p.Layout.RootGiB == 0) {
+			// The system partition (or the new /home) takes the rest of
+			// the free region; a new ESP or /boot never does.
+			if (sp.bytes == 0 && sp.role != "esp" && sp.role != "boot") || (last && sp.role == "system" && p.Layout.RootGiB == 0) {
 				n = region.Start + region.Sectors - pos
 			}
 			if pos+n > region.Start+region.Sectors {
@@ -328,10 +349,41 @@ func (r *Resolved) layoutPartitions(f probe.Facts) error {
 			r.HomeDev = np.Dev
 		}
 	}
-	if p.Target.ESP != "" {
-		for _, part := range disk.Partitions {
-			if part.Path == p.Target.ESP {
-				r.ESPShared, r.ESPDev, r.ESPNumber, r.ESPFatUUID = true, part.Path, part.Number, strings.ToUpper(part.UUID)
+	for _, part := range disk.Partitions {
+		switch part.Path {
+		case p.Target.ESP:
+			r.ESPShared, r.ESPDev, r.ESPNumber, r.ESPFatUUID = true, part.Path, part.Number, strings.ToUpper(part.UUID)
+		case p.Target.Boot:
+			if p.Target.Wipe {
+				break
+			}
+			r.BootDev = part.Path
+			r.Reused = append(r.Reused, part)
+		case p.Target.System:
+			if p.Target.Wipe {
+				break
+			}
+			r.SystemDev = part.Path
+			r.Reused = append(r.Reused, part)
+		}
+	}
+	if r.BootDev == "" || r.SystemDev == "" || r.ESPDev == "" {
+		return fmt.Errorf("the layout of %s is incomplete (EFI system partition %q, /boot %q, system %q)", disk.Path, r.ESPDev, r.BootDev, r.SystemDev)
+	}
+	// Other systems' EFI system partitions: the target disk's (kept) and
+	// every other disk's. The one Basalt OS uses is not among them.
+	for _, d := range f.Disks {
+		if d.Path == disk.Path && p.Target.Wipe {
+			continue
+		}
+		if d.Path != disk.Path {
+			r.OtherDisks = append(r.OtherDisks, d)
+		}
+		for _, part := range d.Partitions {
+			// A shared ESP is searched too (Windows' boot manager may be on
+			// it); its EFI/fedora is Basalt OS's own.
+			if part.Type == probe.TypeESP && part.FSType == "vfat" && (part.Path != r.ESPDev || r.ESPShared) {
+				r.OtherESPs = append(r.OtherESPs, part)
 			}
 		}
 	}
