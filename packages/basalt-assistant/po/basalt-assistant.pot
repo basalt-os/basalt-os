@@ -119,7 +119,7 @@ msgstr ""
 msgid "yes"
 msgstr ""
 
-#: internal/apply/apply.go:89 internal/cli/cli.go:1114
+#: internal/apply/apply.go:89 internal/cli/cli.go:1119
 msgid "ok"
 msgstr ""
 
@@ -177,202 +177,202 @@ msgstr ""
 msgid "%s is still staged: it installs when the computer restarts into it."
 msgstr ""
 
-#: internal/cli/cli.go:1027
+#: internal/cli/cli.go:1032
 #, c-format
 msgid "%s is closed without changing anything (recorded in the audit log)."
 msgstr ""
 
-#: internal/cli/cli.go:1116
+#: internal/cli/cli.go:1121
 msgid "FAILED"
 msgstr ""
 
-#: internal/cli/cli.go:1126
+#: internal/cli/cli.go:1131
 #, c-format
 msgid "%d hour"
 msgid_plural "%d hours"
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:1129
+#: internal/cli/cli.go:1134
 #, c-format
 msgid "%d minute"
 msgid_plural "%d minutes"
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:386
+#: internal/cli/cli.go:391
 msgid "This is a preview. Run the same command with sudo to store the proposal and apply it."
 msgstr ""
 
-#: internal/cli/cli.go:426
+#: internal/cli/cli.go:431
 msgid "Everything looks fine."
 msgstr ""
 
-#: internal/cli/cli.go:428
+#: internal/cli/cli.go:433
 #, c-format
 msgid "%d thing needs your attention:"
 msgid_plural "%d things need your attention:"
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:435
+#: internal/cli/cli.go:440
 msgid "System"
 msgstr ""
 
-#: internal/cli/cli.go:438
+#: internal/cli/cli.go:443
 #, c-format
 msgid "%s (protecting the system)"
 msgstr ""
 
-#: internal/cli/cli.go:442 internal/cli/cli.go:444
+#: internal/cli/cli.go:447 internal/cli/cli.go:449
 msgid "Services"
 msgstr ""
 
-#: internal/cli/cli.go:442
-msgid "none failed"
-msgstr ""
-
-#: internal/cli/cli.go:444
-#, c-format
-msgid "failed: %s"
-msgstr ""
-
-#: internal/cli/cli.go:447 internal/cli/cli.go:449
-msgid "Denials"
-msgstr ""
-
 #: internal/cli/cli.go:447
-msgid "none in the last 24 hours"
+msgid "none failed"
 msgstr ""
 
 #: internal/cli/cli.go:449
 #, c-format
+msgid "failed: %s"
+msgstr ""
+
+#: internal/cli/cli.go:452 internal/cli/cli.go:454
+msgid "Denials"
+msgstr ""
+
+#: internal/cli/cli.go:452
+msgid "none in the last 24 hours"
+msgstr ""
+
+#: internal/cli/cli.go:454
+#, c-format
 msgid "%d in the last 24 hours"
 msgstr ""
 
-#: internal/cli/cli.go:451
+#: internal/cli/cli.go:456
 #, c-format
 msgid "%.1f %% used, %s free"
 msgstr ""
 
-#: internal/cli/cli.go:451
+#: internal/cli/cli.go:456
 msgid "Disk /"
 msgstr ""
 
-#: internal/cli/cli.go:454 internal/cli/cli.go:456 internal/cli/cli.go:458
+#: internal/cli/cli.go:459 internal/cli/cli.go:461 internal/cli/cli.go:463
 msgid "Snapshots"
 msgstr ""
 
-#: internal/cli/cli.go:454
+#: internal/cli/cli.go:459
 msgid "only root can list them (sudo basalt status)"
 msgstr ""
 
-#: internal/cli/cli.go:456 internal/cli/cli.go:517
+#: internal/cli/cli.go:461 internal/cli/cli.go:522
 msgid "none"
 msgstr ""
 
-#: internal/cli/cli.go:458
+#: internal/cli/cli.go:463
 #, c-format
 msgid "%d, newest %s"
 msgstr ""
 
-#: internal/cli/cli.go:463
+#: internal/cli/cli.go:468
 msgid "none waiting"
 msgstr ""
 
-#: internal/cli/cli.go:465
+#: internal/cli/cli.go:470
 msgid "only root can check (sudo basalt status)"
 msgstr ""
 
-#: internal/cli/cli.go:467
+#: internal/cli/cli.go:472
 msgid "pending: reboot to use the rolled-back root"
 msgstr ""
 
-#: internal/cli/cli.go:469
+#: internal/cli/cli.go:474
 msgid "Rollback"
 msgstr ""
 
-#: internal/cli/cli.go:473
+#: internal/cli/cli.go:478
 msgid "active"
 msgstr ""
 
-#: internal/cli/cli.go:475
+#: internal/cli/cli.go:480
 msgid "inactive"
 msgstr ""
 
-#: internal/cli/cli.go:477 internal/report/render.go:148
+#: internal/cli/cli.go:482 internal/report/render.go:148
 msgid "failed"
 msgstr ""
 
-#: internal/cli/cli.go:479
+#: internal/cli/cli.go:484
 msgid "Assistant"
 msgstr ""
 
-#: internal/cli/cli.go:479
+#: internal/cli/cli.go:484
 #, c-format
 msgid "background service %s, %d proposal waiting"
 msgid_plural "background service %s, %d proposals waiting"
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:482 internal/cli/cli.go:484
+#: internal/cli/cli.go:487 internal/cli/cli.go:489
 msgid "Audit log"
 msgstr ""
 
-#: internal/cli/cli.go:482
+#: internal/cli/cli.go:487
 #, c-format
 msgid "CHAIN BROKEN: %v (basalt audit verify)"
 msgstr ""
 
-#: internal/cli/cli.go:484
+#: internal/cli/cli.go:489
 #, c-format
 msgid "%d record, chain intact"
 msgid_plural "%d records, chain intact"
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:582
+#: internal/cli/cli.go:587
 #, c-format
 msgid "SELinux blocked nothing in the last %s. Nothing to do."
 msgstr ""
 
-#: internal/cli/cli.go:585
+#: internal/cli/cli.go:590
 #, c-format
 msgid "SELinux blocked %d kind of access in the last %s. Each one is explained below."
 msgid_plural "SELinux blocked %d kinds of access in the last %s. Each one is explained below."
 msgstr[0] ""
 msgstr[1] ""
 
-#: internal/cli/cli.go:661
+#: internal/cli/cli.go:666
 #, c-format
 msgid "Checked as root. The hint %s is closed and stored as proposal %s, which you can apply."
 msgstr ""
 
-#: internal/cli/cli.go:839
+#: internal/cli/cli.go:844
 msgid "There are no proposals."
 msgstr ""
 
-#: internal/cli/cli.go:841
+#: internal/cli/cli.go:846
 msgid "Nothing is waiting for your decision."
 msgstr ""
 
-#: internal/cli/cli.go:849
+#: internal/cli/cli.go:854
 msgid "[review]: the assistant is not sure, read it first. [hint]: confirm it as root first. [report]: nothing to apply."
 msgstr ""
 
-#: internal/cli/cli.go:850
+#: internal/cli/cli.go:855
 msgid "Details: basalt show ID.   Then: sudo basalt apply ID, or sudo basalt ignore ID."
 msgstr ""
 
-#: internal/cli/cli.go:938
+#: internal/cli/cli.go:943
 msgid "it worked and every check passed"
 msgstr ""
 
-#: internal/cli/cli.go:940
+#: internal/cli/cli.go:945
 msgid "it did NOT verify"
 msgstr ""
 
-#: internal/cli/cli.go:942
+#: internal/cli/cli.go:947
 #, c-format
 msgid "Applied on %s UTC: %s (snapshots %d before, %d after; audit record #%d)"
 msgstr ""

@@ -177,3 +177,14 @@ func TestStatusJSONLocal(t *testing.T) {
 		t.Errorf("English got problems_local: %s", b)
 	}
 }
+
+// basalt apply prints in the reader's language and accepts their word
+// for yes: the applier carries the local catalog.
+func TestApplierInReadersLanguage(t *testing.T) {
+	i18n.Use(&i18n.Catalog{Lang: "pt_BR", Messages: map[string][]string{"yes": {"sim"}}})
+	t.Cleanup(i18n.Reset)
+	ap := (&app{}).applier()
+	if got := ap.Tr.T("yes"); got != "sim" {
+		t.Errorf("the applier translates yes as %q, want sim", got)
+	}
+}

@@ -345,7 +345,12 @@ func (a *app) applier() *apply.Applier {
 	st, _ := os.Stdin.Stat()
 	interactive := st != nil && st.Mode()&os.ModeCharDevice != 0
 	ap := &apply.Applier{Store: a.store, Audit: a.audit, Exec: runner.Exec{}, In: os.Stdin, Out: a.out,
-		Interactive: interactive, Snapshots: true, Settle: 2 * time.Second}
+		Interactive: interactive, Snapshots: true, Settle: 2 * time.Second,
+		// What the person reads (the report, the prompt, the steps and
+		// checks) in their language, and their word for yes; the audit
+		// log stays English. The executor units run without a locale,
+		// so they print English as before.
+		Tr: i18n.Local()}
 	if a.root {
 		// The approval gate, when installed: it decides (enforce) or is told
 		// what was decided here (shadow mode); without it, nothing changes.
