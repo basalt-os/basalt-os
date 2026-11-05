@@ -35,6 +35,7 @@ import (
 	_ "github.com/basalt-os/basalt-os/packages/basalt-installer/internal/earlyterm"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/engine"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/i18n"
+	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/othersys"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/plan"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/probe"
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/session"
@@ -59,6 +60,9 @@ Usage:
   basalt-installer plan preview FILE [--facts F]     the exact steps, nothing executed
   basalt-installer client OP [JSON] [--socket P]     one call to the API (scripts, debugging)
   basalt-installer facts                             what the installer sees (JSON)
+  basalt-installer other-systems --out FILE [--work DIR] DEV=FSUUID[:skip,...]...
+                                                     search EFI system partitions (read-only) for other
+                                                     systems' boot loaders; write GRUB menu entries
   basalt-installer log verify FILE                   check an install log's hash chain
   basalt-installer version
 `
@@ -88,6 +92,8 @@ func main() {
 		err = cmdPlan(os.Args[2:])
 	case "facts":
 		err = cmdFacts()
+	case "other-systems":
+		err = cmdOtherSystems(os.Args[2:])
 	case "client":
 		err = cmdClient(os.Args[2:])
 	case "log":
@@ -441,6 +447,37 @@ func cmdFacts() error {
 	b, _ := json.MarshalIndent(f, "", "  ")
 	fmt.Println(string(b))
 	return nil
+}
+
+// cmdOtherSystems is the install step that lists the other systems in the
+// GRUB menu (internal/othersys): the EFI system partitions are mounted
+// read-only, one at a time, and nothing else is touched.
+func cmdOtherSystems(args []string) error {
+	fs := flag.NewFlagSet("other-systems", flag.ContinueOnError)
+	out := fs.String("out", "", "GRUB script to write (an /etc/grub.d file of the target)")
+	work := fs.String("work", steps.DefaultWork, "directory for the read-only mounts")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *out == "" {
+		return errors.New("other-systems: --out is required")
+	}
+	var parts []othersys.Partition
+	for _, a := range fs.Args() {
+		p, err := othersys.ParseArg(a)
+		if err != nil {
+			return err
+		}
+		parts = append(parts, p)
+	}
+	list := othersys.Find(context.Background(), *work, parts, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
+	if len(list) == 0 {
+		fmt.Println("no other boot loaders found")
+	}
+	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(*out, []byte(othersys.Script(list)), 0o755)
 }
 
 func cmdLog(args []string) error {
