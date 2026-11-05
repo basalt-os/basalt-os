@@ -120,10 +120,23 @@ boot); every frontend offers them and the plan records them.
 - What the disks hold. The disk page shows each disk's model, serial
   number, size and what is on it: the systems named by the firmware's
   boot entries and Windows' partition types, LUKS and BitLocker volumes,
-  NTFS and Linux file systems, EFI system partitions. The installer
-  suggests only an empty disk; a disk with another system, an encrypted
-  volume or data is never preselected and carries a warning, and picking
-  one keeps its partitions until the person chooses to erase it.
+  NTFS and Linux file systems, EFI system partitions. No disk is
+  preselected and picking one never erases it: the next screen asks. A
+  disk with another system, an encrypted volume or data carries a warning;
+  one where no partition table or known signature is found says that a
+  headerless encrypted disk (plain dm-crypt, VeraCrypt) or a locked
+  self-encrypting disk looks the same, and only Erase goes on from there.
+- The same disk at install time. The confirmation word is the disk's
+  serial number (the kernel name only for a disk without one; kernel
+  names can change between boots). Right before writing, the installer
+  probes again and refuses when the disk differs from the review in
+  serial, WWN, model, size, partition table ID or any partition's number,
+  ID, type, start or size, or when the adopted /home changed.
+  `target.disk` may be a kernel path, `serial:SERIAL` or a
+  `/dev/disk/by-id/` link.
+- A shared ESP that already holds EFI/fedora (another Fedora) is refused:
+  the preview mounts it read-only to look. The installer then makes its
+  own ESP and the other Fedora stays in the boot menu.
 - The review starts with what happens to each disk, with model and
   serial: the partitions that are new, FORMATTED (chosen for reuse),
   shared (the ESP), adopted (/home) and untouched, and every other disk as
@@ -337,7 +350,7 @@ Hardware and the boot menu:
 Kernel command line options of the live image: `basalt.inst.repo=URL`,
 `basalt.inst.installed-repo=URL`, `basalt.inst.hostname=`,
 `basalt.inst.unlock=`, `basalt.inst.finish=`, `basalt.inst.plan=PATH|URL`
-(start from a plan file), `basalt.inst.confirm=DISK` (see below),
+(start from a plan file), `basalt.inst.confirm=SERIAL` (see below),
 `basalt.inst.ui=auto|tui|gui`, `basalt.inst.debug-shell`. A plan at
 `basalt/plans/default.yaml` on the media (`LIVE_PLANS` when building) is
 the starting point when the boot line names none.
@@ -346,17 +359,21 @@ the starting point when the boot line names none.
 
 `basalt.inst.plan=` alone fills in the wizard: every screen shows the
 plan's values (the welcome screen names the plan, or says why it could not
-be read), and the person still reviews the steps and types the disk name.
+be read), and the person still reviews the steps and types the disk's
+serial number.
 
 An installation without questions needs the boot line to name the disk it
 erases as well, the way a person types it in the wizard:
 
 ```
-basalt.inst.plan=http://192.0.2.1/plans/web01.yaml basalt.inst.confirm=vda
+basalt.inst.plan=http://192.0.2.1/plans/web01.yaml basalt.inst.confirm=S4EWNX0R123456
 ```
 
-Then the engine service (`basalt-installer serve`) loads the plan,
-checks that `basalt.inst.confirm` names the plan's `target.disk`, makes the
+(the disk's serial number, `lsblk -o NAME,MODEL,SERIAL`; the kernel name
+only for a disk without a serial). Then the engine service
+(`basalt-installer serve`) loads the plan, checks that
+`basalt.inst.confirm` is the confirmation word of the plan's
+`target.disk`, makes the
 preview and installs; the screen and the serial console show the text
 installer following it (`basalt-installer tui --attach`). When the
 confirmation names another disk, or the plan cannot be read or is not

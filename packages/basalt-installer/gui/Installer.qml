@@ -322,7 +322,7 @@ Item {
                 Txt { text: "Install Basalt OS"; role: "display"; width: parent.width }
                 Txt {
                     width: parent.width
-                    text: qsTr("A Fedora remix with server and desktop editions: SELinux enforcing, btrfs with a snapshot before every update, LUKS2 encryption unlocked by the TPM, and a local assistant that only proposes changes.") + "\n\n" + qsTr("You choose a disk and a few settings, then review the exact list of commands before anything is written. Nothing changes until you type the disk name.")
+                    text: qsTr("A Fedora remix with server and desktop editions: SELinux enforcing, btrfs with a snapshot before every update, LUKS2 encryption unlocked by the TPM, and a local assistant that only proposes changes.") + "\n\n" + qsTr("You choose a disk and a few settings, then review the exact list of commands before anything is written. Nothing changes until you type the disk's serial number.")
                 }
                 Txt { width: parent.width; role: "small"; color: Theme.textMuted; text: "The Fedora packages come from the network. A text installer with the same steps runs on the serial console." }
                 Section {
