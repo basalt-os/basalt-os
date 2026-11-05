@@ -3,7 +3,7 @@
 # and a graphical frontend (Quickshell) in the -gui subpackage.
 
 Name:           basalt-installer
-Version:        0.2.3
+Version:        0.2.4
 Release:        1%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
@@ -113,6 +113,26 @@ done
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Thu Nov 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.4-1
+- Dual boot: installs next to Windows and another Linux on free space,
+  lists the other systems in the boot menu without os-prober (only safe
+  EFI names reach the chainload script), never shares an ESP that holds
+  another Fedora's EFI/fedora, and keeps os-prober off in the installed
+  GRUB configuration.
+- The disk is known by serial, WWN, model, size and partition table: the
+  installation probes again and refuses a disk that differs from the
+  review; the confirmation word is the disk's serial number. Nothing is
+  erased by picking a disk, none is preselected.
+- Custom layout, reuse of chosen partitions (on a new partition), the
+  probe of what each disk holds (a whole-disk LUKS or BitLocker volume
+  is named as encrypted), languages and keyboards for the frontends.
+- The safety check allows only the commands the generator uses and
+  checks their arguments: partition table entries, file systems, LUKS
+  key slots and boot entries as before, and now rm, chmod, chown and
+  install only in the target root or the work directory (never a /dev
+  path, never on an adopted /home but the new user's ~/.ssh), btrfs only
+  as subvolume create on the new file system.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.3-1
 - The installation's end state changes together with the "done" event: a
   frontend that finishes, retries or reads the status right after it no
