@@ -44,17 +44,19 @@ func TestDesktopFallback(t *testing.T) {
 	for _, c := range cmds {
 		got = append(got, strings.Join(c.Argv, " "))
 	}
-	if strings.Join(got, "; ") != "systemctl disable greetd.service; systemctl enable --force gdm.service" {
+	// The new display manager first: when that fails, the old one stays.
+	if strings.Join(got, "; ") != "systemctl enable --force gdm.service; systemctl disable greetd.service" {
 		t.Fatalf("gnome: %v", got)
 	}
 	back := Action{Kind: DesktopFallback, Params: map[string]string{"target": "basalt"}}
 	cmds, _ = back.Commands()
-	if len(cmds) != 2 || strings.Join(cmds[0].Argv, " ") != "systemctl disable gdm.service" || strings.Join(cmds[1].Argv, " ") != "systemctl enable --force greetd.service" {
+	if len(cmds) != 2 || strings.Join(cmds[0].Argv, " ") != "systemctl enable --force greetd.service" || strings.Join(cmds[1].Argv, " ") != "systemctl disable gdm.service" {
 		t.Fatalf("basalt: %+v", cmds)
 	}
 	// The check reads the display-manager.service link.
 	chk := a.Verify(time.Now())
-	if len(chk) != 1 {
+	// Both results: the link, and the other display manager off.
+	if len(chk) != 2 || strings.Join(chk[1].Argv, " ") != "systemctl is-enabled greetd.service" {
 		t.Fatal(chk)
 	}
 	if ok, seen := chk[0].Func(context.Background(), nil); ok || seen != "greetd" {

@@ -581,11 +581,12 @@ func (a Action) Commands() ([]runner.Command, error) {
 			Description: "remove the source " + p["id"] + " (and its key, when no other repository of it is left)"}}, nil
 	case DesktopFallback:
 		on, off := fallbackUnits(p["target"])
+		// The new display manager first: when enabling it fails, the
+		// old one still starts. --force moves the display-manager.service
+		// link the other display manager holds.
 		return []runner.Command{
-			{Argv: []string{"systemctl", "disable", off + ".service"}, Description: "turn off " + off + " as the login screen"},
-			// --force replaces the display-manager.service link the other
-			// display manager holds.
 			{Argv: []string{"systemctl", "enable", "--force", on + ".service"}, Description: "make " + on + " the login screen from the next start"},
+			{Argv: []string{"systemctl", "disable", off + ".service"}, Description: "turn off " + off + " as the login screen"},
 		}, nil
 	case KeyboardSystem:
 		cs, _ := keymap.ParseLayouts(p["layouts"])
@@ -812,12 +813,14 @@ func (a Action) verifyOther(since time.Time) []Check {
 				return sources.HasRecord(SourcePaths, sp.ID), SourcePaths.RecordPath(sp.ID)
 			}}}
 	case DesktopFallback:
-		on, _ := fallbackUnits(p["target"])
+		on, off := fallbackUnits(p["target"])
 		return []Check{{Description: "the login screen from the next start is " + on,
 			Func: func(ctx context.Context, r runner.Reader) (bool, string) {
 				dm := DisplayManager()
 				return dm == on, dm
-			}}}
+			}},
+			{Description: off + " is off", Argv: []string{"systemctl", "is-enabled", off + ".service"},
+				Want: []string{"disabled"}}}
 	case KeyboardSystem:
 		cs, _ := keymap.ParseLayouts(p["layouts"])
 		layout, variant := keymap.XKBLists(cs)

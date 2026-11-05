@@ -143,7 +143,7 @@ func UndoIn(tr i18n.Tr, acts []action.Action) (text string, rollbackCmd bool) {
 		return tr.T("turn the channel back the other way in Settings, Updates and channels, or with basalt channels; no snapshot is needed for one setting, and every update takes its own."), false
 	}
 	if len(acts) == 1 && acts[0].Kind == action.DesktopFallback {
-		return tr.T("choose the other login screen in Settings, About, or with basalt fallback; no snapshot is needed for one setting."), false
+		return tr.T("choose the other login screen in Settings, About, or with basalt fallback; a snapshot is taken before and after as well."), false
 	}
 	if len(acts) == 1 && acts[0].Kind == action.KeyboardSystem {
 		return tr.T("choose other layouts in Settings, Keyboard, or with basalt keyboard set; no snapshot is needed for one setting."), false

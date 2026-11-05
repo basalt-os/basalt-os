@@ -62,7 +62,7 @@ func TestFallbackCommand(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &ref); err != nil || !strings.HasPrefix(ref.ID, "p-") {
 		t.Fatalf("%s %v", out, err)
 	}
-	if strings.Join(ref.Commands, "; ") != "systemctl disable greetd.service; systemctl enable --force gdm.service" {
+	if strings.Join(ref.Commands, "; ") != "systemctl enable --force gdm.service; systemctl disable greetd.service" {
 		t.Errorf("commands: %v", ref.Commands)
 	}
 	if ref.Stored {

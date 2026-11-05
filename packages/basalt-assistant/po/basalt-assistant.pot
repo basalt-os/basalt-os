@@ -22,99 +22,95 @@ msgid "no snapshot: the system's keyboard is one setting, and choosing other lay
 msgstr ""
 
 #: internal/apply/apply.go:140
-msgid "no snapshot: the login screen is one setting, and choosing the other one changes it back; it takes effect at the next start"
-msgstr ""
-
-#: internal/apply/apply.go:142
 msgid "no snapshot: an accepted risk is one setting, and Review again changes it back"
 msgstr ""
 
-#: internal/apply/apply.go:144
+#: internal/apply/apply.go:142
 msgid "no snapshot: turning a channel on or off changes one setting, and the next update takes its own snapshot"
 msgstr ""
 
-#: internal/apply/apply.go:146
+#: internal/apply/apply.go:144
 msgid "the command shown above"
 msgstr ""
 
-#: internal/apply/apply.go:148
+#: internal/apply/apply.go:146
 #, c-format
 msgid "the %d commands shown above, in that order"
 msgstr ""
 
-#: internal/apply/apply.go:150
+#: internal/apply/apply.go:148
 #, c-format
 msgid "Applying runs %s, as root (%s)."
 msgstr ""
 
-#: internal/apply/apply.go:168
+#: internal/apply/apply.go:166
 msgid "Type yes to apply it, or anything else to cancel: "
 msgstr ""
 
-#: internal/apply/apply.go:222
+#: internal/apply/apply.go:220
 #, c-format
 msgid "Snapshot %d taken (before the change)."
 msgstr ""
 
-#: internal/apply/apply.go:224
+#: internal/apply/apply.go:222
 #, c-format
 msgid "Warning: no snapshot could be taken before the change: %v"
 msgstr ""
 
-#: internal/apply/apply.go:244
+#: internal/apply/apply.go:242
 #, c-format
 msgid "That command failed (exit code %d), so the remaining ones were not run."
 msgstr ""
 
-#: internal/apply/apply.go:254
+#: internal/apply/apply.go:252
 #, c-format
 msgid "Snapshot %d taken (after the change)."
 msgstr ""
 
-#: internal/apply/apply.go:264
+#: internal/apply/apply.go:262
 msgid "Checking that it worked"
 msgstr ""
 
-#: internal/apply/apply.go:292
+#: internal/apply/apply.go:290
 #, c-format
 msgid "Warning: the boot will not finish the record: %v"
 msgstr ""
 
-#: internal/apply/apply.go:303 internal/apply/offline.go:133
+#: internal/apply/apply.go:301 internal/apply/offline.go:133
 #, c-format
 msgid "Warning: could not update the proposal: %v"
 msgstr ""
 
-#: internal/apply/apply.go:306
+#: internal/apply/apply.go:304
 #, c-format
 msgid "Ready: %s installs at the next start (audit record #%d)."
 msgstr ""
 
-#: internal/apply/apply.go:307
+#: internal/apply/apply.go:305
 msgid "Restart to install it: Settings, Updates and channels, or sudo basalt updates restart"
 msgstr ""
 
-#: internal/apply/apply.go:309
+#: internal/apply/apply.go:307
 #, c-format
 msgid "Done: %s is applied and every check passed (audit record #%d)."
 msgstr ""
 
-#: internal/apply/apply.go:314
+#: internal/apply/apply.go:312
 #, c-format
 msgid "%s did not work as expected: see the failed step or check above (audit record #%d)."
 msgstr ""
 
-#: internal/apply/apply.go:345
+#: internal/apply/apply.go:343
 #, c-format
 msgid "warning: audit log: %v"
 msgstr ""
 
-#: internal/apply/apply.go:437
+#: internal/apply/apply.go:435
 #, c-format
 msgid "To undo it: %s   (back to snapshot %d, at the next boot)"
 msgstr ""
 
-#: internal/apply/apply.go:467
+#: internal/apply/apply.go:465
 #, c-format
 msgid "That command failed (exit code %d). The update stays prepared."
 msgstr ""
@@ -1444,7 +1440,7 @@ msgid "turn the channel back the other way in Settings, Updates and channels, or
 msgstr ""
 
 #: internal/explain/risk.go:146
-msgid "choose the other login screen in Settings, About, or with basalt fallback; no snapshot is needed for one setting."
+msgid "choose the other login screen in Settings, About, or with basalt fallback; a snapshot is taken before and after as well."
 msgstr ""
 
 #: internal/explain/risk.go:149
@@ -2100,228 +2096,233 @@ msgstr ""
 msgid "the login screen from the next start is %s"
 msgstr ""
 
-#: internal/titles/titles.go:186
+#: internal/titles/titles.go:184
 #, c-format
-msgid "snapshot %d holds a different copy of %s (%s)"
+msgid "%s is off"
 msgstr ""
 
 #: internal/titles/titles.go:187
 #, c-format
-msgid "snapshot %d was taken just before the failed transaction \"%s\""
+msgid "snapshot %d holds a different copy of %s (%s)"
 msgstr ""
 
 #: internal/titles/titles.go:188
-msgid "found by the confined daemon, which cannot check the snapshot"
+#, c-format
+msgid "snapshot %d was taken just before the failed transaction \"%s\""
 msgstr ""
 
 #: internal/titles/titles.go:189
-msgid "proposed through MCP; the confined view cannot check the snapshot"
+msgid "found by the confined daemon, which cannot check the snapshot"
 msgstr ""
 
 #: internal/titles/titles.go:190
+msgid "proposed through MCP; the confined view cannot check the snapshot"
+msgstr ""
+
+#: internal/titles/titles.go:191
 #, c-format
 msgid "proposed by %s before hints existed"
 msgstr ""
 
-#: internal/titles/titles.go:200
+#: internal/titles/titles.go:201
 #, c-format
 msgid "%d updates are ready: %d security, %d Basalt OS components, %d apps, %d system."
 msgstr ""
 
-#: internal/titles/titles.go:201
-msgid "A snapshot is taken first, so the update can be undone from Settings, Updates and channels, or with sudo basalt updates rollback."
-msgstr ""
-
 #: internal/titles/titles.go:202
-#, c-format
-msgid "Some of them replace core parts of the system (%s), so they install while the computer restarts, before the desktop starts; a snapshot is taken before and after."
+msgid "A snapshot is taken first, so the update can be undone from Settings, Updates and channels, or with sudo basalt updates rollback."
 msgstr ""
 
 #: internal/titles/titles.go:203
 #, c-format
-msgid "Undo the last update (%s, %d packages, %s): the system goes back to snapshot %d, taken just before it, at the next start."
+msgid "Some of them replace core parts of the system (%s), so they install while the computer restarts, before the desktop starts; a snapshot is taken before and after."
 msgstr ""
 
 #: internal/titles/titles.go:204
+#, c-format
+msgid "Undo the last update (%s, %d packages, %s): the system goes back to snapshot %d, taken just before it, at the next start."
+msgstr ""
+
+#: internal/titles/titles.go:205
 msgid "Your files in /home and the other data volumes stay as they are."
 msgstr ""
 
-#: internal/titles/titles.go:206
+#: internal/titles/titles.go:207
 #, c-format
 msgid "Turn the %s channel off: no more updates come from it."
 msgstr ""
 
-#: internal/titles/titles.go:207
+#: internal/titles/titles.go:208
 msgid "What is installed from it stays."
 msgstr ""
 
-#: internal/titles/titles.go:208
+#: internal/titles/titles.go:209
 msgid "Turn the basalt-testing channel on: preview builds of Basalt OS components, before they reach everyone."
 msgstr ""
 
-#: internal/titles/titles.go:209
+#: internal/titles/titles.go:210
 msgid "Turn the basalt-nonfree-testing channel on: preview builds of the additional drivers (the NVIDIA driver), for testers with that hardware."
 msgstr ""
 
-#: internal/titles/titles.go:210
+#: internal/titles/titles.go:211
 msgid "Preview builds can break things."
 msgstr ""
 
-#: internal/titles/titles.go:211
+#: internal/titles/titles.go:212
 msgid "A snapshot is taken before each update so you can go back."
 msgstr ""
 
-#: internal/titles/titles.go:212
+#: internal/titles/titles.go:213
 #, c-format
 msgid "Turn the %s channel on: updates from now on also come from it."
 msgstr ""
 
-#: internal/titles/titles.go:213
+#: internal/titles/titles.go:214
 msgid "Its packages are signed with the OpenBasalt release key."
 msgstr ""
 
-#: internal/titles/titles.go:214
+#: internal/titles/titles.go:215
 #, c-format
 msgid "Remove %s: no more software comes from it, and its signing key is no longer trusted."
 msgstr ""
 
-#: internal/titles/titles.go:215
+#: internal/titles/titles.go:216
 msgid "Programs already installed from it stay; they no longer get updates."
 msgstr ""
 
-#: internal/titles/titles.go:216
+#: internal/titles/titles.go:217
 #, c-format
 msgid "Add %s."
 msgstr ""
 
-#: internal/titles/titles.go:217
-msgid "Software from this source can change your whole system: only add sources you trust."
-msgstr ""
-
 #: internal/titles/titles.go:218
-#, c-format
-msgid "Its signing key, %s, belongs to %s."
+msgid "Software from this source can change your whole system: only add sources you trust."
 msgstr ""
 
 #: internal/titles/titles.go:219
 #, c-format
-msgid "Basalt pins this key for %s."
+msgid "Its signing key, %s, belongs to %s."
 msgstr ""
 
 #: internal/titles/titles.go:220
-msgid "Basalt does not know this source: check the fingerprint with its publisher before you trust it."
+#, c-format
+msgid "Basalt pins this key for %s."
 msgstr ""
 
 #: internal/titles/titles.go:221
-msgid "Its packages and its package lists are signed."
+msgid "Basalt does not know this source: check the fingerprint with its publisher before you trust it."
 msgstr ""
 
 #: internal/titles/titles.go:222
+msgid "Its packages and its package lists are signed."
+msgstr ""
+
+#: internal/titles/titles.go:223
 msgid "Its packages are signed; its package lists are not (the source does not sign them), so they come from a metalink over HTTPS."
 msgstr ""
 
-#: internal/titles/titles.go:224
+#: internal/titles/titles.go:225
 msgid "GNOME's login screen (GDM) starts from the next start, so the GNOME session can lock the screen."
 msgstr ""
 
-#: internal/titles/titles.go:225
+#: internal/titles/titles.go:226
 msgid "The Basalt session stays in its list."
 msgstr ""
 
-#: internal/titles/titles.go:226
+#: internal/titles/titles.go:227
 msgid "To go back, choose the Basalt login screen again the same way."
 msgstr ""
 
-#: internal/titles/titles.go:227
+#: internal/titles/titles.go:228
 msgid "The Basalt login screen starts from the next start."
 msgstr ""
 
-#: internal/titles/titles.go:228
+#: internal/titles/titles.go:229
 msgid "GNOME stays installed and in its list, without a screen lock."
 msgstr ""
 
-#: internal/titles/titles.go:230
+#: internal/titles/titles.go:231
 #, c-format
 msgid "The login screen, the text console and accounts created from now on type with %s (the first is the default; the console uses the keymap %s)."
 msgstr ""
 
-#: internal/titles/titles.go:231
+#: internal/titles/titles.go:232
 msgid "People who chose their own layouts in Settings, Keyboard keep them."
 msgstr ""
 
-#: internal/titles/titles.go:232
+#: internal/titles/titles.go:233
 msgid "To change it again, choose other layouts the same way."
 msgstr ""
 
-#: internal/titles/titles.go:234
+#: internal/titles/titles.go:235
 msgid "Run the public AI audit suite on this computer: like an attacker would, it tries to get around the protections for AI agents (their confinement, their network limits, the activity record, the confirmation step)."
 msgstr ""
 
-#: internal/titles/titles.go:235
+#: internal/titles/titles.go:236
 msgid "It runs as its own unprivileged account with fake test data and changes none of your files."
 msgstr ""
 
-#: internal/titles/titles.go:236
+#: internal/titles/titles.go:237
 msgid "The results appear in Security and Activity."
 msgstr ""
 
-#: internal/titles/titles.go:237
+#: internal/titles/titles.go:238
 msgid "The suite is not installed yet: it is installed first from the Basalt repositories, checked against their signing key."
 msgstr ""
 
-#: internal/titles/titles.go:238
+#: internal/titles/titles.go:239
 #, c-format
 msgid "Record that %s knows about the warning on %s and accepts it."
 msgstr ""
 
-#: internal/titles/titles.go:239
+#: internal/titles/titles.go:240
 msgid "Security and Activity then shows it as accepted, with the date and who accepted it, and stops counting it."
 msgstr ""
 
-#: internal/titles/titles.go:240
+#: internal/titles/titles.go:241
 msgid "If it ever becomes a problem it shows as a problem again."
 msgstr ""
 
-#: internal/titles/titles.go:241
+#: internal/titles/titles.go:242
 msgid "Review again undoes this."
 msgstr ""
 
-#: internal/titles/titles.go:242
+#: internal/titles/titles.go:243
 #, c-format
 msgid "Forget that the risk of %s was accepted: Security and Activity counts it as a warning again."
 msgstr ""
 
-#: internal/titles/titles.go:244
+#: internal/titles/titles.go:245
 #, c-format
 msgid "Proposed by an MCP client: %s"
 msgstr ""
 
-#: internal/titles/titles.go:245
+#: internal/titles/titles.go:246
 #, c-format
 msgid "Confirmed as root: %s."
 msgstr ""
 
-#: internal/titles/titles.go:247
+#: internal/titles/titles.go:248
 #, c-format
 msgid "Applying %s stopped before it was done."
 msgstr ""
 
-#: internal/titles/titles.go:248
+#: internal/titles/titles.go:249
 #, c-format
 msgid "Applying %s stopped before it was done, and its log does not say why."
 msgstr ""
 
-#: internal/titles/titles.go:249
+#: internal/titles/titles.go:250
 #, c-format
 msgid "The log says: %s."
 msgstr ""
 
-#: internal/titles/titles.go:250
+#: internal/titles/titles.go:251
 #, c-format
 msgid "The change itself (%s) still waits for you: open it to try again, or dismiss it."
 msgstr ""
 
-#: internal/titles/titles.go:251
+#: internal/titles/titles.go:252
 msgid "Nothing will be changed by this report."
 msgstr ""
 

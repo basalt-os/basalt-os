@@ -181,6 +181,7 @@ var phrases = []string{
 	i18n.M("disabled"),
 	// desktop.fallback (internal/action).
 	i18n.M("the login screen from the next start is %s"),
+	i18n.M("%s is off"),
 	// The reasons of hints (internal/diag, internal/engine, internal/mcp,
 	// internal/cli).
 	i18n.M("snapshot %d holds a different copy of %s (%s)"),

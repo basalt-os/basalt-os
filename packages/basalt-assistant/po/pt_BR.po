@@ -2452,9 +2452,6 @@ msgstr "ligado"
 msgid "disabled"
 msgstr "desligado"
 
-msgid "no snapshot: the login screen is one setting, and choosing the other one changes it back; it takes effect at the next start"
-msgstr "sem snapshot: a tela de login é uma configuração só, e escolher a outra a desfaz; vale a partir do próximo início"
-
 msgid "GNOME as a fallback: installed"
 msgstr "GNOME como alternativa: instalado"
 
@@ -2470,8 +2467,11 @@ msgstr "fazer do GDM a tela de login a partir do próximo início, para o GNOME 
 msgid "make the Basalt login screen (greetd) the login screen again from the next start"
 msgstr "voltar a usar a tela de login do Basalt (greetd) a partir do próximo início"
 
-msgid "choose the other login screen in Settings, About, or with basalt fallback; no snapshot is needed for one setting."
-msgstr "escolha a outra tela de login em Configurações, Sobre, ou com basalt fallback; não é preciso snapshot para uma configuração só."
+msgid "choose the other login screen in Settings, About, or with basalt fallback; a snapshot is taken before and after as well."
+msgstr "escolha a outra tela de login em Configurações, Sobre, ou com basalt fallback; um snapshot também é feito antes e depois."
+
+msgid "%s is off"
+msgstr "%s está desligado"
 
 msgid "GDM starts as the login screen from the next start; the Basalt session stays in its list"
 msgstr "o GDM é a tela de login a partir do próximo início; a sessão Basalt continua na lista dele"
