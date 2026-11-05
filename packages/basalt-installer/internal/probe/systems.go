@@ -136,7 +136,14 @@ func DescribeHolds(d *Disk, entries []BootEntry) {
 	}
 	if len(d.Partitions) == 0 && d.Contents != "empty" {
 		data = true
-		add(&holds, d.Contents)
+		switch {
+		case strings.HasSuffix(d.Contents, "crypto_LUKS"):
+			add(&holds, "LUKS encrypted volume on the whole disk")
+		case strings.HasSuffix(strings.ToLower(d.Contents), "bitlocker"):
+			add(&holds, "BitLocker encrypted volume on the whole disk")
+		default:
+			add(&holds, d.Contents)
+		}
 	}
 	if windows {
 		found := false

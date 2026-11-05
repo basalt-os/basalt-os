@@ -87,3 +87,13 @@ func TestReadLive(t *testing.T) {
 		t.Fatalf("%+v", l)
 	}
 }
+
+// A LUKS volume on the whole disk (no partition table) is an encrypted
+// volume, not "file systems with data".
+func TestWholeDiskLUKS(t *testing.T) {
+	d := Disk{Path: "/dev/nvme4n1", Contents: "whole-disk crypto_LUKS"}
+	DescribeHolds(&d, nil)
+	if !strings.Contains(d.Caution, "encrypted volume") || len(d.Holds) != 1 || !strings.Contains(d.Holds[0], "LUKS") {
+		t.Fatalf("%+v", d)
+	}
+}
