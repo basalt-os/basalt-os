@@ -90,9 +90,10 @@ func TestAlongsideTouchesOnlyNewPartitions(t *testing.T) {
 	if !strings.Contains(menu.Command(), "/dev/nvme0n1p1=") {
 		t.Errorf("the Windows ESP is not searched: %s", menu.Command())
 	}
-	// os-prober is not installed and never runs: it mounts btrfs read-write.
-	if _, dnfStep := mustFind(t, list, "dnf --assumeyes"); !strings.Contains(dnfStep.Command(), "--exclude=os-prober") {
-		t.Error("os-prober is not excluded")
+	// os-prober never runs (it mounts btrfs read-write). It cannot be
+	// excluded: grub2-tools requires it on Fedora 44 (found in the VM).
+	if _, dnfStep := mustFind(t, list, "dnf --assumeyes"); strings.Contains(dnfStep.Command(), "--exclude=os-prober") {
+		t.Error("excluding os-prober makes grub2-tools uninstallable")
 	}
 	_, dg := mustFind(t, list, "/etc/default/grub")
 	if !strings.Contains(dg.Write.Content, "GRUB_DISABLE_OS_PROBER=true") {

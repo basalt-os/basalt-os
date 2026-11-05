@@ -133,11 +133,11 @@ func Packages(r Resolved) (install, exclude []string) {
 			install = append(install, p)
 		}
 	}
-	// os-prober is kept out: grub2-mkconfig would run it, and it mounts
-	// other systems' btrfs volumes read-write (35_basalt_other_systems
-	// lists them instead).
+	// os-prober cannot be excluded (Fedora 44's grub2-tools requires it);
+	// GRUB_DISABLE_OS_PROBER=true in /etc/default/grub keeps
+	// grub2-mkconfig from running it (see defaultGrub).
 	exclude = []string{"fedora-release", "fedora-release-common", "fedora-release-identity-basic",
-		"fedora-logos", "fedora-logos-httpd", "generic-release", "generic-logos", "os-prober"}
+		"fedora-logos", "fedora-logos-httpd", "generic-release", "generic-logos"}
 	if r.Profile == "minimal" {
 		exclude = append(exclude, "linux-firmware", "linux-firmware-whence", "*-firmware", "microcode_ctl", "fwupd*", "flashrom")
 	}
