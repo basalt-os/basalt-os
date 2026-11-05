@@ -198,3 +198,29 @@ func Find(ctx context.Context, work string, parts []Partition, logf func(string,
 	}
 	return out
 }
+
+// HasVendorDir mounts an EFI system partition read-only under work and
+// reports whether EFI/<vendor> exists on it (any case), then unmounts it.
+// The installer refuses to share an ESP that already holds another
+// Fedora's EFI/fedora: its boot files would be replaced.
+func HasVendorDir(ctx context.Context, work, dev, vendor string) (bool, error) {
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		return false, err
+	}
+	dir, err := os.MkdirTemp(work, "esp-check-")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(dir)
+	if b, err := exec.CommandContext(ctx, "mount", "-t", "vfat", "-o", "ro,nosuid,nodev,noexec", dev, dir).CombinedOutput(); err != nil {
+		return false, fmt.Errorf("%s could not be read: %v: %s", dev, err, strings.TrimSpace(string(b)))
+	}
+	found := false
+	if efi := findDir(dir, "EFI"); efi != "" {
+		found = findEntry(efi, vendor, true) != ""
+	}
+	if b, err := exec.CommandContext(ctx, "umount", dir).CombinedOutput(); err != nil {
+		return found, fmt.Errorf("unmount %s: %v: %s", dir, err, strings.TrimSpace(string(b)))
+	}
+	return found, nil
+}

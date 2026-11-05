@@ -13,8 +13,9 @@ import (
 
 // An unattended installation from the boot menu needs two kernel arguments:
 // basalt.inst.plan=PATH|URL (what to install; without it, the plan on the
-// installer media) and basalt.inst.confirm=DISK (the kernel name of the
-// disk the plan erases, as typed in the wizard).
+// installer media) and basalt.inst.confirm=SERIAL (the serial number of
+// the disk the plan installs on, as typed in the wizard; the kernel name
+// only for a disk that reports no serial).
 // The confirmation must name the plan's target disk; with the plan alone,
 // the plan only fills in the wizard. The engine service (basalt-installer
 // serve) runs it, so the text installers on the screen and on the serial
@@ -96,8 +97,22 @@ func (s *Session) RunUnattended(ctx context.Context, planWait time.Duration) {
 		s.setAuto(AutoRefused, fmt.Sprintf(i18n.T("the plan %s could not be read: %v"), src, err))
 		return
 	}
-	if strings.TrimPrefix(p.Target.Disk, "/dev/") != confirm {
-		s.setAuto(AutoRefused, fmt.Sprintf(i18n.T("basalt.inst.confirm=%s does not name the disk the plan erases (%s): nothing was written"), confirm, p.Target.Disk))
+	// The confirmation names the disk by its serial number (a kernel
+	// name can point at another disk on another boot); only a disk
+	// without a serial is confirmed by its kernel name. Checked before
+	// anything else happens.
+	f, err := s.Facts(ctx, true)
+	if err != nil {
+		s.setAuto(AutoRefused, oneLine(err.Error()))
+		return
+	}
+	if d, ok := f.Disk(p.Target.Disk); !ok || confirm != ConfirmWord(d) {
+		want := "?"
+		if ok {
+			want = ConfirmWord(d)
+		}
+		s.setAuto(AutoRefused, fmt.Sprintf(i18n.T("basalt.inst.confirm=%s does not name the disk the plan erases (%s): give %s; nothing was written"),
+			confirm, p.Target.Disk, want))
 		return
 	}
 	pv, err := s.MakePreview(ctx, p)

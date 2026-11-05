@@ -173,6 +173,7 @@ func Resolve(p plan.Plan, f probe.Facts, opt Options) (Resolved, error) {
 	if err := plan.Validate(p, &f, "").Err(); err != nil {
 		return Resolved{}, err
 	}
+	p = plan.Canonical(p, &f)
 	disk, _ := f.Disk(p.Target.Disk)
 	if opt.Root == "" {
 		opt.Root = DefaultRoot

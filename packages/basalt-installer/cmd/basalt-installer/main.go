@@ -53,7 +53,7 @@ Usage:
                                                      the installation of a running serve
   basalt-installer serve [--socket P] [--allow-user U] [--demo]
                                                      local JSON API for the GUI
-  basalt-installer install --plan FILE --confirm DISK [--recovery-key-out FILE] [--no-finish]
+  basalt-installer install --plan FILE --confirm SERIAL [--recovery-key-out FILE] [--no-finish]
                                                      non-interactive install
   basalt-installer plan template [--disk /dev/vda]   a commented plan to start from (YAML)
   basalt-installer plan validate FILE [--offline]    check a plan (against this machine unless --offline)
@@ -227,7 +227,7 @@ func cmdServe(args []string) error {
 func cmdInstall(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
 	planFile := fs.String("plan", "", "plan file (YAML or JSON)")
-	confirm := fs.String("confirm", "", "the target disk's name (vda, nvme0n1): confirms that it is erased")
+	confirm := fs.String("confirm", "", "the target disk's serial number (its kernel name, vda or nvme0n1, only when it has no serial): confirms the installation on it")
 	keyOut := fs.String("recovery-key-out", "", "write the recovery key to this file (mode 0400); \"-\" prints it")
 	noFinish := fs.Bool("no-finish", false, "do not reboot or power off at the end")
 	_ = fs.Parse(args)
@@ -503,8 +503,11 @@ func template(disk string) string {
 # Every field below shows its default; delete what you do not change.
 # Check it:    basalt-installer plan validate plan.yaml
 # See it:      basalt-installer plan preview plan.yaml   (the exact commands)
-# Install it:  basalt-installer install --plan plan.yaml --confirm ` + strings.TrimPrefix(disk, "/dev/") + ` --recovery-key-out /path/key.txt
-# Unattended from the boot menu: basalt.inst.plan=URL basalt.inst.confirm=` + strings.TrimPrefix(disk, "/dev/") + `
+# Install it:  basalt-installer install --plan plan.yaml --confirm SERIAL --recovery-key-out /path/key.txt
+# Unattended from the boot menu: basalt.inst.plan=URL basalt.inst.confirm=SERIAL
+# (SERIAL: the disk's serial number, lsblk -o NAME,MODEL,SERIAL; the kernel
+# name only for a disk without one. target.disk may also be serial:SERIAL
+# or a /dev/disk/by-id link.)
 apiVersion: basalt-install-plan/v1
 edition: server
 target:

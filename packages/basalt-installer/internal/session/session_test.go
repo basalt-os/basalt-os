@@ -14,7 +14,7 @@ import (
 	"github.com/basalt-os/basalt-os/packages/basalt-installer/internal/steps"
 )
 
-const lsblk = `{"blockdevices":[{"name":"vda","path":"/dev/vda","size":32212254720,"type":"disk","rm":false,"ro":false,"rota":true,"model":null,"serial":null,"tran":null,"fstype":null,"mountpoints":[null],"label":null},
+var lsblkFixture = `{"blockdevices":[{"name":"vda","path":"/dev/vda","size":32212254720,"type":"disk","rm":false,"ro":false,"rota":true,"model":null,"serial":null,"tran":null,"fstype":null,"mountpoints":[null],"label":null},
 {"name":"sdb","path":"/dev/sdb","size":8012345344,"type":"disk","rm":true,"ro":false,"rota":false,"model":"USB stick","serial":"U","tran":"usb","fstype":null,"mountpoints":[null],"label":null,
  "children":[{"name":"sdb1","path":"/dev/sdb1","size":8011296768,"type":"part","rm":true,"ro":false,"rota":false,"model":null,"serial":null,"tran":"usb","fstype":"vfat","mountpoints":[null],"label":"KEYS"}]}]}`
 
@@ -58,7 +58,7 @@ func newRig(t *testing.T, planYAML, cmdline string) *rig {
 	r.ss = New(Options{
 		Prober: probe.Prober{Root: root, Read: func(_ context.Context, argv ...string) (string, error) {
 			if argv[0] == "lsblk" {
-				return lsblk, nil
+				return lsblkFixture, nil
 			}
 			return "kvm\n", nil
 		}},

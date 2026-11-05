@@ -89,6 +89,9 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	add := func(sev Severity, field, format string, a ...any) {
 		is = append(is, Issue{sev, field, fmt.Sprintf(format, a...)})
 	}
+	// A disk named by its serial number or a /dev/disk/by-id link is
+	// checked as the disk it is on this machine now.
+	p = Canonical(p, f)
 
 	if p.APIVersion != APIVersion {
 		add(Error, "apiVersion", "must be %q, got %q", APIVersion, p.APIVersion)
@@ -107,9 +110,11 @@ func Validate(p Plan, f *probe.Facts, zoneinfoDir string) Issues {
 	// --- target disk ---------------------------------------------------------------
 	if p.Target.Disk == "" {
 		add(Error, "target.disk", "no target disk")
+	} else if strings.HasPrefix(p.Target.Disk, "serial:") {
+		// Resolved above when the disk exists; reported below otherwise.
 	} else if !strings.HasPrefix(p.Target.Disk, "/dev/") {
-		add(Error, "target.disk", "must be a device path such as /dev/vda, got %q", p.Target.Disk)
-	} else if isPartitionPath(p.Target.Disk) {
+		add(Error, "target.disk", "must be a device path such as /dev/vda, a /dev/disk/by-id link or serial:SERIAL, got %q", p.Target.Disk)
+	} else if isPartitionPath(p.Target.Disk) || (strings.HasPrefix(p.Target.Disk, "/dev/disk/by-id/") && strings.Contains(p.Target.Disk, "-part")) {
 		add(Error, "target.disk", "%s looks like a partition; give the whole disk (%s)", p.Target.Disk, KickstartHint)
 	} else if strings.HasPrefix(p.Target.Disk, "/dev/md") || strings.HasPrefix(p.Target.Disk, "/dev/mapper/") || strings.HasPrefix(p.Target.Disk, "/dev/dm-") {
 		add(Error, "target.disk", "%s is a RAID, multipath or device-mapper device: %s", p.Target.Disk, KickstartHint)
@@ -491,6 +496,19 @@ func validRepoURL(s string) bool {
 var partitionPath = regexp.MustCompile(`^/dev/((sd|vd|hd|xvd)[a-z]+[0-9]+|(nvme[0-9]+n[0-9]+|mmcblk[0-9]+|loop[0-9]+)p[0-9]+)$`)
 
 func isPartitionPath(s string) bool { return partitionPath.MatchString(s) }
+
+// Canonical returns the plan with target.disk as the kernel path of the
+// disk it names on this machine (a serial:SERIAL or /dev/disk/by-id name
+// is resolved; an unknown one is left as it is, for Validate to report).
+func Canonical(p Plan, f *probe.Facts) Plan {
+	if f == nil || p.Target.Disk == "" {
+		return p
+	}
+	if d, ok := f.Disk(p.Target.Disk); ok {
+		p.Target.Disk = d.Path
+	}
+	return p
+}
 
 // DefaultSubvolumeNames is the automatic layout's subvolume list for a
 // plan (without home when /home is a partition of its own).
