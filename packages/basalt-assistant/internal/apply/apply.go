@@ -93,7 +93,9 @@ func (a *Applier) mark(ok bool) string {
 
 // checkLine prints what a check proves and what it found.
 func (a *Applier) checkLine(ok bool, what, detail string) {
-	a.printf("  [%s] %s: %s\n", a.mark(ok), titles.Phrase(a.Tr, what), detail)
+	// The observed value is a phrase too when the check reports a state
+	// ("enabled", "disabled"); paths and numbers stay as they are.
+	a.printf("  [%s] %s: %s\n", a.mark(ok), titles.Phrase(a.Tr, what), titles.Phrase(a.Tr, detail))
 }
 
 // Apply runs a proposal after confirmation.

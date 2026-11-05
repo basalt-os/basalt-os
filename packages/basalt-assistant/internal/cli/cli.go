@@ -410,57 +410,81 @@ func (a *app) status(ctx context.Context) error {
 	return nil
 }
 
-// writeStatus prints the health summary; auditN < 0: the audit log was
-// not readable here.
+// writeStatus prints the health summary in the reader's language
+// (`basalt status`, the command bar's "system status"); auditN < 0: the
+// audit log was not readable here. The problems are stored in English
+// (the JSON and MCP answers keep them so) and translated as phrases.
 func writeStatus(w io.Writer, s diag.Status, auditN int64, auditErr error) {
+	tr := i18n.Local()
 	if len(s.Problems) == 0 {
-		fmt.Fprintln(w, "Everything looks fine.")
+		fmt.Fprintln(w, i18n.T("Everything looks fine."))
 	} else {
-		fmt.Fprintf(w, "%s your attention:\n", plural(len(s.Problems), "thing needs", "things need"))
+		fmt.Fprintf(w, i18n.N("%d thing needs your attention:", "%d things need your attention:", len(s.Problems))+"\n", len(s.Problems))
 		for _, p := range s.Problems {
-			fmt.Fprintln(w, "  - "+p)
+			fmt.Fprintln(w, "  - "+titles.Phrase(tr, p))
 		}
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  System      %s\n", s.OS)
+	row := func(label, value string) { fmt.Fprintf(w, "  %-11s %s\n", label, value) }
+	row(i18n.T("System"), s.OS.String())
 	selinux := s.SELinux
 	if s.SELinux == "Enforcing" {
-		selinux += " (protecting the system)"
+		selinux = fmt.Sprintf(i18n.T("%s (protecting the system)"), s.SELinux)
 	}
-	fmt.Fprintf(w, "  SELinux     %s\n", orNone(selinux))
+	row("SELinux", orNoneT(selinux))
 	if len(s.FailedUnits) == 0 {
-		fmt.Fprintln(w, "  Services    none failed")
+		row(i18n.T("Services"), i18n.T("none failed"))
 	} else {
-		fmt.Fprintf(w, "  Services    failed: %s\n", strings.Join(s.FailedUnits, " "))
+		row(i18n.T("Services"), fmt.Sprintf(i18n.T("failed: %s"), strings.Join(s.FailedUnits, " ")))
 	}
 	if s.Denials24h == 0 {
-		fmt.Fprintln(w, "  Denials     none in the last 24 hours")
+		row(i18n.T("Denials"), i18n.T("none in the last 24 hours"))
 	} else {
-		fmt.Fprintf(w, "  Denials     %d in the last 24 hours\n", s.Denials24h)
+		row(i18n.T("Denials"), fmt.Sprintf(i18n.T("%d in the last 24 hours"), s.Denials24h))
 	}
-	fmt.Fprintf(w, "  Disk /      %.1f %% used, %s free\n", s.DiskPct, diag.HumanBytes(int64(s.Disk.Free)))
-	if s.SnapshotsUnreadable {
-		fmt.Fprintln(w, "  Snapshots   only root can list them (sudo basalt status)")
-	} else if s.Snapshots == 0 {
-		fmt.Fprintln(w, "  Snapshots   none")
-	} else {
-		fmt.Fprintf(w, "  Snapshots   %d, newest %s\n", s.Snapshots, s.LastSnapshot)
+	row(i18n.T("Disk /"), fmt.Sprintf(i18n.T("%.1f %% used, %s free"), s.DiskPct, diag.HumanBytes(int64(s.Disk.Free))))
+	switch {
+	case s.SnapshotsUnreadable:
+		row(i18n.T("Snapshots"), i18n.T("only root can list them (sudo basalt status)"))
+	case s.Snapshots == 0:
+		row(i18n.T("Snapshots"), i18n.T("none"))
+	default:
+		row(i18n.T("Snapshots"), fmt.Sprintf(i18n.T("%d, newest %s"), s.Snapshots, s.LastSnapshot))
 	}
 	rb := s.RollbackState
-	switch rb {
-	case "none":
-		rb = "none waiting"
-	case "unknown":
-		rb = "only root can check (sudo basalt status)"
+	switch {
+	case rb == "none":
+		rb = i18n.T("none waiting")
+	case rb == "unknown":
+		rb = i18n.T("only root can check (sudo basalt status)")
+	case strings.HasPrefix(rb, "pending"):
+		rb = i18n.T("pending: reboot to use the rolled-back root")
 	}
-	fmt.Fprintf(w, "  Rollback    %s\n", rb)
-	fmt.Fprintf(w, "  Assistant   background service %s, %s\n", orNone(s.Daemon), plural(s.Pending, "proposal waiting", "proposals waiting"))
+	row(i18n.T("Rollback"), rb)
+	daemon := orNoneT(s.Daemon)
+	switch s.Daemon {
+	case "active":
+		daemon = i18n.T("active")
+	case "inactive":
+		daemon = i18n.T("inactive")
+	case "failed":
+		daemon = i18n.T("failed")
+	}
+	row(i18n.T("Assistant"), fmt.Sprintf(i18n.N("background service %s, %d proposal waiting", "background service %s, %d proposals waiting", s.Pending), daemon, s.Pending))
 	switch {
 	case auditErr != nil:
-		fmt.Fprintf(w, "  Audit log   CHAIN BROKEN: %v (basalt audit verify)\n", auditErr)
+		row(i18n.T("Audit log"), fmt.Sprintf(i18n.T("CHAIN BROKEN: %v (basalt audit verify)"), auditErr))
 	case auditN >= 0:
-		fmt.Fprintf(w, "  Audit log   %d records, chain intact\n", auditN)
+		row(i18n.T("Audit log"), fmt.Sprintf(i18n.N("%d record, chain intact", "%d records, chain intact", int(auditN)), auditN))
 	}
+}
+
+// orNoneT is orNone in the reader's language.
+func orNoneT(s string) string {
+	if s == "" {
+		return i18n.T("none")
+	}
+	return s
 }
 
 func plural(n int, one, many string) string {
@@ -801,13 +825,18 @@ func (a *app) pending() error {
 // language for the desktop to show: title_local (the title), report_local
 // (what is wrong, why and what applying will do, written from the facts),
 // status_local (the status word) and checks_local (what each check of
-// the result proves, in the order of result.checks).
+// the result proves, in the order of result.checks) with
+// checks_output_local (what each check observed, when that is a known word
+// such as "enabled").
 type shown struct {
 	*proposal.Proposal
 	TitleLocal  string   `json:"title_local,omitempty"`
 	ReportLocal string   `json:"report_local,omitempty"`
 	StatusLocal string   `json:"status_local,omitempty"`
 	ChecksLocal []string `json:"checks_local,omitempty"`
+	// ChecksOutputLocal is result.checks[].output in the reader's
+	// language, in the same order (a path or number stays as it is).
+	ChecksOutputLocal []string `json:"checks_output_local,omitempty"`
 }
 
 func localized(p *proposal.Proposal) shown {
@@ -834,6 +863,15 @@ func localized(p *proposal.Proposal) shown {
 		}
 		if changed {
 			s.ChecksLocal = cs
+		}
+		changed = false
+		outs := make([]string, len(p.Result.Checks))
+		for i, c := range p.Result.Checks {
+			outs[i] = titles.Phrase(tr, c.Output)
+			changed = changed || outs[i] != c.Output
+		}
+		if changed {
+			s.ChecksOutputLocal = outs
 		}
 	}
 	return s

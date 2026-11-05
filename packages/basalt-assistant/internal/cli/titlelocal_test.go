@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/action"
+	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/diag"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/i18n"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/proposal"
 	"github.com/basalt-os/basalt-os/packages/basalt-assistant/internal/sources"
@@ -45,6 +46,7 @@ func TestBodyLocalInJSON(t *testing.T) {
 		"What is installed from it stays.":                       {"O que foi instalado a partir dele fica."},
 		"applied":                                                {"aplicada"},
 		"the %s channel is off":                                  {"o canal %s está desligado"},
+		"disabled":                                               {"desligado"},
 	}})
 	t.Cleanup(i18n.Reset)
 	b, err := json.Marshal(localized(p))
@@ -57,6 +59,7 @@ func TestBodyLocalInJSON(t *testing.T) {
 		`"report_local":"Desligar o canal basalt-tools: não chegam mais atualizações dele. O que foi instalado a partir dele fica."`,
 		`"status":"applied"`, `"status_local":"aplicada"`,
 		`"what":"the basalt-tools channel is off"`, `"checks_local":["o canal basalt-tools está desligado"]`,
+		`"checks_output_local":["desligado"]`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %s in %s", want, s)
@@ -114,4 +117,44 @@ func TestStoredReportsAreKnown(t *testing.T) {
 			t.Errorf("a sentence of this report is not in internal/titles: %q", r)
 		}
 	}
+}
+
+// basalt status in pt_BR: the labels and the problems in the reader's
+// language (they were English under pt_BR, bugs 2026-10-22).
+func TestStatusInBrazilianPortuguese(t *testing.T) {
+	i18n.Use(&i18n.Catalog{Lang: "pt_BR", Messages: map[string][]string{
+		"%d thing needs your attention:":        {"%d coisa precisa da sua atenção:", "%d coisas precisam da sua atenção:"},
+		"System":                                {"Sistema"},
+		"Denials":                               {"Bloqueios"},
+		"%s has failed. See why: basalt why %s": {"%s falhou. Veja por quê: basalt why %s"},
+		"none in the last 24 hours":             {"nenhum nas últimas 24 horas"},
+		"Everything looks fine.":                {"Está tudo bem."},
+	}, Plural: func(n int) int {
+		if n > 1 {
+			return 1
+		}
+		return 0
+	}})
+	t.Cleanup(i18n.Reset)
+	var b bytes.Buffer
+	st := statusFixture()
+	st.Problems = []string{"nginx.service has failed. See why: basalt why nginx.service", "nginx.service has failed. See why: basalt why nginx.service"}
+	writeStatus(&b, st, 3, nil)
+	out := b.String()
+	for _, want := range []string{"2 coisas precisam da sua atenção:", "  - nginx.service falhou. Veja por quê: basalt why nginx.service", "  Sistema ", "  Bloqueios   nenhum nas últimas 24 horas"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	b.Reset()
+	st.Problems = nil
+	writeStatus(&b, st, 3, nil)
+	if !strings.HasPrefix(b.String(), "Está tudo bem.") {
+		t.Errorf("%s", b.String())
+	}
+}
+
+func statusFixture() diag.Status {
+	return diag.Status{OS: diag.OSRelease{Name: "Basalt OS", Version: "44 (Server)"}, SELinux: "Enforcing",
+		Disk: diag.FSStat{Total: 32 << 30, Free: 21 << 30}, DiskPct: 34.4, RollbackState: "none", Daemon: "active"}
 }
