@@ -126,8 +126,12 @@ func Script(list []Loader) string {
 		"# EFI system partitions when Basalt OS was installed (read-only search).\n# Remove this file to drop them from the boot menu.\nset -e\ncat <<'EOF'\n")
 	for _, l := range list {
 		title := fmt.Sprintf("%s (%s)", l.Name, l.Dev)
-		fmt.Fprintf(&b, "menuentry '%s' --class %s --class os {\n\tinsmod part_gpt\n\tinsmod fat\n\tinsmod chain\n"+
-			"\tsearch --no-floppy --fs-uuid --set=root %s\n\tchainloader %s\n}\n", strings.ReplaceAll(title, "'", ""), l.Class, l.FSUUID, l.Path)
+		class := "--class os"
+		if l.Class != "os" {
+			class = "--class " + l.Class + " " + class
+		}
+		fmt.Fprintf(&b, "menuentry '%s' %s {\n\tinsmod part_gpt\n\tinsmod fat\n\tinsmod chain\n"+
+			"\tsearch --no-floppy --fs-uuid --set=root %s\n\tchainloader %s\n}\n", strings.ReplaceAll(title, "'", ""), class, l.FSUUID, l.Path)
 	}
 	b.WriteString("EOF\n")
 	return b.String()

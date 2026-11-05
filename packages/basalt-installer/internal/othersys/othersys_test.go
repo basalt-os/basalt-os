@@ -41,6 +41,9 @@ func TestScan(t *testing.T) {
 			t.Fatal("skipped directory listed")
 		}
 	}
+	if s := Script(Scan(root, "/dev/sda1", "ABCD-1234", nil)); !strings.Contains(s, "menuentry 'Fedora (/dev/sda1)' --class os {") {
+		t.Errorf("one class for a Linux entry:\n%s", s)
+	}
 	s := Script(got)
 	for _, w := range []string{"menuentry 'Windows Boot Manager (/dev/nvme0n1p1)' --class windows", "search --no-floppy --fs-uuid --set=root ABCD-1234",
 		"chainloader /EFI/Microsoft/Boot/bootmgfw.efi", "cat <<'EOF'"} {
