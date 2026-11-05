@@ -325,3 +325,73 @@ func TestBrazilianKeyboard(t *testing.T) {
 		t.Fatalf("00-keyboard.conf: %q", x.Write.Content)
 	}
 }
+
+// rm, chmod, chown and install act only in the target root and the
+// installer's work directory, never on a device node, and btrfs only
+// creates subvolumes on the new file system.
+func TestCheckSafetyFileCommands(t *testing.T) {
+	f := dualFacts()
+	r, list := generate(t, dualPlan(), f)
+	for _, bad := range []Step{
+		{Title: "rm a device", Argv: []string{"rm", "-f", "/dev/nvme0n1p3"}},
+		{Title: "rm the target's dev", Argv: []string{"rm", "-f", "/mnt/sysroot/dev/nvme0n1p3"}},
+		{Title: "rm outside", Argv: []string{"rm", "-f", "/etc/fstab"}},
+		{Title: "rm recursive", Argv: []string{"rm", "-rf", "/mnt/sysroot/var/tmp/x"}},
+		{Title: "rm the target", Argv: []string{"rm", "-f", "/mnt/sysroot"}},
+		{Title: "rm climbing", Argv: []string{"rm", "-f", "/mnt/sysroot/../../etc/passwd"}},
+		{Title: "rm relative", Argv: []string{"rm", "-f", "luks.key"}},
+		{Title: "chmod a device", Argv: []string{"chmod", "0666", "/dev/nvme1n1"}},
+		{Title: "chmod recursive", Argv: []string{"chmod", "-R", "0777", "/mnt/sysroot/etc"}},
+		{Title: "chown outside", Argv: []string{"chown", "root:root", "/home/edimar"}},
+		{Title: "chown a device in chroot", Argv: []string{"chroot", "/mnt/sysroot", "chown", "ana:ana", "/dev/nvme0n1p4"}},
+		{Title: "install a device", Argv: []string{"install", "-d", "-m", "0700", "/dev/nvme0n1p4"}},
+		{Title: "install a copy", Argv: []string{"install", "-m", "0644", "/mnt/sysroot/a", "/mnt/sysroot/b"}},
+		{Title: "install outside", Argv: []string{"install", "-d", "/srv/x"}},
+		{Title: "chroot elsewhere", Argv: []string{"chroot", "/mnt/other", "rm", "-f", "/x"}},
+		{Title: "btrfs delete", Argv: []string{"btrfs", "subvolume", "delete", "/run/basalt-installer/btrfs-top/root"}},
+		{Title: "btrfs on another fs", Argv: []string{"btrfs", "subvolume", "create", "/mnt/fedora/root2"}},
+		{Title: "btrfs device", Argv: []string{"btrfs", "device", "add", "/dev/nvme0n1p6", "/mnt/sysroot"}},
+		{Title: "btrfs property", Argv: []string{"btrfs", "property", "set", "/mnt/sysroot", "ro", "true"}},
+		{Title: "write outside", Write: &FileWrite{Path: "/etc/fstab", Content: "x"}},
+	} {
+		if err := CheckSafety(r, append(append([]Step{}, list...), bad)); err == nil {
+			t.Errorf("%q passed the safety check", bad.Title)
+		}
+	}
+	for _, ok := range []Step{
+		{Title: "a key in the work directory", Argv: []string{"rm", "-f", "/run/basalt-installer/luks.key"}},
+		{Title: "a directory in the target", Argv: []string{"install", "-d", "-m", "0700", "-o", "ana", "-g", "ana", "/mnt/sysroot/root/.ssh"}},
+		{Title: "in chroot", Argv: []string{"chroot", "/mnt/sysroot", "chown", "ana:ana", "/home/ana/.ssh/authorized_keys"}},
+	} {
+		if err := CheckSafety(r, append(append([]Step{}, list...), ok)); err != nil {
+			t.Errorf("%q: %v", ok.Title, err)
+		}
+	}
+}
+
+// On an adopted /home only the new user's ~/.ssh may be created or
+// changed; nothing else there, the mount point included.
+func TestCheckSafetyAdoptedHome(t *testing.T) {
+	f := facts("kvm", true)
+	f.Disks = append(f.Disks, homeDisk())
+	p := basePlan("/dev/vda")
+	p.Encryption.Enabled, p.Encryption.Scope = plan.Bool(false), ""
+	p.Home.Existing = &plan.ExistingHome{Device: "/dev/sda1", Passphrase: "home passphrase 1"}
+	p.Accounts.User = &plan.User{Name: "edimar", Password: "pw-1234567", HomeDir: "/home/edimar-basalt", SSHKeys: []string{key}}
+	p.Layout.Subvolumes = nil
+	p.ApplyDefaults()
+	r, list := generate(t, p, f)
+	mustFind(t, list, "install -d -m 0700 -o edimar -g edimar /home/edimar-basalt/.ssh")
+	mustFind(t, list, "chown edimar:edimar /home/edimar-basalt/.ssh/authorized_keys")
+	for _, bad := range []Step{
+		{Title: "rm on the home", Argv: []string{"rm", "-f", "/mnt/sysroot/home/edimar/notes.txt"}},
+		{Title: "chmod the home", Argv: []string{"chmod", "0700", "/mnt/sysroot/home"}},
+		{Title: "chown in chroot", Argv: []string{"chroot", "/mnt/sysroot", "chown", "edimar:edimar", "/home/edimar"}},
+		{Title: "install next to the user", Argv: []string{"chroot", "/mnt/sysroot", "install", "-d", "/home/other/.ssh"}},
+		{Title: "write on the home", Write: &FileWrite{Path: "/mnt/sysroot/home/edimar/.bashrc", Content: "x"}},
+	} {
+		if err := CheckSafety(r, append(append([]Step{}, list...), bad)); err == nil {
+			t.Errorf("%q passed the safety check", bad.Title)
+		}
+	}
+}

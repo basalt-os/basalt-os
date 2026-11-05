@@ -20,6 +20,10 @@ import (
 //   - LUKS key slots: the new volume, and the existing /home only when the
 //     plan asks to enroll this machine's TPM there;
 //   - firmware boot entries: only added, never deleted or reordered;
+//   - files (rm, chmod, chown, install -d and the steps that write a
+//     file): only in the target root or the installer's work directory,
+//     never a device path, never on an adopted /home except the new
+//     user's ~/.ssh; btrfs only creates subvolumes on the new file system;
 //   - only the commands of the allow-list below run at all (anything else,
 //     dd, blkdiscard, sfdisk, parted, mkswap included, is refused).
 //
@@ -74,9 +78,15 @@ func CheckSafety(r Resolved, list []Step) error {
 		}
 		return out
 	}
+	paths := pathRules(r)
 	check := func(s Step, argv []string, undo bool) {
+		inTarget := false
 		if len(argv) >= 2 && argv[0] == "chroot" {
+			if filepath.Clean(argv[1]) != filepath.Clean(r.Root) {
+				bad(s, "chroot into %s, not the target %s", argv[1], r.Root)
+			}
 			argv = argv[2:]
+			inTarget = true
 		}
 		if len(argv) == 0 {
 			return
@@ -87,6 +97,25 @@ func CheckSafety(r Resolved, list []Step) error {
 			return
 		}
 		switch {
+		case cmd == "rm" || cmd == "chmod" || cmd == "chown" || cmd == "install":
+			ops, err := fileOperands(cmd, argv[1:])
+			if err != "" {
+				bad(s, "%s", err)
+			}
+			for _, a := range ops {
+				// install -d creates the target and work directories themselves.
+				if why := paths.refuse(a, inTarget, cmd == "install"); why != "" {
+					bad(s, "%s %s: %s", cmd, a, why)
+				}
+			}
+		case cmd == "btrfs":
+			// The generator only creates the subvolumes, under the
+			// top level it mounted in the installer's work directory.
+			if len(argv) != 4 || argv[1] != "subvolume" || argv[2] != "create" {
+				bad(s, "btrfs %s: only \"btrfs subvolume create PATH\" is used", strings.Join(argv[1:], " "))
+			} else if inTarget || !within(argv[3], r.TopMount()) || filepath.Clean(argv[3]) == filepath.Clean(r.TopMount()) {
+				bad(s, "btrfs subvolume create %s: not under the new file system's top level %s", argv[3], r.TopMount())
+			}
 		case cmd == "sgdisk":
 			whole := false
 			for _, a := range argv[1:] {
@@ -160,6 +189,10 @@ func CheckSafety(r Resolved, list []Step) error {
 		check(s, s.Undo, true)
 		if s.Write != nil && reDevPath.MatchString(s.Write.Path) {
 			bad(s, "writes a file to a device path %s", s.Write.Path)
+		} else if s.Write != nil {
+			if why := paths.refuse(s.Write.Path, false, false); why != "" {
+				bad(s, "writes %s: %s", s.Write.Path, why)
+			}
 		}
 	}
 	if len(errs) > 0 {
@@ -182,3 +215,124 @@ var allowed = map[string]bool{
 }
 
 var reDevPath = regexp.MustCompile(`^/dev/`)
+
+// fileOperands returns the paths rm, chmod, chown and install act on,
+// accepting only the options the generator uses: rm -f FILE, chmod MODE
+// PATH, chown OWNER PATH and install -d [-m MODE] [-o USER] [-g GROUP]
+// DIR. Anything else (rm -r, chmod -R, install copying a file) is refused.
+func fileOperands(cmd string, args []string) ([]string, string) {
+	var ops []string
+	switch cmd {
+	case "rm":
+		for _, a := range args {
+			switch {
+			case a == "-f":
+			case strings.HasPrefix(a, "-"):
+				return nil, "rm option " + a + " is not one the installer uses"
+			default:
+				ops = append(ops, a)
+			}
+		}
+	case "chmod", "chown":
+		if len(args) < 2 {
+			return nil, cmd + " needs a mode or owner and a path"
+		}
+		if strings.HasPrefix(args[0], "-") {
+			return nil, cmd + " option " + args[0] + " is not one the installer uses"
+		}
+		for _, a := range args[1:] {
+			if strings.HasPrefix(a, "-") {
+				return nil, cmd + " option " + a + " is not one the installer uses"
+			}
+			ops = append(ops, a)
+		}
+	case "install":
+		dir := false
+		for i := 0; i < len(args); i++ {
+			switch a := args[i]; {
+			case a == "-d":
+				dir = true
+			case a == "-m" || a == "-o" || a == "-g":
+				i++ // the option's value
+			case strings.HasPrefix(a, "-"):
+				return nil, "install option " + a + " is not one the installer uses"
+			default:
+				ops = append(ops, a)
+			}
+		}
+		if !dir {
+			return nil, "install is used only to create directories (install -d)"
+		}
+	}
+	if len(ops) == 0 {
+		return nil, cmd + " without a path"
+	}
+	return ops, ""
+}
+
+// paths says where rm, chmod, chown, install and file writes may act: in
+// the installer's work directory (memory only) or in the target root, never
+// on a device node, and never inside an adopted /home, which is mounted at
+// the target's /home and keeps its files as they are. The one exception on
+// an adopted /home is what the generator creates for the new user: the
+// user's ~/.ssh and ~/.ssh/authorized_keys.
+type paths struct {
+	root, work string
+	home       string          // the adopted /home's mount point in the target, "" without one
+	userSSH    map[string]bool // on the adopted /home: the new user's ~/.ssh entries
+}
+
+func pathRules(r Resolved) paths {
+	ps := paths{root: filepath.Clean(r.Root), work: filepath.Clean(r.Work), userSSH: map[string]bool{}}
+	if r.Existing != nil {
+		ps.home = filepath.Clean(r.Target("/home"))
+		if u := r.Plan.Accounts.User; u != nil {
+			home := u.HomeDir
+			if home == "" {
+				home = "/home/" + u.Name
+			}
+			ssh := r.Target(filepath.Join(home, ".ssh"))
+			ps.userSSH[ssh] = true
+			ps.userSSH[filepath.Join(ssh, "authorized_keys")] = true
+		}
+	}
+	return ps
+}
+
+// refuse returns why a path may not be changed, or "". inTarget is true for
+// a command run with chroot into the target: its paths are inside the
+// installed system. self allows the target root and the work directory
+// themselves (install -d creates them).
+func (ps paths) refuse(path string, inTarget, self bool) string {
+	if !filepath.IsAbs(path) {
+		return "not an absolute path"
+	}
+	for _, el := range strings.Split(path, "/") {
+		if el == ".." {
+			return "the path climbs with .."
+		}
+	}
+	host := filepath.Clean(path)
+	if inTarget {
+		host = filepath.Join(ps.root, path)
+	}
+	if strings.HasPrefix(path, "/dev/") || path == "/dev" || within(host, filepath.Join(ps.root, "dev")) {
+		return "a device path"
+	}
+	if !within(host, ps.root) && !within(host, ps.work) {
+		return "outside the target " + ps.root + " and the installer's work directory " + ps.work
+	}
+	if !self && (host == ps.root || host == ps.work) {
+		return "the target or work directory itself"
+	}
+	if ps.home != "" && within(host, ps.home) && !ps.userSSH[host] {
+		return "on the adopted /home, which the installation does not change"
+	}
+	return ""
+}
+
+// within reports whether path is dir or below it (both cleaned).
+func within(path, dir string) bool {
+	path, dir = filepath.Clean(path), filepath.Clean(dir)
+	return path == dir || strings.HasPrefix(path, dir+"/")
+}
