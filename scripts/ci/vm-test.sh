@@ -144,6 +144,12 @@ qemu_start() {
   if [[ "$with_iso" == 1 ]]; then
     # shellcheck disable=SC2054
     args+=(-drive "if=none,id=cd0,media=cdrom,readonly=on,file=$ISO" -device ide-cd,bus=ide.0,drive=cd0,bootindex=1)
+    # Anaconda copies its logs (anaconda, packaging, program) to this
+    # virtio port by default: the installer's own reason for a failure,
+    # also when its text UI waits at the hub with no shell to answer.
+    # shellcheck disable=SC2054
+    args+=(-device virtio-serial-pci -chardev "file,id=alog,path=$LOGS/anaconda-$phase.log"
+      -device virtserialport,chardev=alog,name=org.fedoraproject.anaconda.log.0)
   fi
   qemu-system-x86_64 "${args[@]}" >"$LOGS/qemu-$phase.log" 2>&1 &
   qemu_pid=$!
@@ -159,7 +165,10 @@ serial_tail() {
 PROMPT_RE='Please enter passphrase for disk|Enter passphrase for|recovery key for disk'
 
 # Anaconda's text UI after a fatal error: it waits for an answer forever.
-INSTALLER_ERROR_RE='An unknown error has occurred|What do you want to do now\?'
+# A repository it cannot set up (the Basalt repository's metadata signature
+# does not verify, for example) stops it at the hub instead, which also
+# waits forever.
+INSTALLER_ERROR_RE='An unknown error has occurred|What do you want to do now\?|Error setting up repositories|Error checking software selection'
 
 # installer_dump SOCKET LOGFILE: answer Anaconda's error menu with "Run
 # shell" over the serial socket and print the installer's own error lines
@@ -188,6 +197,11 @@ while b"BASALT-DUMP-42-END" not in seen and time.time() < end:
 PY
   log "installer error; Anaconda's dnf and packaging errors:"
   sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\r//g' "$logf" | grep -a '[[:alnum:]]' | tail -60 >&2
+  if [[ -s "$LOGS/anaconda-install.log" ]]; then
+    log "errors in Anaconda's log ($LOGS/anaconda-install.log):"
+    grep -aE 'ERROR|Error|error:|Signature|signature' "$LOGS/anaconda-install.log" |
+      grep -avE 'Image packages|brltty' | tail -30 | cut -c1-400 >&2 || true
+  fi
 }
 
 # wait_qemu_exit TIMEOUT LOGFILE [installer]: wait for QEMU to exit.
