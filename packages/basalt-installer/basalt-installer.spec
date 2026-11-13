@@ -18,7 +18,7 @@ Source0:        %{name}-%{version}.tar.gz
 Source1:        %{name}-vendor-%{version}.tar.gz
 
 ExclusiveArch:  x86_64
-# Built with the upstream Go toolchain named in go.mod (toolchain go1.27.1):
+# Built with the upstream Go toolchain named in go.mod (go 1.27.4):
 # tui-kit needs Go 1.27 and Fedora 44 ships 1.26. build.sh puts a
 # checksum-verified official Go first in PATH; nothing is downloaded here.
 # gcc: a position-independent, dynamically linked binary (Fedora policy).
