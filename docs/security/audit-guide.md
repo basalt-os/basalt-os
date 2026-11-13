@@ -188,6 +188,20 @@ Expected: `contents: read` at the top of every workflow, every action
 pinned by a 40-character commit SHA, no secret used for signing or
 publishing.
 
+### BSC-PKG-009
+
+```
+# dnf repo info tui-tools | grep -i include
+# cat /usr/share/dnf5/repos.override.d/30-tui-tools-filter.repo
+# dnf repoquery --repo=tui-tools --qf '%{name}\n' | sort -u
+```
+
+Expected: when the tui-tools repository is configured, its includepkgs
+lists only tui-tools package names (tui-* and headscale), and repoquery
+shows no other name. On a system without the repository the override
+file is still present and has no effect. An admin file of the same name
+under /etc/dnf/repos.override.d that removes the filter is a finding.
+
 ## DISK
 
 ### BSC-DISK-001

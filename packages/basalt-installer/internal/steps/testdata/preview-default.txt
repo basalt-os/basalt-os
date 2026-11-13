@@ -279,11 +279,13 @@
        | =RK/h
        | -----END PGP PUBLIC KEY BLOCK-----
  82. Configure the tui-tools repository (third party, ADR 0005)
-     $ write /mnt/sysroot/etc/yum.repos.d/tui-tools.repo (mode 0644, 529 bytes)
+     $ write /mnt/sysroot/etc/yum.repos.d/tui-tools.repo (mode 0644, 921 bytes)
        | # tui-tools: terminal tools with a command preview before every change.
        | # Official third-party repository: packages come straight from upstream.
        | # Signing key fingerprint 767CFB337B01F32FFC073F3F389120B277E4FB44 (pinned by the installer).
        | # Written by the Basalt OS installer; it moves to basalt-third-party.
+       | # includepkgs: dnf takes only the tui-tools package names from here, so
+       | # this key can never provide or replace a system package by name.
        | [tui-tools]
        | name=tui-tools (third party)
        | baseurl=https://pkgs.tui.tools/rpm/$basearch
@@ -291,6 +293,7 @@
        | gpgcheck=1
        | repo_gpgcheck=1
        | gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools
+       | includepkgs=headscale,tui-cert,tui-containers,tui-cron,tui-dc,tui-disk,tui-firewall,tui-logs,tui-network,tui-router,tui-samba,tui-secure,tui-snapper,tui-ssh,tui-systemd,tui-tailscale,tui-tools,tui-tools-all,tui-traffic,tui-update,tui-users,tui-wireguard
        | skip_if_unavailable=True
        | metadata_expire=6h
  83. Trust the tui-tools key in the package database

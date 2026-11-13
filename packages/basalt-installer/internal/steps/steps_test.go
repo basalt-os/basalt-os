@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -270,6 +271,59 @@ func TestTUIToolsKeyIsPinned(t *testing.T) {
 	if i, _ := find(def, "basalt-tools.repo"); i >= 0 {
 		t.Fatal("the installer writes its own basalt-tools.repo next to basalt-release's")
 	}
+}
+
+// The tui-tools repository only provides its own package names: the
+// generated repository file carries the includepkgs line, the list holds
+// explicit tui-tools names (no glob that could reach a system package), and
+// basalt-release's vendor override carries the same line for systems
+// installed before the installer wrote it.
+func TestTUIToolsRepoFilter(t *testing.T) {
+	if !slices.IsSorted(TUIToolsPackages) || len(slices.Compact(slices.Clone(TUIToolsPackages))) != len(TUIToolsPackages) {
+		t.Fatal("TUIToolsPackages must be sorted and without duplicates")
+	}
+	for _, n := range TUIToolsPackages {
+		if strings.ContainsAny(n, "*?[], \t") {
+			t.Fatalf("%q: explicit package names only", n)
+		}
+		if n != "headscale" && !strings.HasPrefix(n, "tui-") {
+			t.Fatalf("%q is not a tui-tools package name", n)
+		}
+	}
+	line := TUIToolsIncludePkgs()
+	if !strings.Contains(line, "tui-tools-all") || !strings.Contains(line, "headscale") {
+		t.Fatalf("includepkgs misses the metapackage or the headscale mirror: %s", line)
+	}
+	_, repo := mustFind(t, generateDefault(t), "/etc/yum.repos.d/tui-tools.repo")
+	if !strings.Contains(repo.Write.Content, "\n"+line+"\n") {
+		t.Fatalf("tui-tools.repo has no %s:\n%s", line, repo.Write.Content)
+	}
+
+	// basalt-release's copy, when this runs in the source tree (the
+	// installer's own RPM build only has this package).
+	release := filepath.Join("..", "..", "..", "basalt-release")
+	if _, err := os.Stat(release); err != nil {
+		t.Skipf("no %s next to the installer: vendor override not compared", release)
+	}
+	data, err := os.ReadFile(filepath.Join(release, "30-tui-tools-filter.repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, l := range strings.Split(string(data), "\n") {
+		if l != "" && !strings.HasPrefix(l, "#") {
+			got = append(got, l)
+		}
+	}
+	if want := []string{"[tui-tools]", line}; !slices.Equal(got, want) {
+		t.Fatalf("basalt-release 30-tui-tools-filter.repo: got %q, want %q", got, want)
+	}
+}
+
+func generateDefault(t *testing.T) []Step {
+	t.Helper()
+	_, list := generate(t, basePlan("/dev/vda"), facts("kvm", true))
+	return list
 }
 
 func TestPartitionPath(t *testing.T) {

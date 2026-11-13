@@ -292,6 +292,34 @@ controls:
       - {type: manual, guide: BSC-PKG-008}
     references: ["NIST SSDF PO.3", "NIST SSDF PS.1"]
 
+  - id: BSC-PKG-009
+    title: Third-party repositories limited to their own package names
+    requirement: >-
+      A third-party repository that Basalt OS configures MUST be limited with
+      includepkgs to the package names it publishes, explicit names and no
+      glob that could match a system package, both in the repository file
+      the installer writes and in a vendor override that upgraded systems
+      receive.
+    rationale: >-
+      A valid signature from a third-party key, held outside Basalt's own
+      controls, cannot install or replace a system package such as sudo,
+      systemd or basalt-release by name.
+    status: partial
+    adr: ["0005"]
+    implemented_in:
+      - packages/basalt-installer/internal/steps/generate.go
+      - packages/basalt-release/30-tui-tools-filter.repo
+    verification:
+      - {type: test, file: packages/basalt-installer/internal/steps/steps_test.go, match: "func TestTUIToolsRepoFilter("}
+      - {type: manual, guide: BSC-PKG-009}
+    gap: >-
+      The filter limits names only. A package under a listed name can still
+      declare Obsoletes or Provides of another package, and its scriptlets
+      run as root, so the key still reaches root on a machine that enables
+      the repository. The tui-tools repository is on by default in the
+      installer plan.
+    references: ["NIST SSDF PS.2", "OWASP LLM03 Supply Chain"]
+
   # ---------------------------------------------------------------- DISK
 
   - id: BSC-DISK-001

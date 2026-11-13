@@ -16,7 +16,7 @@ built, so nothing should rely on it yet. How controls change:
 | Area | Implemented | Partial | Planned | Total |
 |---|---|---|---|---|
 | BOOT: Secure Boot, kernel lockdown and module signatures | 3 | 1 | 0 | 4 |
-| PKG: Packages, repositories and the build and release pipeline | 6 | 0 | 2 | 8 |
+| PKG: Packages, repositories and the build and release pipeline | 6 | 1 | 2 | 9 |
 | DISK: Disk encryption and unlock | 5 | 0 | 0 | 5 |
 | MAC: Mandatory access control (SELinux) and service hardening | 6 | 0 | 3 | 9 |
 | GATE: Approvals, confirmations and the approval gate | 6 | 2 | 4 | 12 |
@@ -28,7 +28,7 @@ built, so nothing should rely on it yet. How controls change:
 | UPD: Updates, snapshots and rollback | 4 | 1 | 0 | 5 |
 | KEY: Signing keys and their custody | 1 | 4 | 0 | 5 |
 | GOV: Process, disclosure and the security program itself | 2 | 2 | 0 | 4 |
-| All | 68 | 13 | 16 | 97 |
+| All | 68 | 14 | 16 | 98 |
 
 ## BOOT: Secure Boot, kernel lockdown and module signatures
 
@@ -242,6 +242,27 @@ Verified by:
 - Manual: audit guide, [BSC-PKG-008](audit-guide.md#bsc-pkg-008)
 
 References: NIST SSDF PO.3; NIST SSDF PS.1.
+
+### BSC-PKG-009
+
+Third-party repositories limited to their own package names.
+
+Status: partial. Decided in: ADR 0005.
+
+Requirement: A third-party repository that Basalt OS configures MUST be limited with includepkgs to the package names it publishes, explicit names and no glob that could match a system package, both in the repository file the installer writes and in a vendor override that upgraded systems receive.
+
+Rationale: A valid signature from a third-party key, held outside Basalt's own controls, cannot install or replace a system package such as sudo, systemd or basalt-release by name.
+
+Implemented in: `packages/basalt-installer/internal/steps/generate.go`, `packages/basalt-release/30-tui-tools-filter.repo`.
+
+Verified by:
+
+- Test: `packages/basalt-installer/internal/steps/steps_test.go`, `func TestTUIToolsRepoFilter(`
+- Manual: audit guide, [BSC-PKG-009](audit-guide.md#bsc-pkg-009)
+
+Gap: The filter limits names only. A package under a listed name can still declare Obsoletes or Provides of another package, and its scriptlets run as root, so the key still reaches root on a machine that enables the repository. The tui-tools repository is on by default in the installer plan.
+
+References: NIST SSDF PS.2; OWASP LLM03 Supply Chain.
 
 ## DISK: Disk encryption and unlock
 
