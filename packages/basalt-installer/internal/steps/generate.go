@@ -32,6 +32,51 @@ const OpenBasaltReleaseFingerprint = "3601734842BD4E482D19DE4AE4EED5ECA395B302"
 // TUIToolsBaseURL is the upstream tui-tools RPM repository.
 const TUIToolsBaseURL = "https://pkgs.tui.tools/rpm/$basearch"
 
+// TUIToolsPackages are the only package names dnf takes from the tui-tools
+// repository (its includepkgs). They are the names that repository
+// publishes: one package per tool, the tui-tools launcher, the
+// tui-tools-all metapackage and the headscale build it mirrors. Explicit
+// names and no glob, so a package signed by that key under any other name
+// (sudo, systemd, basalt-release) is invisible to dnf. A tool added
+// upstream stays out until it is listed here and in basalt-release's
+// 30-tui-tools-filter.repo, the vendor override that carries the same
+// filter to systems installed before it existed (a test keeps the two in
+// step). Sorted.
+//
+// What the filter does not cover: an allowed package may still declare
+// Obsoletes or Provides of another name, and its scriptlets run as root on
+// install and upgrade. It limits which names the key reaches, not what a
+// package under one of those names does.
+var TUIToolsPackages = []string{
+	"headscale",
+	"tui-cert",
+	"tui-containers",
+	"tui-cron",
+	"tui-dc",
+	"tui-disk",
+	"tui-firewall",
+	"tui-logs",
+	"tui-network",
+	"tui-router",
+	"tui-samba",
+	"tui-secure",
+	"tui-snapper",
+	"tui-ssh",
+	"tui-systemd",
+	"tui-tailscale",
+	"tui-tools",
+	"tui-tools-all",
+	"tui-traffic",
+	"tui-update",
+	"tui-users",
+	"tui-wireguard",
+}
+
+// TUIToolsIncludePkgs is the includepkgs line of the tui-tools repository.
+func TUIToolsIncludePkgs() string {
+	return "includepkgs=" + strings.Join(TUIToolsPackages, ",")
+}
+
 // Services enabled on the installed system (the same list as the kickstart).
 var baseServices = []string{"sshd", "firewalld", "auditd", "basalt-snapshot-boot", "basalt-initial-snapshot",
 	"basalt-grub-theme", "basalt-module-keys", "basalt-resolver", "basalt-ledger"}
@@ -750,6 +795,8 @@ enabled=1
 # Official third-party repository: packages come straight from upstream.
 # Signing key fingerprint `+TUIToolsFingerprint+` (pinned by the installer).
 # Written by the Basalt OS installer; it moves to basalt-third-party.
+# includepkgs: dnf takes only the tui-tools package names from here, so
+# this key can never provide or replace a system package by name.
 [tui-tools]
 name=tui-tools (third party)
 baseurl=`+TUIToolsBaseURL+`
@@ -757,6 +804,7 @@ enabled=1
 gpgcheck=1
 repo_gpgcheck=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools
+`+TUIToolsIncludePkgs()+`
 skip_if_unavailable=True
 metadata_expire=6h
 `)

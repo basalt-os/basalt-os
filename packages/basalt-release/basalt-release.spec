@@ -33,7 +33,7 @@
 
 Name:           basalt-release
 Version:        %{dist_version}
-Release:        11%{?dist}
+Release:        12%{?dist}
 Summary:        Basalt OS release files
 # Apache-2.0: Basalt OS files. MIT: systemd preset files taken from fedora-release.
 License:        Apache-2.0 AND MIT
@@ -61,6 +61,7 @@ Source24:       20-basalt-signatures.repo
 Source25:       basalt-dnf-user-keys
 Source26:       basalt-dnf-keys.service
 Source27:       basalt-dnf-keys.path
+Source28:       30-tui-tools-filter.repo
 
 Provides:       basalt-release-identity = %{version}-%{release}
 Provides:       system-release
@@ -199,6 +200,11 @@ EOF
 # dnf applies it after /etc/yum.repos.d.
 install -Dpm 0644 basalt.repo %{buildroot}%{_sysconfdir}/yum.repos.d/basalt.repo
 install -Dpm 0644 20-basalt-signatures.repo %{buildroot}%{_datadir}/dnf5/repos.override.d/20-basalt-signatures.repo
+# The tui-tools third-party repository (written by the installer, owned by
+# no package) only provides its own package names: the same includepkgs the
+# installer writes, as a vendor override so systems installed before the
+# installer wrote it get it on their next upgrade of this package.
+install -Dpm 0644 30-tui-tools-filter.repo %{buildroot}%{_datadir}/dnf5/repos.override.d/30-tui-tools-filter.repo
 install -Dpm 0644 RPM-GPG-KEY-basalt %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-basalt
 install -Dpm 0644 basalt_repo_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_repo_url
 install -Dpm 0644 basalt_tools_url %{buildroot}%{_sysconfdir}/dnf/vars/basalt_tools_url
@@ -304,6 +310,7 @@ fi
 %config(noreplace) %{_sysconfdir}/yum.repos.d/basalt.repo
 %dir %{_datadir}/dnf5/repos.override.d
 %{_datadir}/dnf5/repos.override.d/20-basalt-signatures.repo
+%{_datadir}/dnf5/repos.override.d/30-tui-tools-filter.repo
 %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-basalt
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_repo_url
 %config(noreplace) %{_sysconfdir}/dnf/vars/basalt_tools_url
@@ -334,6 +341,16 @@ fi
 %{_prefix}/lib/systemd/resolved.conf.d/10-basalt.conf
 
 %changelog
+* Fri Nov 13 2026 Basalt OS project <noreply@basalt-os.org> - 44-12
+- The tui-tools third-party repository only provides its own package
+  names: /usr/share/dnf5/repos.override.d/30-tui-tools-filter.repo sets
+  includepkgs on [tui-tools] (the tools, the tui-tools launcher,
+  tui-tools-all and headscale), the same line the installer now writes.
+  A package signed by that key under any other name, such as a system
+  package, is invisible to dnf. Systems installed before the installer
+  wrote the line get it from this file; it does nothing where the
+  repository is not configured.
+
 * Tue Oct 20 2026 Basalt OS project <noreply@basalt-os.org> - 44-11
 - os-release names the edition: VARIANT="Desktop", VARIANT_ID=desktop
   while basalt-desktop is installed, VARIANT="Server", VARIANT_ID=server

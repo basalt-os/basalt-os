@@ -1,0 +1,21 @@
+# Package filter of the tui-tools third-party repository, enforced by
+# basalt-release.
+#
+# The Basalt OS installer writes /etc/yum.repos.d/tui-tools.repo with the
+# same includepkgs line. That file is not owned by any package, so an
+# upgrade never rewrites it; this vendor override (dnf applies
+# /usr/share/dnf5/repos.override.d after /etc/yum.repos.d) carries the
+# filter to systems installed before the installer wrote it. On a system
+# without a [tui-tools] repository it does nothing.
+#
+# dnf takes only these package names from the tui-tools repository, so a
+# package signed by its key under any other name (a system package such as
+# sudo or systemd) is invisible to dnf. The list must match TUIToolsPackages
+# in packages/basalt-installer/internal/steps/generate.go (a test there
+# compares them).
+#
+# Do not edit: an upgrade replaces this file. An administrator who wants
+# another filter writes a file of the same name under
+# /etc/dnf/repos.override.d, which replaces this one.
+[tui-tools]
+includepkgs=headscale,tui-cert,tui-containers,tui-cron,tui-dc,tui-disk,tui-firewall,tui-logs,tui-network,tui-router,tui-samba,tui-secure,tui-snapper,tui-ssh,tui-systemd,tui-tailscale,tui-tools,tui-tools-all,tui-traffic,tui-update,tui-users,tui-wireguard
