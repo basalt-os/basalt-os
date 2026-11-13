@@ -86,7 +86,7 @@ has one.
 | `repos.fedora.baseurl`, `updates_baseurl` | Fedora's mirrors | for a local mirror |
 | `repos.testing` | `false` | `true` turns on `basalt-testing` (pre-release packages): read at install time from `basalt/testing` on the media when the media carries it, else from `<installed_url>/testing` (or https://obpkg.org/basalt-testing with the default repository), and turned on in the installed system with a dnf repository override. The live desktop's plan sets it, because the desktop shell is pre-release |
 | `repos.tools` | `true` | the `basalt-tools` repository that `basalt-release` ships stays enabled (metadata only, nothing installed unless chosen, ADR 0005); `false` turns it off with a dnf repository override |
-| `repos.third_party.tui_tools` | `true` | the tui-tools repository with its key; the key's fingerprint is pinned in the installer and checked before it is written. The repository file carries `includepkgs=` with the package names tui-tools publishes (the tools, the `tui-tools` launcher, `tui-tools-all` and `headscale`), so dnf takes nothing else from it: a package signed by that key under another name, a system package for example, is invisible. `basalt-release` ships the same filter as a vendor override (`/usr/share/dnf5/repos.override.d/30-tui-tools-filter.repo`) for systems installed before the installer wrote it. The filter limits names only: a listed package can still declare `Obsoletes`, and its scriptlets run as root |
+| `repos.third_party.tui_tools` | `false` | opt-in: the tui-tools repository, a third-party repository signed by a separate key that Basalt OS does not hold. Its packages run as root when they are installed or updated, so the installer adds it only when the plan or the person turns it on (both installers show it unchecked). When it is on, the installer writes the repository with its key; the key's fingerprint is pinned in the installer and checked before it is written. The repository file carries `includepkgs=` with the package names tui-tools publishes (the tools, the `tui-tools` launcher, `tui-tools-all` and `headscale`), so dnf takes nothing else from it: a package signed by that key under another name, a system package for example, is invisible. `basalt-release` ships the same filter as a vendor override (`/usr/share/dnf5/repos.override.d/30-tui-tools-filter.repo`) for systems installed before the installer wrote it. The filter limits names only: a listed package can still declare `Obsoletes`, and its scriptlets run as root |
 | `assistant` | `true` | `basalt-assistant` installed and its daemon enabled |
 | `packages.extra` | none | more packages |
 | `finish` | `reboot` | `reboot`, `poweroff`, `none` |
@@ -217,8 +217,8 @@ lists them all. In order:
    and the Basalt repository metadata are signature checked.
 6. System: SELinux enforcing, accounts and SSH keys, the SSH and network
    drop-ins, the `basalt-tools` URL (and an override when the plan turns
-   it off) and the tui-tools repository (limited by `includepkgs` to
-   the tui-tools package names), the Basalt
+   it off) and, when the plan turns it on, the tui-tools repository
+   (limited by `includepkgs` to the tui-tools package names), the Basalt
    boot splash (theme `basalt`, or `basalt-pt_BR` for a Portuguese
    locale), `multi-user.target` as the default target (what Anaconda
    sets for a server; systemd's own default is graphical; the desktop

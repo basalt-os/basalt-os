@@ -57,8 +57,11 @@ func TestDefaults(t *testing.T) {
 	if p.Profile != "auto" || p.Layout.Mode != "automatic" || len(p.Layout.Subvolumes) != len(Subvolumes()) {
 		t.Fatalf("layout/profile defaults: %+v %s", p.Layout, p.Profile)
 	}
-	if !*p.Assistant || !*p.Repos.Tools || !*p.Repos.ThirdParty.TUITools || !*p.Lockdown {
-		t.Fatal("assistant, tools repo, tui-tools and lockdown are on by default")
+	if !*p.Assistant || !*p.Repos.Tools || !*p.Lockdown {
+		t.Fatal("assistant, tools repo and lockdown are on by default")
+	}
+	if *p.Repos.ThirdParty.TUITools {
+		t.Fatal("the tui-tools third-party repository is opt-in")
 	}
 }
 
