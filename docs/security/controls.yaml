@@ -320,6 +320,37 @@ controls:
       installer plan; turning it on trusts that key.
     references: ["NIST SSDF PS.2", "OWASP LLM03 Supply Chain"]
 
+  - id: BSC-PKG-010
+    title: Packages signature checked during the installation
+    requirement: >-
+      Both installers MUST install the Basalt packages with gpgcheck=1 and
+      repo_gpgcheck=1 against the repository key on the installation media,
+      the same checks the installed system enforces, and MUST stop when a
+      package or the repository metadata is not signed by that key.
+    rationale: >-
+      A tampered mirror named by BASALT_REPO_URL, or a modified repository on
+      the media, cannot install unsigned packages as root before the
+      installed system's own checks exist.
+    status: partial
+    adr: ["0005"]
+    implemented_in:
+      - kickstart/basalt-server.ks
+      - packages/basalt-installer/internal/steps/generate.go
+    verification:
+      - {type: test, file: kickstart/basalt-server.ks, match: "cat >/etc/anaconda.repos.d/basalt.repo <<EOF"}
+      - {type: test, file: kickstart/basalt-server.ks, match: "%post --erroronfail --log=/root/basalt-install-sigcheck.log"}
+      - {type: test, file: packages/basalt-installer/internal/steps/testdata/preview-default.txt, match: "repo_gpgcheck=1"}
+      - {type: manual, guide: BSC-PKG-010}
+    gap: >-
+      Anaconda turns package signature checks off for repositories that do
+      not set them, and the kickstart repo command cannot set them, so the
+      kickstart defines the Basalt repository in /etc/anaconda.repos.d and
+      checks in %post that DNF imported the media's key, which it does only
+      when it verifies a package with it. This follows a reading of
+      Anaconda 44 and libdnf5; a lab install with a package signed by
+      another key has not confirmed it yet.
+    references: ["NIST SSDF PS.2", "OWASP LLM03 Supply Chain"]
+
   # ---------------------------------------------------------------- DISK
 
   - id: BSC-DISK-001

@@ -202,6 +202,23 @@ shows no other name. On a system without the repository the override
 file is still present and has no effect. An admin file of the same name
 under /etc/dnf/repos.override.d that removes the filter is a finding.
 
+### BSC-PKG-010
+
+```
+# cat /root/basalt-install-sigcheck.log
+# rpmkeys --list
+```
+
+Expected, on a system installed from the kickstart: the log says the
+Basalt OS packages were checked with the media's key, and the key list
+holds the OpenBasalt release key (fingerprint
+3601734842BD4E482D19DE4AE4EED5ECA395B302, or the lab key on a lab
+install). In a lab, an installation from media whose repository holds one
+basalt package signed by another key, or unsigned, must stop with a
+signature error and write nothing more. A system installed by
+basalt-installer shows the same checks in the step list of its install
+log (gpgcheck=1 and repo_gpgcheck=1 in the Basalt repository file).
+
 ## DISK
 
 ### BSC-DISK-001
