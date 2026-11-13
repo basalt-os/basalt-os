@@ -351,7 +351,8 @@ Hardware and the boot menu:
 Kernel command line options of the live image: `basalt.inst.repo=URL`,
 `basalt.inst.installed-repo=URL`, `basalt.inst.hostname=`,
 `basalt.inst.unlock=`, `basalt.inst.finish=`, `basalt.inst.plan=PATH|URL`
-(start from a plan file), `basalt.inst.confirm=SERIAL` (see below),
+(start from a plan file), `basalt.inst.plan.sha256=HEX` (the plan's
+checksum, see below), `basalt.inst.confirm=SERIAL` (see below),
 `basalt.inst.ui=auto|tui|gui`, `basalt.inst.debug-shell`. A plan at
 `basalt/plans/default.yaml` on the media (`LIVE_PLANS` when building) is
 the starting point when the boot line names none.
@@ -367,7 +368,7 @@ An installation without questions needs the boot line to name the disk it
 erases as well, the way a person types it in the wizard:
 
 ```
-basalt.inst.plan=http://192.0.2.1/plans/web01.yaml basalt.inst.confirm=S4EWNX0R123456
+basalt.inst.plan=https://plans.example.org/web01.yaml basalt.inst.confirm=S4EWNX0R123456
 ```
 
 (the disk's serial number, `lsblk -o NAME,MODEL,SERIAL`; the kernel name
@@ -384,6 +385,28 @@ media. The recovery key is still shown and must be acknowledged on one of
 the consoles, unless the plan writes it to a USB stick
 (`encryption.recovery_key_media`); then the plan's end action runs by
 itself.
+
+### Where the plan comes from
+
+A plan sets root's SSH keys, password hashes and repositories, so the
+installer only takes one it can trust:
+
+- a path on the live system or the media is read as is;
+- an `https://` URL is fetched with the certificate checked; a redirect
+  must stay on https and on the same host and port;
+- a plain `http://` URL is refused unless the boot line also carries the
+  plan's SHA-256, for a PXE or lab network without TLS:
+
+```
+basalt.inst.plan=http://192.0.2.1/plans/web01.yaml basalt.inst.plan.sha256=<sha256sum of web01.yaml> basalt.inst.confirm=S4EWNX0R123456
+```
+
+`basalt.inst.plan.sha256` may be given with a file or an https URL too.
+When it is given, the plan is checked against it before it is read, and
+redirects are allowed (the content is pinned). A plan larger than 1 MiB,
+a checksum that is not 64 hexadecimal digits, a checksum that does not
+match, or a redirect that leaves https or the host is refused at once,
+without retries: the console says why, and nothing is written.
 
 ## The live desktop image
 
