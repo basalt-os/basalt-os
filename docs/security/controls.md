@@ -16,7 +16,7 @@ built, so nothing should rely on it yet. How controls change:
 | Area | Implemented | Partial | Planned | Total |
 |---|---|---|---|---|
 | BOOT: Secure Boot, kernel lockdown and module signatures | 3 | 1 | 0 | 4 |
-| PKG: Packages, repositories and the build and release pipeline | 6 | 1 | 2 | 9 |
+| PKG: Packages, repositories and the build and release pipeline | 6 | 2 | 2 | 10 |
 | DISK: Disk encryption and unlock | 5 | 0 | 0 | 5 |
 | MAC: Mandatory access control (SELinux) and service hardening | 6 | 0 | 3 | 9 |
 | GATE: Approvals, confirmations and the approval gate | 6 | 2 | 4 | 12 |
@@ -28,7 +28,7 @@ built, so nothing should rely on it yet. How controls change:
 | UPD: Updates, snapshots and rollback | 4 | 1 | 0 | 5 |
 | KEY: Signing keys and their custody | 1 | 4 | 0 | 5 |
 | GOV: Process, disclosure and the security program itself | 2 | 2 | 0 | 4 |
-| All | 68 | 14 | 16 | 98 |
+| All | 68 | 15 | 16 | 99 |
 
 ## BOOT: Secure Boot, kernel lockdown and module signatures
 
@@ -261,6 +261,29 @@ Verified by:
 - Manual: audit guide, [BSC-PKG-009](audit-guide.md#bsc-pkg-009)
 
 Gap: The filter limits names only. A package under a listed name can still declare Obsoletes or Provides of another package, and its scriptlets run as root, so the key still reaches root on a machine that enables the repository. The tui-tools repository is on by default in the installer plan.
+
+References: NIST SSDF PS.2; OWASP LLM03 Supply Chain.
+
+### BSC-PKG-010
+
+Packages signature checked during the installation.
+
+Status: partial. Decided in: ADR 0005.
+
+Requirement: Both installers MUST install the Basalt packages with gpgcheck=1 and repo_gpgcheck=1 against the repository key on the installation media, the same checks the installed system enforces, and MUST stop when a package or the repository metadata is not signed by that key.
+
+Rationale: A tampered mirror named by BASALT_REPO_URL, or a modified repository on the media, cannot install unsigned packages as root before the installed system's own checks exist.
+
+Implemented in: `kickstart/basalt-server.ks`, `packages/basalt-installer/internal/steps/generate.go`.
+
+Verified by:
+
+- Test: `kickstart/basalt-server.ks`, `cat >/etc/anaconda.repos.d/basalt.repo <<EOF`
+- Test: `kickstart/basalt-server.ks`, `%post --erroronfail --log=/root/basalt-install-sigcheck.log`
+- Test: `packages/basalt-installer/internal/steps/testdata/preview-default.txt`, `repo_gpgcheck=1`
+- Manual: audit guide, [BSC-PKG-010](audit-guide.md#bsc-pkg-010)
+
+Gap: Anaconda turns package signature checks off for repositories that do not set them, and the kickstart repo command cannot set them, so the kickstart defines the Basalt repository in /etc/anaconda.repos.d and checks in %post that DNF imported the media's key, which it does only when it verifies a package with it. This follows a reading of Anaconda 44 and libdnf5; a lab install with a package signed by another key has not confirmed it yet.
 
 References: NIST SSDF PS.2; OWASP LLM03 Supply Chain.
 

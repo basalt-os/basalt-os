@@ -173,14 +173,39 @@ if [ "$BASALT_ENCRYPT" = 1 ] && [ "$BASALT_UNLOCK" != tpm2 ]; then
 fi
 
 # Basalt OS packages: from the media when present, else from BASALT_REPO_URL.
+# Signatures are checked during the installation as they are afterwards
+# (basalt.repo and 20-basalt-signatures.repo in basalt-release): Anaconda
+# turns package signature checks off in its DNF configuration
+# (pkg_gpgcheck=False) for every repository that does not set them itself,
+# and the kickstart `repo` command has no option to set them. A repository
+# file in /etc/anaconda.repos.d does carry its own settings, so the Basalt
+# repository is defined there with gpgcheck, repo_gpgcheck and the media's
+# key, and `repo --name=basalt` (a name and no URL) only enables it.
+# A package or repository metadata without a valid signature from that key
+# stops the installation; a %post section checks again that the key was used.
+key="$media/RPM-GPG-KEY-basalt"
+[ -s "$key" ] || { echo "no Basalt OS repository key at $key" >&2; exit 1; }
 if [ -d "$media/repo" ]; then
-  echo "repo --name=basalt --baseurl=file://$media/repo/\$releasever/\$basearch/" >/tmp/basalt-repo.ks
+  baseurl="file://$media/repo/\$releasever/\$basearch/"
 elif [ -n "$BASALT_REPO_URL" ]; then
-  echo "repo --name=basalt --baseurl=$BASALT_REPO_URL/\$releasever/\$basearch/" >/tmp/basalt-repo.ks
+  baseurl="$BASALT_REPO_URL/\$releasever/\$basearch/"
 else
   echo "Basalt OS packages not found on the media and BASALT_REPO_URL is not set" >&2
   exit 1
 fi
+mkdir -p /etc/anaconda.repos.d
+cat >/etc/anaconda.repos.d/basalt.repo <<EOF
+# Written by the Basalt OS kickstart %pre, for the installation only.
+[basalt]
+name=Basalt OS (installation)
+baseurl=$baseurl
+enabled=0
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file://$key
+skip_if_unavailable=False
+EOF
+echo "repo --name=basalt" >/tmp/basalt-repo.ks
 
 # Boot loader: serial console first (and the screen); kernel lockdown and
 # module signature enforcement, which Fedora kernels apply under Secure Boot
@@ -308,6 +333,36 @@ if [ -s /tmp/basalt-luks.pass ]; then
   install -m 0600 /tmp/basalt-luks.pass /mnt/sysroot/root/.basalt-luks.pass
 fi
 cp /tmp/basalt-pre.log /mnt/sysroot/root/basalt-install-pre.log 2>/dev/null || :
+# The key the installation checked the Basalt packages with, for the next section.
+install -m 0644 /run/install/repo/basalt/RPM-GPG-KEY-basalt /mnt/sysroot/root/.basalt-install-key.asc
+%end
+
+# The Basalt packages were signature checked: DNF imports a repository's key
+# into the new system's RPM database only when it verifies a package of that
+# repository with it, and nothing before this section imports the Basalt key
+# (basalt-release ships it without importing it). The key missing from the
+# database means the packages were installed unchecked: stop the installation.
+%post --erroronfail --log=/root/basalt-install-sigcheck.log
+#!/bin/bash
+set -eu
+media_key=/root/.basalt-install-key.asc
+# The keys of an RPM database as rpm lists them (rpmkeys --list on rpm 6,
+# the gpg-pubkey entries on older rpm), so both sides compare the same way.
+list_keys() { rpmkeys "$@" --list 2>/dev/null || rpm "$@" -q gpg-pubkey --qf '%{NAME}-%{VERSION}-%{RELEASE}\n'; }
+tmp="$(mktemp -d /run/basalt-sigcheck.XXXXXX)"
+rpm --root "$tmp" --initdb
+rpmkeys --root "$tmp" --import "$media_key"
+want="$(list_keys --root "$tmp")"
+have="$(list_keys || :)"
+rm -rf "$tmp"
+[ -n "$want" ] || { echo "basalt-sigcheck: could not read the key $media_key" >&2; exit 1; }
+while IFS= read -r k; do
+  if ! grep -qxF -- "$k" <<<"$have"; then
+    echo "basalt-sigcheck: the Basalt OS key ($k) is not in the RPM database: the Basalt packages were not signature checked during the installation" >&2
+    exit 1
+  fi
+done <<<"$want"
+echo "basalt-sigcheck: the Basalt OS packages were checked with the media's key"
 %end
 
 %post --log=/root/basalt-install-post.log
