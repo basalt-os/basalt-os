@@ -93,8 +93,8 @@ func installSummary(pv session.Preview, st session.Status, keyWhere []string, lo
 	if t := p.Repos.Testing; t != nil && *t {
 		line("%s", i18n.T("              basalt-testing (pre-release packages) on"))
 	}
-	if t := p.Repos.ThirdParty.TUITools; t == nil || *t {
-		line("%s", i18n.T("              tui-tools (third party)"))
+	if t := p.Repos.ThirdParty.TUITools; t != nil && *t {
+		line("%s", i18n.T("              tui-tools (third party, signed by a separate key)"))
 	}
 	if p.Encrypted() {
 		where := strings.Join(keyWhere, "; ")
