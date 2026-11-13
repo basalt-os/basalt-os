@@ -505,6 +505,7 @@ func template(disk string) string {
 # See it:      basalt-installer plan preview plan.yaml   (the exact commands)
 # Install it:  basalt-installer install --plan plan.yaml --confirm SERIAL --recovery-key-out /path/key.txt
 # Unattended from the boot menu: basalt.inst.plan=URL basalt.inst.confirm=SERIAL
+# (URL: https, or http with basalt.inst.plan.sha256=<sha256sum of the plan>.)
 # (SERIAL: the disk's serial number, lsblk -o NAME,MODEL,SERIAL; the kernel
 # name only for a disk without one. target.disk may also be serial:SERIAL
 # or a /dev/disk/by-id link.)

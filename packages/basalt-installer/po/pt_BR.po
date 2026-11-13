@@ -883,3 +883,41 @@ msgstr "precisa de um disco GPT com partições"
 
 msgid "A new partition in the free space"
 msgstr "Uma partição nova no espaço livre"
+
+#: internal/session/planfetch.go:101
+msgid "a plan over plain http can be changed by anyone on the network: use an https URL, or add basalt.inst.plan.sha256=<SHA-256 of the plan file> to the boot line"
+msgstr "um plano por http simples pode ser alterado por qualquer um na rede: use uma URL https, ou acrescente basalt.inst.plan.sha256=<SHA-256 do arquivo do plano> à linha de boot"
+
+#: internal/session/planfetch.go:143
+msgid "the plan is larger than 1 MiB"
+msgstr "o plano tem mais de 1 MiB"
+
+#: internal/session/planfetch.go:155
+#, c-format
+msgid "the SHA-256 of %s is %x, but basalt.inst.plan.sha256 is %x: the plan was changed or is not the one meant"
+msgstr "o SHA-256 de %s é %x, mas basalt.inst.plan.sha256 é %x: o plano foi alterado ou não é o esperado"
+
+#: internal/session/planfetch.go:174
+#, c-format
+msgid "the server redirected the plan from %s to %s, which is not https: add basalt.inst.plan.sha256=<SHA-256 of the plan file> to the boot line to allow it"
+msgstr "o servidor redirecionou o plano de %s para %s, que não é https: acrescente basalt.inst.plan.sha256=<SHA-256 do arquivo do plano> à linha de boot para permitir"
+
+#: internal/session/planfetch.go:177
+#, c-format
+msgid "the server redirected the plan from %s to another host, %s: add basalt.inst.plan.sha256=<SHA-256 of the plan file> to the boot line to allow it"
+msgstr "o servidor redirecionou o plano de %s para outro host, %s: acrescente basalt.inst.plan.sha256=<SHA-256 do arquivo do plano> à linha de boot para permitir"
+
+#: internal/session/planfetch.go:71
+#, c-format
+msgid "basalt.inst.plan.sha256=%s is not a SHA-256 checksum (64 hexadecimal digits)"
+msgstr "basalt.inst.plan.sha256=%s não é um checksum SHA-256 (64 dígitos hexadecimais)"
+
+#: internal/session/planfetch.go:98
+#, c-format
+msgid "%s is not a valid URL: %v"
+msgstr "%s não é uma URL válida: %v"
+
+#: internal/session/unattended.go:97
+#, c-format
+msgid "the plan %s was refused: %v; nothing was written"
+msgstr "o plano %s foi recusado: %v; nada foi gravado"
