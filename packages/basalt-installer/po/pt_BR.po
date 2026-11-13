@@ -162,8 +162,8 @@ msgid "              basalt-testing (pre-release packages) on"
 msgstr "                  basalt-testing (pacotes de pré-lançamento) ligado"
 
 #: cmd/basalt-installer/summary.go:97
-msgid "              tui-tools (third party)"
-msgstr "                  tui-tools (terceiros)"
+msgid "              tui-tools (third party, signed by a separate key)"
+msgstr "                  tui-tools (terceiros, assinado por outra chave)"
 
 #: cmd/basalt-installer/summary.go:99
 msgid "not stored"
@@ -530,6 +530,14 @@ msgstr "Interface"
 #, c-format
 msgid "Detected: %s"
 msgstr "Detectadas: %s"
+
+#: internal/tui/app.go:443
+msgid "Third-party repository: signed by a separate key that Basalt OS does not hold, and its packages run as root when installed."
+msgstr "Repositório de terceiros: assinado por outra chave, que o Basalt OS não controla, e seus pacotes rodam como root ao serem instalados."
+
+#: internal/tui/app.go:443
+msgid "tui-tools (third party, off by default)"
+msgstr "tui-tools (terceiros, desligado por padrão)"
 
 #: internal/tui/app.go:402
 msgid "Installed system uses"

@@ -316,8 +316,8 @@ controls:
       The filter limits names only. A package under a listed name can still
       declare Obsoletes or Provides of another package, and its scriptlets
       run as root, so the key still reaches root on a machine that enables
-      the repository. The tui-tools repository is on by default in the
-      installer plan.
+      the repository. The tui-tools repository is off by default in the
+      installer plan; turning it on trusts that key.
     references: ["NIST SSDF PS.2", "OWASP LLM03 Supply Chain"]
 
   # ---------------------------------------------------------------- DISK
