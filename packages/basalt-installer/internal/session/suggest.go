@@ -2,9 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,9 +19,12 @@ import (
 //	basalt.inst.unlock=METHOD     suggested unlock method
 //	basalt.inst.finish=ACTION     suggested end action
 //	basalt.inst.plan=PATH|URL     start from this plan file (a path on the live
-//	                              system or the media, or an http(s) URL);
+//	                              system or the media, or an https URL);
 //	                              the person still reviews it and types the
 //	                              disk name before anything is written
+//	basalt.inst.plan.sha256=HEX   SHA-256 of the plan file, checked before it
+//	                              is parsed; needed for a plain http URL
+//	                              (see planfetch.go)
 //	basalt.inst.ui=auto|tui|gui   which frontend starts on the screen (read by the units)
 //	basalt.inst.locale=LOCALE     suggested language (pt_BR.UTF-8)
 //	basalt.inst.keymap=KEYMAP     suggested keyboard (br)
@@ -92,10 +92,12 @@ func (s *Session) SuggestWith(ctx context.Context, h Hints) (plan.Plan, probe.Fa
 	if src != "" {
 		// A plan from the network may need a moment: the link comes up
 		// while the installer starts.
-		loaded, err := loadPlan(ctx, src)
-		for i := 0; err != nil && isURL(src) && i < 10 && ctx.Err() == nil; i++ {
+		// A refused plan (plain http without a checksum, a checksum that
+		// does not match) is not tried again.
+		loaded, err := loadPlan(ctx, src, c["plan.sha256"])
+		for i := 0; err != nil && !isPlanRefused(err) && isURL(src) && i < 10 && ctx.Err() == nil; i++ {
 			time.Sleep(3 * time.Second)
-			loaded, err = loadPlan(ctx, src)
+			loaded, err = loadPlan(ctx, src, c["plan.sha256"])
 		}
 		s.mu.Lock()
 		s.planSrc, s.planErr = src, err
@@ -192,35 +194,7 @@ func (s *Session) localize(p *plan.Plan, f probe.Facts, h Hints, c map[string]st
 	}
 }
 
-// loadPlan reads a plan from a file or an http(s) URL (at most 1 MiB).
-func loadPlan(ctx context.Context, src string) (plan.Plan, error) {
-	if isURL(src) {
-		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, src, nil)
-		if err != nil {
-			return plan.Plan{}, err
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return plan.Plan{}, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return plan.Plan{}, fmt.Errorf("HTTP %s", resp.Status)
-		}
-		data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		if err != nil {
-			return plan.Plan{}, err
-		}
-		return plan.Parse(data, filepath.Ext(req.URL.Path))
-	}
-	return plan.Load(src)
-}
-
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
-
-func isURL(s string) bool { return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") }
 
 // PlanSource returns the plan file the suggestion came from ("" for the
 // defaults) and the error that kept it from loading, if any.

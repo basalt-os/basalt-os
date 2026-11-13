@@ -84,14 +84,18 @@ func (s *Session) RunUnattended(ctx context.Context, planWait time.Duration) {
 	var err error
 	deadline := time.Now().Add(planWait)
 	for {
-		p, err = loadPlan(ctx, src)
-		if err == nil || time.Now().After(deadline) || ctx.Err() != nil {
+		p, err = loadPlan(ctx, src, c["plan.sha256"])
+		if err == nil || isPlanRefused(err) || time.Now().After(deadline) || ctx.Err() != nil {
 			break
 		}
 		select {
 		case <-ctx.Done():
 		case <-time.After(3 * time.Second):
 		}
+	}
+	if isPlanRefused(err) {
+		s.setAuto(AutoRefused, fmt.Sprintf(i18n.T("the plan %s was refused: %v; nothing was written"), src, err))
+		return
 	}
 	if err != nil {
 		s.setAuto(AutoRefused, fmt.Sprintf(i18n.T("the plan %s could not be read: %v"), src, err))

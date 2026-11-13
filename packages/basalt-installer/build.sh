@@ -7,7 +7,10 @@
 #   packages/basalt-installer/build.sh test     go vet + go test in the container only
 #
 # Go toolchain: tui-kit needs Go 1.27 and Fedora 44 ships Go 1.26, so the
-# container uses the official Go release named by go.mod's toolchain line,
+# container uses the official Go release named by go.mod (its toolchain
+# line, or the go line when there is none; the go line is also the oldest
+# Go that may build the installer, so a toolchain with known standard
+# library vulnerabilities is refused),
 # downloaded from go.dev and checked against the SHA-256 pinned below
 # (cached in $BUILD_DIR/cache). The Go modules are fetched by `go mod
 # vendor` (verified against go.sum and the checksum database) into a vendor
@@ -17,9 +20,11 @@ source "$(dirname "$0")/../../scripts/lib.sh"
 pkg="$REPO_ROOT/packages/basalt-installer"
 ver="$(awk '/^Version:/ {print $2}' "$pkg/basalt-installer.spec")"
 
-GO_VERSION=1.27.1
-GO_SHA256=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
-grep -q "^toolchain go$GO_VERSION\$" "$pkg/go.mod" || die "go.mod's toolchain line and GO_VERSION ($GO_VERSION) disagree"
+GO_VERSION=1.27.4
+GO_SHA256=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
+mod_go="$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$pkg/go.mod")"
+[[ -n "$mod_go" ]] || mod_go="$(awk '$1 == "go" { print $2; exit }' "$pkg/go.mod")"
+[[ "$mod_go" == "$GO_VERSION" ]] || die "go.mod names Go $mod_go and GO_VERSION is $GO_VERSION: they must agree"
 
 cache="$BUILD_DIR/cache"
 mkdir -p "$cache"
