@@ -235,8 +235,11 @@ type FedoraRepo struct {
 	UpdatesBaseURL string `json:"updates_baseurl,omitempty" yaml:"updates_baseurl,omitempty"`
 }
 
-// ThirdParty lists official third-party repositories.
+// ThirdParty lists official third-party repositories. Each one is off
+// unless the plan turns it on: its packages are signed by a separate key
+// that Basalt OS does not hold.
 type ThirdParty struct {
+	// TUITools adds the tui-tools repository (default false).
 	TUITools *bool `json:"tui_tools,omitempty" yaml:"tui_tools,omitempty"`
 }
 
@@ -365,8 +368,10 @@ func (p *Plan) ApplyDefaults() {
 	if p.Repos.Testing == nil {
 		p.Repos.Testing = Bool(false)
 	}
+	// The tui-tools repository is signed by a key outside Basalt's own
+	// controls, so trusting it is the person's explicit choice.
 	if p.Repos.ThirdParty.TUITools == nil {
-		p.Repos.ThirdParty.TUITools = Bool(true)
+		p.Repos.ThirdParty.TUITools = Bool(false)
 	}
 	if p.Assistant == nil {
 		p.Assistant = Bool(true)

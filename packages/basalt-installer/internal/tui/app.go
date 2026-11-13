@@ -440,7 +440,7 @@ func (m *model) enter(s screen) {
 			Items: []kit.CheckItem{
 				{Label: "basalt", Detail: "Basalt OS packages: required, carries security and identity updates", On: true, Locked: true},
 				{Label: "basalt-tools", Detail: "OpenBasalt tools (Samba Conductor and others): metadata only, nothing installed unless chosen", On: p.Repos.Tools == nil || *p.Repos.Tools},
-				{Label: "tui-tools (third party)", Detail: "terminal tools with a command preview, straight from upstream; key fingerprint pinned", On: p.Repos.ThirdParty.TUITools == nil || *p.Repos.ThirdParty.TUITools},
+				{Label: i18n.T("tui-tools (third party, off by default)"), Detail: i18n.T("Third-party repository: signed by a separate key that Basalt OS does not hold, and its packages run as root when installed."), On: p.Repos.ThirdParty.TUITools != nil && *p.Repos.ThirdParty.TUITools},
 			}}
 	case scRepoURL:
 		u := kit.TextField("Install from", p.Repos.Basalt.URL, "media")

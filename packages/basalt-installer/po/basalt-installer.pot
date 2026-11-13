@@ -164,7 +164,7 @@ msgid "              basalt-testing (pre-release packages) on"
 msgstr ""
 
 #: cmd/basalt-installer/summary.go:97
-msgid "              tui-tools (third party)"
+msgid "              tui-tools (third party, signed by a separate key)"
 msgstr ""
 
 #: internal/plan/custom.go:104
@@ -648,6 +648,14 @@ msgstr ""
 #: internal/tui/app.go:433
 #, c-format
 msgid "Detected: %s"
+msgstr ""
+
+#: internal/tui/app.go:443
+msgid "Third-party repository: signed by a separate key that Basalt OS does not hold, and its packages run as root when installed."
+msgstr ""
+
+#: internal/tui/app.go:443
+msgid "tui-tools (third party, off by default)"
 msgstr ""
 
 #: internal/tui/app.go:448

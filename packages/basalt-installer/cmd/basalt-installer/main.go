@@ -544,7 +544,7 @@ repos:
     # installed_url: https://...   # what the installed system uses
   tools: true             # basalt-tools: metadata only, nothing installed unless chosen
   third_party:
-    tui_tools: true       # tui-tools, key fingerprint pinned
+    tui_tools: false      # tui-tools: third-party repository signed by a separate key (opt-in)
 assistant: true
 finish: reboot            # reboot | poweroff | none
 `
