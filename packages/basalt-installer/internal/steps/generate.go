@@ -780,7 +780,7 @@ enabled=1
 		g.write(title, g.t("/etc/dnf/repos.override.d/80-basalt-installer.repo"), 0o644,
 			"# Written by the Basalt OS installer.\n"+strings.Join(override, "\n"))
 	}
-	if t := p.Repos.ThirdParty.TUITools; t == nil || *t {
+	if t := p.Repos.ThirdParty.TUITools; t != nil && *t {
 		fpr, err := pgpkey.Fingerprint(TUIToolsKey)
 		if err != nil {
 			return fmt.Errorf("tui-tools key: %w", err)

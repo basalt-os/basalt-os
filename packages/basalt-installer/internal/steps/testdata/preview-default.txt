@@ -246,116 +246,64 @@
  80. Authorize SSH keys for root
      $ write /mnt/sysroot/root/.ssh/authorized_keys (mode 0600, 85 bytes)
        | ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl lab
- 81. Install the tui-tools signing key (fingerprint 767CFB337B01F32FFC073F3F389120B277E4FB44, pinned)
-     $ write /mnt/sysroot/etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools (mode 0644, 1741 bytes)
-       | -----BEGIN PGP PUBLIC KEY BLOCK-----
-       | 
-       | mQINBGqUAc0BEADlrAQn12mXlzPBKBXBlsa4vSgNEcjiNwOBpwpk20D9PAMaKhF/
-       | syGO/VvnPYi8gHwUMWBBmeTBvqvUr8EFm+RBf4floYCvo01t9QEYXogCNULHuzmo
-       | QObvWm+pvFiUNRx2+HtsZzkkYPiBlHkWteVIyvRvTedoT3//dkr1Pfsz2Euv4f8g
-       | fjMst4VTWrCBl5jiDWLtcoR94bOcNo9XeOUj4pAiovFLeo8go+XB7Eb1MkqXgrGZ
-       | nx1XKXtjjma0sZNN3GhNxflTPuKa/kzb7MQCwXpsk9UF4O4Uk9+8lARCU08wtU/J
-       | eaw+oYcRYE8lPZYUfq+lcVyrvqxllEQppOghDYLe/i1zx8ggVS5ptRW2pFDspKJc
-       | eXpnwxUJ4FTDTcrOByFApacqub4VTRc83U1q0g1FdRVfAuU3L1lMto2cKjte1uXG
-       | 3Sb0Dx7VxtUmg9VM3qMjskfhXpTVI5+we8Dbi4bUlWXXuy8KR3AXj2KUVBCJSDDn
-       | UH9NXeFXc2ZKmK7jwW5WLr27slF5lPt/C1j4DQeZDYC265v1b/YWKqLxibqo8llg
-       | Jgzo6yozZ8WOYZd3HuFnNLYkvRfmlETg70pLceBAQ9wiNtsmXNwYCmzh4+OW93e4
-       | FgsSPWReBi4njfH1+/gvl+xVerNF7URQtmK1Klx5IX0byi/2ZUSH4V5uTQARAQAB
-       | tGR0dWktdG9vbHMgcGFja2FnZSBzaWduaW5nIChhcHQsIGRuZiBhbmQgcGFjbWFu
-       | IHJlcG9zaXRvcnkgYXQgcGtncy50dWkudG9vbHMpIDxtYWludGFpbmVyc0B0dWku
-       | dG9vbHM+iQJRBBMBCgA7FiEEdnz7M3sB8y/8Bz8/OJEgsnfk+0QFAmqUAc0CGwMF
-       | CwkIBwICIgIGFQoJCAsCBBYCAwECHgcCF4AACgkQOJEgsnfk+0TdTBAAkICCSXfg
-       | H9hnTNNj/9n42usvcuETD8NRKIDx1mS9aoCX7na4nWtYSNUTuDduydhtVMyB0+hQ
-       | JnPdDhnGykSYti+l5LLnLWs0IaDokeET06ecSEngGPfUv7yrwDoanLJPq1gXfLvD
-       | c1LWwXxb+ZKdNJFBIFwfaba1zHd4kdzXNBDfu+660tx5WtvSHbPq3uJIT/r9ZqLP
-       | eo38RFxE4zkgwX1jeQ6MZz8KsKA8cTL3SQikkezkO0Eon4G3NC1G79fs5S+il4RS
-       | SjBPNUxMkVP+L3Xhm8jGxipJ4HjgfT+b8elUVdUv4x+imH5brhPS/efeJHZypMWE
-       | XcMKC07Jd86Ou5LWrwKYbdNa1ROxqR5bvd6GbWzeblhMuqCaQChsWi3+ieeh+icK
-       | MhNAgyDJhEPBnkTo61WkVIIhj1iXcmqVTc0eejCG54pNfHm+0DXHpYsWaBjvlwWK
-       | IsGmBFl1Q2UX1ldRR00AFiDNBF0jqEP7Hh8QdDskHtO+btDr4RiFoAYGGI6C20e4
-       | hOiOLpT7SqPDO5Oyqyk/+U1O5lM5RJKgydBx63PofY98tinnXevOj7x2YF4xQJ1W
-       | y0k9MdFjRfuMuxvfrKcECWIytTpPvHtvG6dDA5lsqVoSrFBkcDe/nujbB6bFCqcm
-       | vslPWkh1S944Q0oXFpyhnZb2bUqtLcNQkok=
-       | =RK/h
-       | -----END PGP PUBLIC KEY BLOCK-----
- 82. Configure the tui-tools repository (third party, ADR 0005)
-     $ write /mnt/sysroot/etc/yum.repos.d/tui-tools.repo (mode 0644, 921 bytes)
-       | # tui-tools: terminal tools with a command preview before every change.
-       | # Official third-party repository: packages come straight from upstream.
-       | # Signing key fingerprint 767CFB337B01F32FFC073F3F389120B277E4FB44 (pinned by the installer).
-       | # Written by the Basalt OS installer; it moves to basalt-third-party.
-       | # includepkgs: dnf takes only the tui-tools package names from here, so
-       | # this key can never provide or replace a system package by name.
-       | [tui-tools]
-       | name=tui-tools (third party)
-       | baseurl=https://pkgs.tui.tools/rpm/$basearch
-       | enabled=1
-       | gpgcheck=1
-       | repo_gpgcheck=1
-       | gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools
-       | includepkgs=headscale,tui-cert,tui-containers,tui-cron,tui-dc,tui-disk,tui-firewall,tui-logs,tui-network,tui-router,tui-samba,tui-secure,tui-snapper,tui-ssh,tui-systemd,tui-tailscale,tui-tools,tui-tools-all,tui-traffic,tui-update,tui-users,tui-wireguard
-       | skip_if_unavailable=True
-       | metadata_expire=6h
- 83. Trust the tui-tools key in the package database
-     $ chroot /mnt/sysroot rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools
- 84. Use the Basalt boot splash (may fail)
+ 81. Use the Basalt boot splash (may fail)
      $ chroot /mnt/sysroot plymouth-set-default-theme basalt
- 85. Boot to multi-user.target (the server edition)
+ 82. Boot to multi-user.target (the server edition)
      # systemd's own default is graphical.target; Anaconda sets multi-user.target for a server (skipx), and so does this
      $ chroot /mnt/sysroot systemctl set-default multi-user.target
- 86. Enable the Basalt services
+ 83. Enable the Basalt services
      # the assistant's daemon only diagnoses and proposes; applying a change always needs a confirmation
      $ chroot /mnt/sysroot systemctl enable sshd firewalld auditd basalt-snapshot-boot basalt-initial-snapshot basalt-grub-theme basalt-module-keys basalt-resolver basalt-ledger basalt-assistantd basalt-notify basalt-audit-rotate.timer
 
 == bootloader
- 87. Create the boot loader directory on the EFI system partition
+ 84. Create the boot loader directory on the EFI system partition
      $ mkdir -p /mnt/sysroot/boot/efi/EFI/fedora
- 88. Point the signed GRUB on the ESP at /boot
+ 85. Point the signed GRUB on the ESP at /boot
      # the boot chain is Fedora's signed shim, GRUB and kernel, so Secure Boot stays on
      $ write /mnt/sysroot/boot/efi/EFI/fedora/grub.cfg (mode 0600, 159 bytes)
        | search --no-floppy --root-dev-only --fs-uuid --set=dev ab125c07-ab12-4c07-ab12-5c07ab125c07
        | set prefix=($dev)/grub2
        | export $prefix
        | configfile $prefix/grub.cfg
- 89. Show the boot menu (may fail)
+ 86. Show the boot menu (may fail)
      $ chroot /mnt/sysroot grub2-editenv - unset menu_auto_hide
- 90. Generate the GRUB configuration
+ 87. Generate the GRUB configuration
      $ chroot /mnt/sysroot grub2-mkconfig -o /boot/grub2/grub.cfg
- 91. Add a firmware boot entry (may fail)
+ 88. Add a firmware boot entry (may fail)
      # the firmware's fallback path (\EFI\BOOT\BOOTX64.EFI, also Fedora's shim) boots the disk without it
      $ efibootmgr --create --disk /dev/vda --part 1 --label 'Basalt OS' --loader '\EFI\fedora\shimx64.efi'
 
 == unlock
- 92. Seal a key in the TPM, bound to the Secure Boot state (PCR 7)
+ 89. Seal a key in the TPM, bound to the Secure Boot state (PCR 7)
      # the disk unlocks by itself while the Secure Boot configuration is unchanged
      $ systemd-cryptenroll --unlock-key-file=/run/basalt-installer/luks.key --tpm2-device=auto --tpm2-pcrs=7 /dev/vda3
- 93. Generate and enroll the recovery key
+ 90. Generate and enroll the recovery key
      # shown once on the screen; it opens the disk when the TPM refuses (Secure Boot changed, disk moved)
      $ systemd-cryptenroll --unlock-key-file=/run/basalt-installer/luks.key --recovery-key /dev/vda3
- 94. Check that key slot 0 holds the temporary key
+ 91. Check that key slot 0 holds the temporary key
      # token plugins off, so the TPM2 token cannot answer instead (milestone 1 lesson)
      $ cryptsetup open --test-passphrase --disable-external-tokens --key-slot 0 --key-file /run/basalt-installer/luks.key /dev/vda3
- 95. Remove the temporary key from the volume
+ 92. Remove the temporary key from the volume
      $ systemd-cryptenroll --unlock-key-file=/run/basalt-installer/luks.key --wipe-slot=0 /dev/vda3
- 96. Delete the temporary key
+ 93. Delete the temporary key
      $ rm -f /run/basalt-installer/luks.key
 
 == initramfs
- 97. Build the initramfs with the unlock support and the crypttab
+ 94. Build the initramfs with the unlock support and the crypttab
      $ chroot /mnt/sysroot dracut --force --regenerate-all
 
 == snapshots
- 98. Set up snapper, the default subvolume and the snapshot boot menu
+ 95. Set up snapper, the default subvolume and the snapshot boot menu
      # no snapshot inside the installer: the first one is taken on the first boot (basalt-initial-snapshot.service)
      $ chroot /mnt/sysroot basalt-snapshots-setup --no-initial-snapshot
 
 == finish
- 99. Remove the package cache (may fail)
+ 96. Remove the package cache (may fail)
      $ chroot /mnt/sysroot dnf clean all
-100. Create the install record directory
+ 97. Create the install record directory
      $ mkdir -p /mnt/sysroot/var/log/basalt-installer
-101. Record the plan (without secrets)
-     $ write /mnt/sysroot/var/log/basalt-installer/plan.json (mode 0600, 1202 bytes)
+ 98. Record the plan (without secrets)
+     $ write /mnt/sysroot/var/log/basalt-installer/plan.json (mode 0600, 1203 bytes)
        | {
        |   "apiVersion": "basalt-install-plan/v1",
        |   "edition": "server",
@@ -416,30 +364,30 @@
        |     "tools": true,
        |     "testing": false,
        |     "third_party": {
-       |       "tui_tools": true
+       |       "tui_tools": false
        |     }
        |   },
        |   "assistant": true,
        |   "packages": {},
        |   "finish": "reboot"
        | }
-102. Record the install summary
+ 99. Record the install summary
      $ write /mnt/sysroot/var/log/basalt-installer/summary.log (mode 0644, 142 bytes)
        | basalt: disk=vda encrypt=1 unlock=tpm2 profile=minimal (auto, virtual machine: kvm) lockdown=1 finish=reboot installer=basalt-installer 0.1.0
-103. Label every file for SELinux (target policy)
+100. Label every file for SELinux (target policy)
      # every subvolume, /.snapshots and /boot by name: setfiles does not cross into another file system on its own; append-only and immutable files (the assistant's audit log) lose that attribute for the relabel and get it back
      $ chroot /mnt/sysroot setfiles -F -e /proc -e /sys -e /dev -e /run -e /boot/efi /etc/selinux/targeted/contexts/files/file_contexts / /boot /.snapshots /home /srv /var/cache /var/lib/containers /var/lib/libvirt /var/lib/mysql /var/lib/pgsql /var/log /var/spool /var/tmp
-104. Copy the install log into the installed system
+101. Copy the install log into the installed system
      $ write /mnt/sysroot/var/log/basalt-installer/install.jsonl (mode 0600): the install log so far
-105. Label the install record
+102. Label the install record
      $ chroot /mnt/sysroot restorecon -R /var/log/basalt-installer
-106. Unmount the installed system
+103. Unmount the installed system
      $ umount --recursive /mnt/sysroot
-107. Flush writes to disk
+104. Flush writes to disk
      $ sync
-108. Wait for device events to settle
+105. Wait for device events to settle
      $ udevadm settle --timeout=30
-109. Show what still uses the file system (diagnostics) (may fail)
+106. Show what still uses the file system (diagnostics) (may fail)
      $ lsblk --output NAME,TYPE,MOUNTPOINTS /dev/vda3
-110. Close the encrypted volume
+107. Close the encrypted volume
      $ cryptsetup close luks-ab125c07-ab12-4c07-ab12-5c07ab125c07

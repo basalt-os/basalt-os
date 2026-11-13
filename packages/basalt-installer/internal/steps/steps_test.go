@@ -263,11 +263,18 @@ func TestTUIToolsKeyIsPinned(t *testing.T) {
 	if !strings.Contains(tools.Write.Content, "[basalt-tools]\nenabled=0") {
 		t.Fatal("basalt-tools disabled in the plan")
 	}
-	// With the default plan basalt-release's own [basalt-tools] stays on.
+	// With the default plan basalt-release's own [basalt-tools] stays on,
+	// and the tui-tools third-party repository is not configured (opt-in).
 	_, def := generate(t, basePlan("/dev/vda"), facts("kvm", true))
 	if i, _ := find(def, "repos.override.d"); i >= 0 {
 		t.Fatal("basalt-tools turned off in the default plan")
 	}
+	if i, _ := find(def, "tui-tools"); i >= 0 {
+		t.Fatal("the tui-tools third-party repository is configured without being chosen")
+	}
+	// Chosen, it gets the pinned key, the repository file and the key import.
+	mustFind(t, generateTUITools(t), "/etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools")
+	mustFind(t, generateTUITools(t), "rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-tui-tools")
 	if i, _ := find(def, "basalt-tools.repo"); i >= 0 {
 		t.Fatal("the installer writes its own basalt-tools.repo next to basalt-release's")
 	}
@@ -294,7 +301,7 @@ func TestTUIToolsRepoFilter(t *testing.T) {
 	if !strings.Contains(line, "tui-tools-all") || !strings.Contains(line, "headscale") {
 		t.Fatalf("includepkgs misses the metapackage or the headscale mirror: %s", line)
 	}
-	_, repo := mustFind(t, generateDefault(t), "/etc/yum.repos.d/tui-tools.repo")
+	_, repo := mustFind(t, generateTUITools(t), "/etc/yum.repos.d/tui-tools.repo")
 	if !strings.Contains(repo.Write.Content, "\n"+line+"\n") {
 		t.Fatalf("tui-tools.repo has no %s:\n%s", line, repo.Write.Content)
 	}
@@ -320,9 +327,13 @@ func TestTUIToolsRepoFilter(t *testing.T) {
 	}
 }
 
-func generateDefault(t *testing.T) []Step {
+// generateTUITools is the default plan with the tui-tools third-party
+// repository chosen.
+func generateTUITools(t *testing.T) []Step {
 	t.Helper()
-	_, list := generate(t, basePlan("/dev/vda"), facts("kvm", true))
+	p := basePlan("/dev/vda")
+	p.Repos.ThirdParty.TUITools = plan.Bool(true)
+	_, list := generate(t, p, facts("kvm", true))
 	return list
 }
 

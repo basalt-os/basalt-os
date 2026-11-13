@@ -260,7 +260,7 @@ Verified by:
 - Test: `packages/basalt-installer/internal/steps/steps_test.go`, `func TestTUIToolsRepoFilter(`
 - Manual: audit guide, [BSC-PKG-009](audit-guide.md#bsc-pkg-009)
 
-Gap: The filter limits names only. A package under a listed name can still declare Obsoletes or Provides of another package, and its scriptlets run as root, so the key still reaches root on a machine that enables the repository. The tui-tools repository is on by default in the installer plan.
+Gap: The filter limits names only. A package under a listed name can still declare Obsoletes or Provides of another package, and its scriptlets run as root, so the key still reaches root on a machine that enables the repository. The tui-tools repository is off by default in the installer plan; turning it on trusts that key.
 
 References: NIST SSDF PS.2; OWASP LLM03 Supply Chain.
 
