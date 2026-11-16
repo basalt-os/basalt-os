@@ -16,19 +16,19 @@ built, so nothing should rely on it yet. How controls change:
 | Area | Implemented | Partial | Planned | Total |
 |---|---|---|---|---|
 | BOOT: Secure Boot, kernel lockdown and module signatures | 3 | 1 | 0 | 4 |
-| PKG: Packages, repositories and the build and release pipeline | 6 | 2 | 2 | 10 |
+| PKG: Packages, repositories and the build and release pipeline | 6 | 3 | 2 | 11 |
 | DISK: Disk encryption and unlock | 5 | 0 | 0 | 5 |
 | MAC: Mandatory access control (SELinux) and service hardening | 6 | 0 | 3 | 9 |
 | GATE: Approvals, confirmations and the approval gate | 6 | 2 | 4 | 12 |
 | LEDGER: The audit ledger and audit logs | 8 | 0 | 2 | 10 |
 | NET: Network egress and inbound access | 9 | 0 | 1 | 10 |
-| AGENT: Confinement of AI agents | 9 | 0 | 0 | 9 |
+| AGENT: Confinement of AI agents | 9 | 1 | 0 | 10 |
 | AI: Models, knowledge, the assistant and content handling | 6 | 2 | 2 | 10 |
 | PRIV: Privacy and data leaving the machine | 3 | 1 | 2 | 6 |
 | UPD: Updates, snapshots and rollback | 4 | 1 | 0 | 5 |
 | KEY: Signing keys and their custody | 1 | 4 | 0 | 5 |
 | GOV: Process, disclosure and the security program itself | 2 | 2 | 0 | 4 |
-| All | 68 | 15 | 16 | 99 |
+| All | 68 | 17 | 16 | 101 |
 
 ## BOOT: Secure Boot, kernel lockdown and module signatures
 
@@ -284,6 +284,29 @@ Verified by:
 - Manual: audit guide, [BSC-PKG-010](audit-guide.md#bsc-pkg-010)
 
 Gap: Anaconda turns package signature checks off for repositories that do not set them, and the kickstart repo command cannot set them, so the kickstart defines the Basalt repository in /etc/anaconda.repos.d and checks in %post that DNF imported the media's key, which it does only when it verifies a package with it. This follows a reading of Anaconda 44 and libdnf5; a lab install with a package signed by another key has not confirmed it yet.
+
+References: NIST SSDF PS.2; OWASP LLM03 Supply Chain.
+
+### BSC-PKG-011
+
+Repository metadata expires.
+
+Status: partial. Decided in: ADR 0005.
+
+Requirement: Every published repomd.xml signature MUST carry an expiration time no more than 90 days (default 30) after signing, set by the release signer and checked before upload; clients MUST refuse metadata whose signature has expired; the published repositories MUST be checked on a schedule so that they are signed again before they expire.
+
+Rationale: A valid signature does not prove that metadata is current. Someone who controls the bucket, the CDN or the network path could keep serving an older, validly signed repository and hold machines on vulnerable packages; the expiration bounds how long that can last.
+
+Implemented in: `scripts/release/sign.sh`, `scripts/release/upload.sh`, `scripts/release/merge-published.sh`, `scripts/release/metadata-expiry.sh`, `.github/workflows/metadata-expiry.yml`.
+
+Verified by:
+
+- Test: `scripts/release/tests/metadata-expiry-test.sh`, `dnf accepted an expired repository signature`
+- Test: `scripts/release/tests/upload-test.sh`, `a tree without a metadata expiration is refused`
+- Test: `scripts/release/sign.sh`, `metadata signature without the expected expiration`
+- Manual: audit guide, [BSC-PKG-011](audit-guide.md#bsc-pkg-011)
+
+Gap: Signatures made before this control never expire, and dnf accepts them until the packages subkey changes; clients do not require an expiration to be present. The bucket does not enforce immutability by itself (object lock or versioning), only upload.sh does.
 
 References: NIST SSDF PS.2; OWASP LLM03 Supply Chain.
 
@@ -1266,6 +1289,25 @@ Verified by:
 
 - Lab: `lab/voice/tests/escape-test.sh` in basalt-shell, `basalt_skill`
 - Manual: audit guide, [BSC-AGENT-009](audit-guide.md#bsc-agent-009)
+
+### BSC-AGENT-010
+
+An agent in control of the desktop cannot use terminals or system tools.
+
+Status: partial. Decided in: ADR 0012.
+
+Requirement: Inside a control session, synthetic input MUST be refused while a terminal or a system tool (settings, firewall, disks, packages, password managers) has the keyboard focus or lies under the pointer target, and whenever the focused window cannot be identified; typed text MUST be checked again after each line break. The consent sheet MUST say that the agent acts as the person, and MUST show the agent's reason quoted, apart from the shell's own text.
+
+Rationale: A control session lets an agent type as the person, outside its SELinux domain, its egress allowlist and the approval gate; a terminal would turn a prompt-injected agent into anything the person can do.
+
+Implemented in: `internal/shell/inputguard.go` in basalt-shell, `internal/shell/agent.go` in basalt-shell, `shell/ConfirmSheet.qml` in basalt-shell.
+
+Verified by:
+
+- Test: `internal/shell/agent_test.go` in basalt-shell, `func TestControlSessionInputTargets(`
+- Manual: audit guide, [BSC-AGENT-010](audit-guide.md#bsc-agent-010)
+
+Gap: The block list is by app id and words in it; an app that runs commands under another name (an editor with a terminal pane, a launcher in a normal window) is not covered. Shipped once packages/basalt-shell pins a basalt-shell commit that has it.
 
 ## AI: Models, knowledge, the assistant and content handling
 

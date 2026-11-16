@@ -65,6 +65,42 @@ run() { printf '  $ %s\n' "$*" >&2; "$@"; }
 # shellcheck disable=SC2034  # used by the scripts that source this file
 CURL_RETRY=(--retry 5 --retry-all-errors --retry-delay 5)
 
+# Official Go toolchain (scripts/go-toolchain.conf): GO_VERSION, GO_SHA256.
+# shellcheck source=go-toolchain.conf
+source "$REPO_ROOT/scripts/go-toolchain.conf"
+
+# go_mod_check DIR: die unless DIR/go.mod names GO_VERSION (its toolchain
+# line, or the go line when there is none). The go line is also the oldest
+# Go that may build the module, so a toolchain with known standard library
+# vulnerabilities is refused.
+go_mod_check() {
+  local mod_go
+  mod_go="$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$1/go.mod")"
+  [[ -n "$mod_go" ]] || mod_go="$(awk '$1 == "go" { print $2; exit }' "$1/go.mod")"
+  [[ "$mod_go" == "$GO_VERSION" ]] ||
+    die "$1/go.mod names Go $mod_go and scripts/go-toolchain.conf pins $GO_VERSION: they must agree"
+}
+
+# go_toolchain: print the path of the official go$GO_VERSION.linux-amd64
+# archive in $BUILD_DIR/cache, downloaded from go.dev first unless a copy
+# with the pinned checksum is there. A download with another checksum is
+# refused. Containers unpack it into /opt/go and put /opt/go/bin first in
+# PATH, with GOTOOLCHAIN=local so that no other toolchain is fetched.
+go_toolchain() {
+  local cache="$BUILD_DIR/cache" tarball
+  mkdir -p "$cache"
+  tarball="$cache/go$GO_VERSION.linux-amd64.tar.gz"
+  if ! echo "$GO_SHA256  $tarball" | sha256sum -c --quiet - >/dev/null 2>&1; then
+    log "downloading Go $GO_VERSION"
+    curl -fsSL --proto '=https' "${CURL_RETRY[@]}" -o "$tarball.part" "https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz" ||
+      { rm -f "$tarball.part"; die "cannot download Go $GO_VERSION"; }
+    echo "$GO_SHA256  $tarball.part" | sha256sum -c --quiet - >/dev/null 2>&1 ||
+      { rm -f "$tarball.part"; die "Go $GO_VERSION checksum mismatch"; }
+    mv "$tarball.part" "$tarball"
+  fi
+  printf '%s\n' "$tarball"
+}
+
 # Run a command in a throwaway Fedora container (host network: on some hosts
 # DNS does not resolve inside rootful podman's default network).
 in_fedora() {

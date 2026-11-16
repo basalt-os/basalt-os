@@ -351,6 +351,39 @@ controls:
       another key has not confirmed it yet.
     references: ["NIST SSDF PS.2", "OWASP LLM03 Supply Chain"]
 
+  - id: BSC-PKG-011
+    title: Repository metadata expires
+    requirement: >-
+      Every published repomd.xml signature MUST carry an expiration time no
+      more than 90 days (default 30) after signing, set by the release
+      signer and checked before upload; clients MUST refuse metadata whose
+      signature has expired; the published repositories MUST be checked
+      on a schedule so that they are signed again before they expire.
+    rationale: >-
+      A valid signature does not prove that metadata is current. Someone
+      who controls the bucket, the CDN or the network path could keep
+      serving an older, validly signed repository and hold machines on
+      vulnerable packages; the expiration bounds how long that can last.
+    status: partial
+    adr: ["0005"]
+    implemented_in:
+      - scripts/release/sign.sh
+      - scripts/release/upload.sh
+      - scripts/release/merge-published.sh
+      - scripts/release/metadata-expiry.sh
+      - .github/workflows/metadata-expiry.yml
+    verification:
+      - {type: test, file: scripts/release/tests/metadata-expiry-test.sh, match: "dnf accepted an expired repository signature"}
+      - {type: test, file: scripts/release/tests/upload-test.sh, match: "a tree without a metadata expiration is refused"}
+      - {type: test, file: scripts/release/sign.sh, match: "metadata signature without the expected expiration"}
+      - {type: manual, guide: BSC-PKG-011}
+    gap: >-
+      Signatures made before this control never expire, and dnf accepts them
+      until the packages subkey changes; clients do not require an
+      expiration to be present. The bucket does not enforce immutability by
+      itself (object lock or versioning), only upload.sh does.
+    references: ["NIST SSDF PS.2", "OWASP LLM03 Supply Chain"]
+
   # ---------------------------------------------------------------- DISK
 
   - id: BSC-DISK-001
@@ -1374,6 +1407,35 @@ controls:
     verification:
       - {type: lab, repo: basalt-shell, file: lab/voice/tests/escape-test.sh, match: "basalt_skill"}
       - {type: manual, guide: BSC-AGENT-009}
+
+  - id: BSC-AGENT-010
+    title: An agent in control of the desktop cannot use terminals or system tools
+    requirement: >-
+      Inside a control session, synthetic input MUST be refused while a
+      terminal or a system tool (settings, firewall, disks, packages,
+      password managers) has the keyboard focus or lies under the pointer
+      target, and whenever the focused window cannot be identified; typed
+      text MUST be checked again after each line break. The consent sheet
+      MUST say that the agent acts as the person, and MUST show the agent's
+      reason quoted, apart from the shell's own text.
+    rationale: >-
+      A control session lets an agent type as the person, outside its
+      SELinux domain, its egress allowlist and the approval gate; a terminal
+      would turn a prompt-injected agent into anything the person can do.
+    status: partial
+    adr: ["0012"]
+    implemented_in:
+      - {repo: basalt-shell, path: internal/shell/inputguard.go}
+      - {repo: basalt-shell, path: internal/shell/agent.go}
+      - {repo: basalt-shell, path: shell/ConfirmSheet.qml}
+    verification:
+      - {type: test, repo: basalt-shell, file: internal/shell/agent_test.go, match: "func TestControlSessionInputTargets("}
+      - {type: manual, guide: BSC-AGENT-010}
+    gap: >-
+      The block list is by app id and words in it; an app that runs commands
+      under another name (an editor with a terminal pane, a launcher in a
+      normal window) is not covered. Shipped once packages/basalt-shell
+      pins a basalt-shell commit that has it.
 
   # ---------------------------------------------------------------- AI
 

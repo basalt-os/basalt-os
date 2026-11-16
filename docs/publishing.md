@@ -175,14 +175,18 @@ exists):
    export that contains the secret primary key, and signs with exactly
    the packages subkey (`302461D26520E077D07FFCA9AA27C62C36CCFC4B!`):
    `rpmsign --addsign` on every binary and source RPM, `createrepo_c`,
-   and a detached armored signature of each `repomd.xml`;
+   and a detached armored signature of each `repomd.xml` that expires
+   after `OB_METADATA_VALID_DAYS` days (default 30, see Metadata
+   validity);
 5. shreds the key material;
 6. verifies in a second container that never saw a secret, with the public
    key only: `rpmkeys --checksig` in a clean rpm database (each signature
    must name the packages subkey), `gpg --verify` of each
-   `repomd.xml.asc` (VALIDSIG of the subkey), and dnf with `gpgcheck=1`
-   and `repo_gpgcheck=1` reading the tree;
-7. writes `SIGNED-OK` with the SHA-256 of every file.
+   `repomd.xml.asc` (VALIDSIG of the subkey, and an expiration within
+   `OB_METADATA_VALID_DAYS`), and dnf with `gpgcheck=1` and
+   `repo_gpgcheck=1` reading the tree;
+7. writes `SIGNED-OK` with the SHA-256 of every file and the time the
+   metadata expires.
 
 Secret material is never on a command line, never printed and never
 written outside the tmpfs.
@@ -225,6 +229,50 @@ Credentials come from 0600 files named by
 `OB_R2_ENDPOINT_FILE` (or `OB_R2_ENDPOINT`); the AWS CLI configuration is
 written to a tmpfs and shredded. `upload.sh --dry-run` prints the plan
 without credentials.
+
+## Metadata validity
+
+A valid signature alone does not say that metadata is current: someone
+who controls the bucket, the CDN or the path to a client could keep
+serving an older, validly signed `repomd.xml` and hold machines on old
+packages (a freeze or rollback). So every `repomd.xml.asc` carries a
+signature expiration time, `OB_METADATA_VALID_DAYS` after signing
+(default 30, 7 to 90). dnf on Fedora 44 refuses metadata whose signature
+has expired ("signature is not alive"), with the settings basalt.repo
+already has (`repo_gpgcheck=1`); `scripts/release/tests/metadata-expiry-test.sh`
+checks that in CI. An older repository can then be replayed for at most
+that long.
+
+The other side of it: every published repository must be signed again
+before its metadata expires, with new packages or without. `upload.sh`
+refuses a tree whose `SIGNED-OK` does not say when its metadata expires,
+or that expires in fewer than `OB_METADATA_MIN_DAYS` days (default 7). A
+refresh without new packages starts from an empty input:
+
+```sh
+mkdir /tmp/refresh-in && : >/tmp/refresh-in/SHA256SUMS
+OB_REPO=basalt scripts/release/merge-published.sh /tmp/refresh-in
+scripts/release/sign.sh --op /tmp/refresh-in /tmp/refresh-out
+scripts/release/upload.sh /tmp/refresh-out
+```
+
+`merge-published.sh` accepts a published signature that has already
+expired (the content is still authentic), so a repository that expired
+is refreshed the same way. `scripts/release/metadata-expiry.sh` reads the
+published repositories with the public key and fails when a signature has
+expired or expires in fewer than 10 days, or when the check cannot run;
+the scheduled workflow `.github/workflows/metadata-expiry.yml` runs it
+every day, so a failed run is the reminder to sign again. A signature made
+before metadata expiry existed never expires: the check reports it as a
+warning (an annotation and a line of the job summary asking to sign that
+repository again) and does not fail, while `upload.sh` still refuses to
+publish a tree without an expiration.
+
+Limits: signatures made before this change never expire, and dnf accepts
+them until the packages subkey changes; a client does not yet require the
+expiration to be present. The bucket itself does not enforce that a
+published object is never replaced (only `upload.sh` does); object lock or
+versioning on the bucket is an operator setting.
 
 ## Client test
 

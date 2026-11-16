@@ -219,6 +219,22 @@ signature error and write nothing more. A system installed by
 basalt-installer shows the same checks in the step list of its install
 log (gpgcheck=1 and repo_gpgcheck=1 in the Basalt repository file).
 
+### BSC-PKG-011
+
+```
+$ scripts/release/metadata-expiry.sh
+$ sed -n 's/^metadata expires: //p' OUT_DIR/SIGNED-OK
+```
+
+Expected: every published repository line starts with "ok" and names an
+expiration less than 90 days away, and the last run of the scheduled
+"Metadata expiry" workflow passed. A "WARN" line (a signature that never
+expires, made before this control) means that repository still has to be
+signed again. A signed tree's SIGNED-OK names when
+its metadata expires; upload.sh refuses a tree without that line. In a
+lab, a repository whose repomd.xml.asc has expired must make dnf stop
+with "signature is not alive".
+
 ## DISK
 
 ### BSC-DISK-001
@@ -655,6 +671,18 @@ PipeWire sockets.
 basalt-shell `lab/voice/tests/escape-test.sh` on a desktop lab VM.
 Expected: each voice and skill domain may do only what its row in the
 shell's SELinux documentation allows.
+
+### BSC-AGENT-010
+
+On the desktop, let a test agent (basalt-shell's lab/demo/agent-demo.py)
+ask for a control session and allow it.
+
+Expected: the sheet says the agent acts as you, with your files, accounts
+and permissions, and shows its reason in a quoted box of its own. With a
+terminal (foot) focused, or the pointer target on one, every input step
+is refused and the activity log records "input refused"; with an ordinary
+app focused, input works; typing stops at the line after which a
+terminal takes the focus.
 
 ## AI
 

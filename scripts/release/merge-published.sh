@@ -19,6 +19,14 @@
 #   keeps them as they are (no re-signing) and checks their signature.
 # SHA256SUMS is rewritten over all the RPMs. A repository that is not
 # published yet (repomd.xml answers 404) adds nothing.
+#
+# Metadata refresh: the published metadata expires (sign.sh,
+# OB_METADATA_VALID_DAYS), so a repository with no new package is signed
+# again from an IN_DIR that holds only an empty SHA256SUMS: this script
+# fills it with the published set, then sign.sh and upload.sh run as usual.
+# A published signature that has already expired is still accepted here
+# (the content is authentic, only stale), so an expired repository can be
+# refreshed the same way.
 source "$(dirname "$0")/../lib.sh"
 
 : "${OB_REPO:=basalt}"
@@ -29,7 +37,8 @@ case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree | bas
 in="${1:?usage: OB_REPO=basalt $0 IN_DIR}"
 in="$(cd "$in" && pwd)" || die "no $in"
 [[ -f "$in/SHA256SUMS" ]] || die "$in/SHA256SUMS missing (scripts/release/build.sh)"
-(cd "$in" && sha256sum -c --quiet SHA256SUMS) || die "checksum mismatch in $in"
+# An empty SHA256SUMS (a metadata refresh) has nothing to check.
+[[ ! -s "$in/SHA256SUMS" ]] || (cd "$in" && sha256sum -c --quiet SHA256SUMS) || die "checksum mismatch in $in"
 [[ ! -e "$in/PUBLISHED" ]] || die "$in/PUBLISHED exists: the published set is merged already"
 for c in curl gpg python3; do command -v "$c" >/dev/null || die "$c not installed"; done
 
@@ -55,8 +64,14 @@ for sub in "$ARCH" source; do
     continue
   fi
   fetch "$url/repodata/repomd.xml.asc?v=$(date +%s)" "$work/repomd.xml.asc" || die "$url/repodata/repomd.xml.asc missing"
-  gpg --batch --status-fd 1 --verify "$work/repomd.xml.asc" "$work/repomd.xml" 2>/dev/null |
-    grep -q "^\[GNUPG:\] VALIDSIG ${OB_SIGNING_SUBKEY^^} " || die "$url/repodata/repomd.xml: bad signature"
+  # VALIDSIG: a good signature by the packages subkey; gpg also says so for
+  # one that has expired (EXPSIG, non-zero exit), which is accepted here.
+  status="$(gpg --batch --status-fd 1 --verify "$work/repomd.xml.asc" "$work/repomd.xml" 2>/dev/null || true)"
+  grep -q "^\[GNUPG:\] VALIDSIG ${OB_SIGNING_SUBKEY^^} " <<<"$status" || die "$url/repodata/repomd.xml: bad signature"
+  ! grep -q '^\[GNUPG:\] REVKEYSIG ' <<<"$status" || die "$url/repodata/repomd.xml: signed by a revoked key"
+  if grep -q '^\[GNUPG:\] EXPSIG ' <<<"$status"; then
+    log "WARNING: $url/repodata/repomd.xml: its signature has expired; clients refuse it until this publish replaces it"
+  fi
   # primary.xml location and checksum from the signed repomd.xml, then each
   # package's file name and sha256 from primary.xml.
   read -r href sum < <(python3 - "$work/repomd.xml" <<'PY'

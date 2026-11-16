@@ -1,3 +1,3 @@
 module github.com/basalt-os/basalt-os/packages/basalt-agent
 
-go 1.25
+go 1.27.4

@@ -36,6 +36,10 @@
 # .deb files and by-hash objects are immutable (never replaced, max-age
 # 30 days); the other files under dists/ are metadata (max-age=60).
 #
+# RPM repository metadata expires (sign.sh, OB_METADATA_VALID_DAYS): a tree
+# whose "metadata expires:" line in SIGNED-OK is missing, or leaves fewer
+# than OB_METADATA_MIN_DAYS days (default 7), is refused; sign it again.
+#
 # Later publishes must start from the whole published package set (the
 # metadata built by sign.sh lists only the packages in its input).
 source "$(dirname "$0")/../lib.sh"
@@ -58,6 +62,16 @@ fi
 repo="$(awk '/^repo: / {print $2}' "$tree/SIGNED-OK")"
 repo="${repo:-basalt}"
 case "$repo" in basalt | basalt-tools | basalt-testing | basalt-nonfree | basalt-nonfree-testing | apt) ;; *) die "unknown repository \"$repo\" in SIGNED-OK" ;; esac
+if [[ "$repo" != apt ]]; then
+  : "${OB_METADATA_MIN_DAYS:=7}"
+  [[ "$OB_METADATA_MIN_DAYS" =~ ^[0-9]{1,2}$ ]] || die "OB_METADATA_MIN_DAYS must be 0 to 99"
+  expires="$(sed -n 's/^metadata expires: .* (\([0-9]*\))$/\1/p' "$tree/SIGNED-OK")"
+  [[ "$expires" =~ ^[0-9]+$ ]] || die "SIGNED-OK says nothing about when the metadata expires: sign the tree again with this sign.sh"
+  left=$(( (expires - $(date +%s)) / 86400 ))
+  (( expires - $(date +%s) >= OB_METADATA_MIN_DAYS * 86400 )) ||
+    die "the metadata of this tree expires in $left day(s) (under $OB_METADATA_MIN_DAYS): sign it again"
+  log "metadata valid until $(date -u -d "@$expires" +%Y-%m-%dT%H:%M:%SZ) ($left days)"
+fi
 listed="$(grep -E "^[0-9a-f]{64}  $repo/" "$tree/SIGNED-OK")"
 (cd "$tree" && sha256sum -c --quiet <<<"$listed") || die "the tree changed after it was verified"
 [[ "$(awk '{print $2}' <<<"$listed" | sort)" == "$(cd "$tree" && find "$repo" -type f | sort)" ]] ||

@@ -43,6 +43,13 @@
 # clean rpm database, gpg --verify of every repomd.xml.asc, and dnf with
 # gpgcheck=1 and repo_gpgcheck=1 against the tree. On success it writes
 # OUT_DIR/SIGNED-OK, which upload.sh requires.
+# Metadata validity: each repomd.xml.asc carries a signature expiration
+# time, OB_METADATA_VALID_DAYS after signing (default 30, 7 to 90). dnf
+# refuses metadata whose signature has expired, so a frozen or replayed
+# older repository works for at most that long; the repository must be
+# signed again before then, with new packages or without
+# (docs/publishing.md, Metadata validity). The verification below checks
+# the expiration and SIGNED-OK records it for upload.sh.
 # With --test-key and a PUBLISHED list, the tree mixes two keys (the test key
 # and the release key of the published RPMs): client tests then need both,
 # for example cat OUT_DIR.test-pubkey.asc packages/basalt-release/RPM-GPG-KEY-basalt.
@@ -56,6 +63,9 @@ source "$(dirname "$0")/../lib.sh"
 : "${SIGN_PODMAN:=podman}"
 SIGNER_IMAGE="localhost/basalt-signer:$FEDORA_RELEASE"
 : "${OB_REPO:=basalt}"
+: "${OB_METADATA_VALID_DAYS:=30}"
+[[ "$OB_METADATA_VALID_DAYS" =~ ^[1-9][0-9]?$ ]] && (( OB_METADATA_VALID_DAYS >= 7 && OB_METADATA_VALID_DAYS <= 90 )) ||
+  die "OB_METADATA_VALID_DAYS must be 7 to 90"
 case "$OB_REPO" in basalt | basalt-tools | basalt-testing | basalt-nonfree | basalt-nonfree-testing) ;; *) die "OB_REPO must be basalt, basalt-tools, basalt-testing, basalt-nonfree or basalt-nonfree-testing" ;; esac
 export OP_ACCOUNT
 
@@ -200,6 +210,7 @@ trap 'cleanup; rm -f "$presigned_list"' EXIT
 # RPM with exactly that subkey, index, sign repomd.xml.
 log "signing $((${#rpms[@]} - ${#presigned[@]})) packages with subkey $fpr (${#presigned[@]} published ones kept as they are)"
 signer -v "$secret:/secret:ro" -v "$out/$OB_REPO:/repo/basalt" -v "$presigned_list:/presigned.list:ro" -e FPR="$fpr" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
+  -e VALID_DAYS="$OB_METADATA_VALID_DAYS" \
   "$SIGNER_IMAGE" bash -euc '
   shopt -s nullglob
   gpg --batch --quiet --import /secret/key.asc 2>/dev/null || { echo "key import failed" >&2; exit 1; }
@@ -230,7 +241,9 @@ signer -v "$secret:/secret:ro" -v "$out/$OB_REPO:/repo/basalt" -v "$presigned_li
   for d in /repo/basalt/$REL/$ARCH /repo/basalt/$REL/source; do
     [ -d "$d" ] || continue
     createrepo_c -q "$d"
-    gpg $gpgopts --local-user "$FPR!" --detach-sign --armor -o "$d/repodata/repomd.xml.asc" "$d/repodata/repomd.xml"
+    # The signature expires: dnf refuses the metadata after VALID_DAYS days.
+    gpg $gpgopts --local-user "$FPR!" --default-sig-expire "${VALID_DAYS}d" \
+      --detach-sign --armor -o "$d/repodata/repomd.xml.asc" "$d/repodata/repomd.xml"
   done
   gpgconf --kill gpg-agent 2>/dev/null || true'
 
@@ -250,7 +263,7 @@ verify() {
   local key="$1"
   signer -v "$out/$OB_REPO:/repo/basalt:ro" -v "$key:/pub/key.asc:ro" -v "$OB_RELEASE_PUBKEY:/pub/release.asc:ro" \
     -v "$presigned_list:/presigned.list:ro" -e FPR="$fpr" -e RFPR="$release_subkey" -e REL="$FEDORA_RELEASE" -e ARCH="$ARCH" \
-    -e PKG="$verify_pkg" "$SIGNER_IMAGE" bash -euc '
+    -e PKG="$verify_pkg" -e VALID_DAYS="$OB_METADATA_VALID_DAYS" "$SIGNER_IMAGE" bash -euc '
     shopt -s nullglob
     db=$(mktemp -d)
     rpmkeys --dbpath "$db" --import /pub/key.asc
@@ -269,11 +282,22 @@ verify() {
         { echo "not signed by $want: $(basename "$f")" >&2; bad=1; }
     done
     gpg --batch --quiet --import /pub/key.asc 2>/dev/null
+    now=$(date +%s)
     for d in /repo/basalt/$REL/$ARCH /repo/basalt/$REL/source; do
       [ -d "$d" ] || continue
-      gpg --batch --status-fd 1 --verify "$d/repodata/repomd.xml.asc" "$d/repodata/repomd.xml" 2>/dev/null |
-        grep -q "^\[GNUPG:\] VALIDSIG $FPR " || { echo "BAD metadata signature: $d" >&2; bad=1; }
+      st=$(gpg --batch --status-fd 1 --verify "$d/repodata/repomd.xml.asc" "$d/repodata/repomd.xml" 2>/dev/null || true)
+      if ! grep -q "^\[GNUPG:\] GOODSIG " <<<"$st" || ! grep -q "^\[GNUPG:\] VALIDSIG $FPR " <<<"$st"; then
+        echo "BAD metadata signature: $d" >&2; bad=1; continue
+      fi
+      # VALIDSIG <fpr> <date> <created> <expires> (and more): the signature must
+      # expire, within VALID_DAYS days (one hour of slack).
+      exp=$(awk "/^\[GNUPG:\] VALIDSIG / {print \$6; exit}" <<<"$st")
+      if ! [[ "$exp" =~ ^[0-9]+$ ]] || [ "$exp" -le "$now" ] || [ "$exp" -gt $((now + VALID_DAYS * 86400 + 3600)) ]; then
+        echo "metadata signature without the expected expiration: $d" >&2; bad=1; continue
+      fi
+      echo "$exp" >>/tmp/expires
     done
+    [ -s /tmp/expires ] && echo "expires: $(sort -n /tmp/expires | head -1)"
     # dnf end to end: package and metadata signatures checked, offline.
     cat >/etc/yum.repos.d/verify.repo <<EOF
 [verify]
@@ -297,7 +321,10 @@ else
   first="$(printf '%s\n' "${rpms[@]}" | grep -v '\.src\.rpm$' | head -1)"
   verify_pkg="$(rpm -qp --qf '%{NAME}' "$in/$first" 2>/dev/null)" || die "cannot read the name of $first"
 fi
-verify "$pubkey" || die "verification failed; do not publish $out"
+verify_out="$(verify "$pubkey")" || die "verification failed; do not publish $out"
+grep -v '^expires: ' <<<"$verify_out" >&2 || true
+meta_expires="$(sed -n 's/^expires: \([0-9]*\)$/\1/p' <<<"$verify_out")"
+[[ "$meta_expires" =~ ^[0-9]+$ ]] || die "the verification did not report when the metadata expires"
 
 # 9. Marker for upload.sh: what was verified, with which key.
 {
@@ -306,7 +333,9 @@ verify "$pubkey" || die "verification failed; do not publish $out"
   echo "subkey: $fpr"
   echo "repo: $OB_REPO"
   echo "published kept: ${#presigned[@]}"
+  echo "metadata expires: $(date -u -d "@$meta_expires" +%Y-%m-%dT%H:%M:%SZ) ($meta_expires)"
   [[ -f "$in/BUILD-INFO.txt" ]] && sed 's/^/build: /' "$in/BUILD-INFO.txt"
   (cd "$out" && find "$OB_REPO" -type f | sort | xargs -d '\n' sha256sum)
 } >"$out/SIGNED-OK"
+log "repository metadata valid until $(date -u -d "@$meta_expires" +%Y-%m-%dT%H:%M:%SZ): sign it again before then"
 log "signed repository: $out/$OB_REPO/$FEDORA_RELEASE ($(find "$bin" -name '*.rpm' | wc -l) binary, $( [[ -d "$src" ]] && find "$src" -name '*.rpm' | wc -l || echo 0) source)"

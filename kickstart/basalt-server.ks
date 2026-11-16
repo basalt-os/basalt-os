@@ -372,6 +372,23 @@ set -eu
 . /root/.basalt-install.env
 log() { echo "basalt-post: $*"; }
 
+# --- Fedora key in the RPM database --------------------------------------------
+# Anaconda imports RPM-GPG-KEY-fedora-$releasever-$basearch into the new
+# system, with $releasever taken from the new system's os-release VERSION_ID.
+# On Basalt OS that is the Basalt version (44.0, docs/versioning.md), which
+# names no key file, so Anaconda logs a failed import and goes on. Import the
+# key of the Fedora release itself (the %fedora macro, 44), as Anaconda
+# means to; dnf would otherwise import it on first use from fedora.repo.
+# Never fatal: this section goes on whatever happens here.
+fedora_rel="$(rpm -E %fedora 2>/dev/null)" || fedora_rel=""
+[[ "$fedora_rel" =~ ^[0-9]+$ ]] || fedora_rel=""
+fedora_key="/etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$fedora_rel-$(uname -m)"
+if [ -n "$fedora_rel" ] && [ -r "$fedora_key" ]; then
+  rpm --import "$fedora_key" && log "Fedora $fedora_rel key imported" || log "warning: could not import $fedora_key"
+else
+  log "warning: no Fedora key at $fedora_key"
+fi
+
 # --- recovery key: a copy on a USB stick, or shown and acknowledged ----------
 # The file a USB stick receives: the key on a line of its own and what it is for.
 basalt_key_file() {
