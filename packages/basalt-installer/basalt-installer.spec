@@ -4,7 +4,7 @@
 
 Name:           basalt-installer
 Version:        0.2.4
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Basalt OS installer: plan engine, text and graphical frontends
 
 # Apache-2.0: this package. Bundled Go modules: tui-kit, Bubble Tea, Bubbles,
@@ -113,6 +113,12 @@ done
 %{_datadir}/basalt-installer/gui/
 
 %changelog
+* Mon Nov 16 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.4-2
+- Built with the official Go 1.27.4 (checksum pinned in
+  scripts/go-toolchain.conf). 0.2.4-1 was built with Go 1.27.1, which has
+  standard library vulnerabilities on reachable paths (the plan download:
+  HTTP client, TLS, x509).
+
 * Thu Nov 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.2.4-1
 - Dual boot: installs next to Windows and another Linux on free space,
   lists the other systems in the boot menu without os-prober (only safe
