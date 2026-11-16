@@ -259,10 +259,14 @@ scripts/release/upload.sh /tmp/refresh-out
 `merge-published.sh` accepts a published signature that has already
 expired (the content is still authentic), so a repository that expired
 is refreshed the same way. `scripts/release/metadata-expiry.sh` reads the
-published repositories with the public key and fails when a signature
-never expires, has expired or expires in fewer than 10 days; the
-scheduled workflow `.github/workflows/metadata-expiry.yml` runs it every
-day, so a failed run is the reminder to sign again.
+published repositories with the public key and fails when a signature has
+expired or expires in fewer than 10 days, or when the check cannot run;
+the scheduled workflow `.github/workflows/metadata-expiry.yml` runs it
+every day, so a failed run is the reminder to sign again. A signature made
+before metadata expiry existed never expires: the check reports it as a
+warning (an annotation and a line of the job summary asking to sign that
+repository again) and does not fail, while `upload.sh` still refuses to
+publish a tree without an expiration.
 
 Limits: signatures made before this change never expire, and dnf accepts
 them until the packages subkey changes; a client does not yet require the

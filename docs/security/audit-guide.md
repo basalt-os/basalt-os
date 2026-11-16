@@ -228,7 +228,9 @@ $ sed -n 's/^metadata expires: //p' OUT_DIR/SIGNED-OK
 
 Expected: every published repository line starts with "ok" and names an
 expiration less than 90 days away, and the last run of the scheduled
-"Metadata expiry" workflow passed. A signed tree's SIGNED-OK names when
+"Metadata expiry" workflow passed. A "WARN" line (a signature that never
+expires, made before this control) means that repository still has to be
+signed again. A signed tree's SIGNED-OK names when
 its metadata expires; upload.sh refuses a tree without that line. In a
 lab, a repository whose repomd.xml.asc has expired must make dnf stop
 with "signature is not alive".

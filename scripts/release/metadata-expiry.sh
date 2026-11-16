@@ -16,8 +16,12 @@
 # local pair instead.
 #
 # It fails when a signature is not a good one by the packages subkey
-# (OB_SIGNING_SUBKEY, with the key in OB_RELEASE_PUBKEY), carries no
-# expiration, has expired, or expires in fewer than N days (default 10).
+# (OB_SIGNING_SUBKEY, with the key in OB_RELEASE_PUBKEY), has expired, or
+# expires in fewer than N days (default 10), and when the check cannot run
+# (download, key import). A signature without an expiration (made before
+# metadata expiry existed) is a warning, not a failure: the repository
+# should be signed again, but nothing is about to break. Under GitHub
+# Actions both show as annotations and as lines of the job summary.
 # The scheduled workflow .github/workflows/metadata-expiry.yml runs it, so
 # a repository about to expire shows up as a failed run.
 source "$(dirname "$0")/../lib.sh"
@@ -48,29 +52,39 @@ mkdir -m 700 "$GNUPGHOME"
 gpg --batch --quiet --import "$OB_RELEASE_PUBKEY" 2>/dev/null || die "cannot import $OB_RELEASE_PUBKEY"
 fpr="${OB_SIGNING_SUBKEY^^}"
 now="$(date +%s)"
-fails=0
+fails=0 warns=0
+
+# note LEVEL TEXT: a GitHub Actions annotation (error or warning) and a
+# line of the job summary, when running there.
+note() {
+  [[ "${GITHUB_ACTIONS:-}" == true ]] || return 0
+  echo "::$1 title=Repository metadata expiry::$2"
+  [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && printf -- '- %s: %s\n' "$1" "$2" >>"$GITHUB_STEP_SUMMARY"
+  return 0
+}
+# failed TEXT, warned TEXT: print, annotate, count.
+failed() { echo "FAIL $1"; note error "$1"; fails=$((fails + 1)); }
+warned() { echo "WARN $1"; note warning "$1"; warns=$((warns + 1)); }
 
 # check NAME REPOMD ASC: print when the signature expires; count a failure.
 check() {
   local name="$1" st exp left
   st="$(gpg --batch --status-fd 1 --verify "$3" "$2" 2>/dev/null || true)"
   if ! grep -q "^\[GNUPG:\] VALIDSIG $fpr " <<<"$st" || grep -q '^\[GNUPG:\] REVKEYSIG ' <<<"$st"; then
-    echo "FAIL $name: not a good signature by the packages subkey $fpr"
-    fails=$((fails + 1)); return
+    failed "$name: not a good signature by the packages subkey $fpr"
+    return
   fi
   # VALIDSIG <fpr> <date> <created> <expires> and more fields; 0 means it never expires.
   exp="$(awk '/^\[GNUPG:\] VALIDSIG / {print $6; exit}' <<<"$st")"
   if ! [[ "$exp" =~ ^[0-9]+$ ]] || [[ "$exp" == 0 ]]; then
-    echo "FAIL $name: the signature never expires (signed before metadata expiry existed): sign the repository again"
-    fails=$((fails + 1)); return
+    warned "$name: the signature never expires (signed before metadata expiry existed): sign the repository again with scripts/release/sign.sh (docs/publishing.md, Metadata validity)"
+    return
   fi
   left=$(( (exp - now) / 86400 ))
   if (( exp <= now )); then
-    echo "FAIL $name: expired on $(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ): clients refuse it, sign the repository again"
-    fails=$((fails + 1))
+    failed "$name: expired on $(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ): clients refuse it, sign the repository again"
   elif (( exp - now < min_days * 86400 )); then
-    echo "FAIL $name: expires on $(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ), in $left day(s) (under $min_days): sign the repository again"
-    fails=$((fails + 1))
+    failed "$name: expires on $(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ), in $left day(s) (under $min_days): sign the repository again"
   else
     echo "ok   $name: expires on $(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ), in $left days"
   fi
@@ -99,4 +113,8 @@ else
     done
   done
 fi
+if [[ "${GITHUB_ACTIONS:-}" == true && -n "${GITHUB_STEP_SUMMARY:-}" && $((fails + warns)) == 0 ]]; then
+  echo "- every published repository metadata signature expires in $min_days days or more" >>"$GITHUB_STEP_SUMMARY"
+fi
+(( warns == 0 )) || log "$warns signature(s) without an expiration: sign those repositories again"
 [[ $fails == 0 ]] || die "$fails repository metadata signature(s) need attention"

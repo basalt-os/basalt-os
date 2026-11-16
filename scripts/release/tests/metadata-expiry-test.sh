@@ -52,12 +52,32 @@ run_check() { # run_check NAME: status in $rc, output in $out
 }
 run_check fresh
 [[ $rc == 0 && "$out" == *"ok "* ]] && ok || fail "a signature that expires in 30 days must pass: $out"
-for c in soon never expired otherkey; do
+for c in soon expired otherkey; do
   run_check "$c"
   [[ $rc != 0 && "$out" == *FAIL* ]] && ok || fail "$c must fail: $out"
 done
+# A signature from before metadata expiry: a warning, not a failure.
 run_check never
-[[ "$out" == *"never expires"* ]] && ok || fail "a signature without an expiration must be named as such: $out"
+[[ $rc == 0 && "$out" == *WARN*"never expires"* && "$out" != *FAIL* ]] && ok ||
+  fail "a signature without an expiration must warn and pass: $out"
+# Under GitHub Actions: annotations and job summary lines.
+summary="$tmp/summary.md"
+: >"$summary"
+rc=0
+out="$(GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$summary" OB_RELEASE_PUBKEY="$tmp/key.asc" OB_SIGNING_SUBKEY="$fpr" \
+  "$check" --file "$tmp/repomd.xml" "$tmp/never.asc" 2>&1)" || rc=$?
+[[ $rc == 0 && "$out" == *"::warning title=Repository metadata expiry::"* ]] && ok || fail "no warning annotation: $out"
+grep -q '^- warning: .*sign the repository again' "$summary" && ok || fail "no warning line in the job summary: $(cat "$summary")"
+: >"$summary"
+rc=0
+out="$(GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$summary" OB_RELEASE_PUBKEY="$tmp/key.asc" OB_SIGNING_SUBKEY="$fpr" \
+  "$check" --file "$tmp/repomd.xml" "$tmp/expired.asc" 2>&1)" || rc=$?
+[[ $rc != 0 && "$out" == *"::error title=Repository metadata expiry::"* ]] && ok || fail "no error annotation: $out"
+grep -q '^- error: .*expired' "$summary" && ok || fail "no error line in the job summary: $(cat "$summary")"
+# The check itself cannot run: a missing key fails.
+rc=0
+out="$(OB_RELEASE_PUBKEY="$tmp/missing.asc" OB_SIGNING_SUBKEY="$fpr" "$check" --file "$tmp/repomd.xml" "$tmp/fresh.asc" 2>&1)" || rc=$?
+[[ $rc != 0 ]] && ok || fail "a check that cannot import the key must fail: $out"
 
 # Client side: dnf refuses an expired repository signature.
 if [[ $(id -u) == 0 ]] && command -v dnf5 >/dev/null && command -v createrepo_c >/dev/null; then

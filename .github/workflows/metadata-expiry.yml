@@ -2,8 +2,11 @@
 # that sign.sh makes expires (OB_METADATA_VALID_DAYS) and dnf refuses
 # expired metadata, so a repository must be signed again in time. This job
 # reads the public repositories at https://obpkg.org with the public release
-# key and fails when a signature never expires, has expired, or expires in
-# fewer than 10 days, so a failed run is the reminder. No secrets.
+# key. It fails when a signature has expired or expires in fewer than 10
+# days, or when the check cannot run, so a failed run is the reminder. A
+# signature made before metadata expiry existed (it never expires) is a
+# warning annotation and a job summary line asking to sign the repository
+# again, not a failure. No secrets.
 name: Metadata expiry
 
 on:
