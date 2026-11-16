@@ -75,6 +75,12 @@ make_tree() {
     echo "mode: test-key"
     echo "subkey: 0000"
     echo "repo: basalt-testing"
+    # TREE_VALID_DAYS: days until the metadata expires (default 30), or none.
+    if [[ "${TREE_VALID_DAYS:-30}" != none ]]; then
+      local exp
+      exp=$(( $(date +%s) + ${TREE_VALID_DAYS:-30} * 86400 ))
+      echo "metadata expires: $(date -u -d "@$exp" +%Y-%m-%dT%H:%M:%SZ) ($exp)"
+    fi
     (cd "$d" && find basalt-testing -type f | sort | xargs -d '\n' sha256sum)
   } >"$d/SIGNED-OK"
 }
@@ -219,6 +225,19 @@ OB_UPLOAD_JOBS=0 OB_R2_BUCKET=testbucket OB_R2_ENDPOINT="$endpoint" \
   OB_R2_ACCESS_KEY_ID_FILE="$tmp/key_id" OB_R2_SECRET_ACCESS_KEY_FILE="$tmp/secret" \
   "$upload" "$tmp/tree" >/dev/null 2>&1 || rc=$?
 eq "OB_UPLOAD_JOBS=0 refused" 1 "$rc"
+
+# --- 9b. Metadata validity: SIGNED-OK must say when the metadata expires ----------
+start_server
+TREE_VALID_DAYS=none make_tree "$tmp/tree-noexp" 1
+run_upload "$tmp/tree-noexp"
+eq "a tree without a metadata expiration is refused" 1 "$rc"
+has "the refusal says why" "nothing about when the metadata expires" "$out"
+eq "nothing is uploaded without an expiration" 0 "$(puts)"
+TREE_VALID_DAYS=2 make_tree "$tmp/tree-soon" 1
+run_upload "$tmp/tree-soon"
+eq "a tree whose metadata expires in 2 days is refused" 1 "$rc"
+has "the refusal says to sign again" "sign it again" "$out"
+eq "nothing is uploaded when it expires too soon" 0 "$(puts)"
 
 # --- 10. APT tree: .deb and by-hash objects immutable, InRelease last --------------
 start_server

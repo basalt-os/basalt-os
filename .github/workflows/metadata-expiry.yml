@@ -1,0 +1,27 @@
+# When does the published repository metadata expire? Every repomd.xml.asc
+# that sign.sh makes expires (OB_METADATA_VALID_DAYS) and dnf refuses
+# expired metadata, so a repository must be signed again in time. This job
+# reads the public repositories at https://obpkg.org with the public release
+# key and fails when a signature never expires, has expired, or expires in
+# fewer than 10 days, so a failed run is the reminder. No secrets.
+name: Metadata expiry
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  expiry:
+    name: Published repository metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check every published repomd.xml.asc
+        run: scripts/release/metadata-expiry.sh --min-days 10
