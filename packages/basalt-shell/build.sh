@@ -13,6 +13,9 @@
 # The SELinux subpackage builds against basalt_agent_base from this
 # repository (packages/basalt-agent/selinux), the interface that
 # basalt-agent-selinux installs.
+# Go: the official release pinned in scripts/go-toolchain.conf (checksum
+# verified), not Fedora's golang; GOTOOLCHAIN=local, so a shell commit
+# whose go.mod asks for a newer Go fails instead of fetching one.
 source "$(dirname "$0")/../../scripts/lib.sh"
 pkg="$REPO_ROOT/packages/basalt-shell"
 out="${1:-$RPM_DIR/testing}"
@@ -44,10 +47,13 @@ git -C "$work/git" archive --format=tar.gz --prefix="basalt-shell-$ver/" -o "$wo
 git -C "$work/git" show "$BASALT_SHELL_COMMIT:packaging/basalt-shell.spec" >"$work/SPECS/basalt-shell.spec"
 cp -p "$REPO_ROOT/packages/basalt-agent/selinux/basalt_agent_base.if" "$work/"
 
-log "basalt-shell $ver (commit ${BASALT_SHELL_COMMIT:0:12}) in $FEDORA_IMAGE"
-in_fedora -v "$work:/rpmbuild" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
-  dnf -q -y install rpm-build systemd-rpm-macros golang make selinux-policy-devel bzip2 >/dev/null 2>&1 ||
+tarball="$(go_toolchain)"
+log "basalt-shell $ver (commit ${BASALT_SHELL_COMMIT:0:12}) in $FEDORA_IMAGE (Go $GO_VERSION)"
+in_fedora -v "$work:/rpmbuild" -v "$tarball:/go.tar.gz:ro" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
+  dnf -q -y install rpm-build systemd systemd-rpm-macros gcc make selinux-policy-devel bzip2 >/dev/null 2>&1 ||
     { echo "dnf install failed"; exit 1; }
+  tar -C /opt -xzf /go.tar.gz
+  export PATH=/opt/go/bin:$PATH GOTOOLCHAIN=local GOPROXY=off
   # Stands in for the basalt-agent-selinux build dependency (same file).
   install -Dpm 0644 /rpmbuild/basalt_agent_base.if /usr/share/selinux/devel/include/distributed/basalt_agent_base.if
   rpmbuild --define "_topdir /rpmbuild" --define "basalt_version $VER" --nodeps \

@@ -51,6 +51,9 @@ architecture:   $ARCH
 commit:         $(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)
 built:          $(date -u +%Y-%m-%dT%H:%M:%SZ)
 base ISO:       $fedora_iso
+go toolchain:   go$GO_VERSION (official, sha256 $GO_SHA256) for basalt-installer,
+                basalt-agent and basalt-assistant; the other Go packages use
+                Fedora's golang
 signatures:     none. Packages, repository metadata and ISO are unsigned;
                 RPM-GPG-KEY-basalt is a placeholder. Release builds are signed
                 on the release signer (docs/key-ceremony.md).

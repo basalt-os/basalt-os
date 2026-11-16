@@ -11,7 +11,7 @@
 
 Name:           basalt-assistant
 Version:        0.13.4
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
 # The table of NVIDIA GPUs is derived from NVIDIA's supported-gpus.json (Zlib).
@@ -19,13 +19,21 @@ License:        Apache-2.0 AND MIT AND Zlib
 URL:            https://github.com/basalt-os/basalt-os
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  golang >= 1.25
+# Go: built with the official Go release named by go.mod (go 1.27.4), not
+# Fedora's golang, which can lag behind Go's security releases. build.sh
+# puts a checksum-verified copy (scripts/go-toolchain.conf) first in PATH;
+# nothing is downloaded here.
 BuildRequires:  gcc
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  selinux-policy-devel
 BuildRequires:  make
 BuildRequires:  bzip2
 BuildRequires:  gettext
+# The XKB registry and the console keymaps: %check validates keyboard
+# actions against them (Fedora's golang used to bring both in through its
+# own dependencies).
+BuildRequires:  xkeyboard-config
+BuildRequires:  kbd
 
 Requires:       systemd
 Requires:       snapper
@@ -207,6 +215,11 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Mon Nov 16 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.4-2
+- Built with the official Go 1.27.4 (checksum pinned) instead of Fedora's
+  golang 1.26, which has standard library vulnerabilities on reachable
+  paths (net/http, GO-2026-6859 among them). go.mod: go 1.27.4.
+
 * Thu Nov 05 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.4-1
 - basalt fallback gnome|basalt: the GNOME fallback's login screen as a
   proposal (desktop.fallback, gate 0.3.3): it enables the target display

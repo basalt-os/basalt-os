@@ -484,7 +484,9 @@ tui-kit needs Go 1.27; Fedora 44 ships 1.26. `go.mod` names the Go
 release (`go 1.27.4`, the first 1.27 release without the known standard
 library vulnerabilities the installer reaches, and the oldest Go that may
 build it) and `build.sh` puts that official release, checked
-against a pinned SHA-256, first in the container's PATH. `go mod vendor`
+against the SHA-256 pinned in `scripts/go-toolchain.conf` (shared with
+basalt-agent, basalt-assistant and basalt-shell), first in the
+container's PATH. `go mod vendor`
 (verified against `go.sum`) makes the vendor tarball that is the RPM's
 second source; rpmbuild runs offline (`GOPROXY=off`, `GOTOOLCHAIN=local`).
 Nothing is vendored into the repository.

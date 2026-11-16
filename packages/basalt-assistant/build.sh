@@ -8,6 +8,11 @@
 source "$(dirname "$0")/../../scripts/lib.sh"
 pkg="$REPO_ROOT/packages/basalt-assistant"
 ver="$(awk '/^Version:/ {print $2}' "$pkg/basalt-assistant.spec")"
+# Go: the official release pinned in scripts/go-toolchain.conf (checksum
+# verified, scripts/lib.sh go_toolchain), not Fedora's golang, which can lag
+# behind Go's security releases. go.mod must name the same version.
+go_mod_check "$pkg"
+tarball="$(go_toolchain)"
 
 work="$(mktemp -d)"
 trap 'sudo rm -rf "$work"' EXIT
@@ -17,13 +22,15 @@ tar -C "$pkg" --owner=0 --group=0 --sort=name --exclude=./bin --exclude='*.pp' -
 cp -p "$pkg/basalt-assistant.spec" "$work/SPECS/"
 
 mode="${1:-build}"
-log "basalt-assistant $ver: $mode in $FEDORA_IMAGE"
+log "basalt-assistant $ver: $mode in $FEDORA_IMAGE (Go $GO_VERSION)"
 # The test mode also mounts the shared evaluation cases, so the check that
 # every expected action passes the action validators runs with the tests.
-in_fedora -v "$work:/rpmbuild" -v "$REPO_ROOT/eval/cases:/eval-cases:ro" -e BASALT_EVAL_CASES=/eval-cases \
+in_fedora -v "$work:/rpmbuild" -v "$tarball:/go.tar.gz:ro" -v "$REPO_ROOT/eval/cases:/eval-cases:ro" -e BASALT_EVAL_CASES=/eval-cases \
   -e MODE="$mode" -e VER="$ver" "$FEDORA_IMAGE" bash -euc '
-  dnf -q -y install rpm-build systemd-rpm-macros systemd-devel golang gcc selinux-policy-devel make bzip2 gettext >/dev/null 2>&1 ||
+  dnf -q -y install rpm-build systemd systemd-rpm-macros systemd-devel gcc selinux-policy-devel make bzip2 gettext xkeyboard-config kbd >/dev/null 2>&1 ||
     { echo "dnf install failed"; exit 1; }
+  tar -C /opt -xzf /go.tar.gz
+  export PATH=/opt/go/bin:$PATH GOTOOLCHAIN=local
   if [ "$MODE" = test ]; then
     mkdir -p /src && tar -C /src -xzf /rpmbuild/SOURCES/basalt-assistant-$VER.tar.gz && cd /src
     GOFLAGS=-mod=mod GOTOOLCHAIN=local GOPROXY=off go vet ./... && GOFLAGS=-mod=mod GOTOOLCHAIN=local GOPROXY=off go test ./...

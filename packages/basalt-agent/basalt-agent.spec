@@ -10,13 +10,16 @@
 
 Name:           basalt-agent
 Version:        0.4.1
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Run AI coding agents confined by SELinux (container or native)
 License:        Apache-2.0
 URL:            https://github.com/basalt-os/basalt-os
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  golang >= 1.25
+# Go: built with the official Go release named by go.mod (go 1.27.4), not
+# Fedora's golang, which can lag behind Go's security releases. build.sh
+# puts a checksum-verified copy (scripts/go-toolchain.conf) first in PATH;
+# nothing is downloaded here.
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  selinux-policy-devel
 BuildRequires:  make
@@ -176,6 +179,11 @@ fi
 %{_datadir}/selinux/devel/include/distributed/basalt_agent.if
 
 %changelog
+* Mon Nov 16 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.1-2
+- Built with the official Go 1.27.4 (checksum pinned) instead of Fedora's
+  golang 1.26, which has standard library vulnerabilities on reachable
+  paths (net/http, GO-2026-6859 among them). go.mod: go 1.27.4.
+
 * Tue Oct 06 2026 Basalt OS project <noreply@basalt-os.org> - 0.4.1-1
 - Native mode: the agent may listen on and reach TCP ports 1024 and up
   (SELinux module basalt_agent 0.3.1), so dev and test servers it starts

@@ -7,12 +7,12 @@
 #   packages/basalt-installer/build.sh test     go vet + go test in the container only
 #
 # Go toolchain: tui-kit needs Go 1.27 and Fedora 44 ships Go 1.26, so the
-# container uses the official Go release named by go.mod (its toolchain
-# line, or the go line when there is none; the go line is also the oldest
-# Go that may build the installer, so a toolchain with known standard
-# library vulnerabilities is refused),
-# downloaded from go.dev and checked against the SHA-256 pinned below
-# (cached in $BUILD_DIR/cache). The Go modules are fetched by `go mod
+# container uses the official Go release pinned in scripts/go-toolchain.conf,
+# which go.mod must name (go_mod_check in scripts/lib.sh; the go line is
+# also the oldest Go that may build the installer, so a toolchain with
+# known standard library vulnerabilities is refused), downloaded from
+# go.dev and checked against the pinned SHA-256 (go_toolchain, cached in
+# $BUILD_DIR/cache). The Go modules are fetched by `go mod
 # vendor` (verified against go.sum and the checksum database) into a vendor
 # tarball that becomes the RPM's second source; rpmbuild itself runs with
 # GOPROXY=off. Nothing is vendored into the repository.
@@ -20,21 +20,8 @@ source "$(dirname "$0")/../../scripts/lib.sh"
 pkg="$REPO_ROOT/packages/basalt-installer"
 ver="$(awk '/^Version:/ {print $2}' "$pkg/basalt-installer.spec")"
 
-GO_VERSION=1.27.4
-GO_SHA256=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
-mod_go="$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$pkg/go.mod")"
-[[ -n "$mod_go" ]] || mod_go="$(awk '$1 == "go" { print $2; exit }' "$pkg/go.mod")"
-[[ "$mod_go" == "$GO_VERSION" ]] || die "go.mod names Go $mod_go and GO_VERSION is $GO_VERSION: they must agree"
-
-cache="$BUILD_DIR/cache"
-mkdir -p "$cache"
-tarball="$cache/go$GO_VERSION.linux-amd64.tar.gz"
-if ! echo "$GO_SHA256  $tarball" | sha256sum -c --quiet - 2>/dev/null; then
-  log "downloading Go $GO_VERSION"
-  curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$tarball.part" "https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz"
-  echo "$GO_SHA256  $tarball.part" | sha256sum -c --quiet - || die "Go $GO_VERSION checksum mismatch"
-  mv "$tarball.part" "$tarball"
-fi
+go_mod_check "$pkg"
+tarball="$(go_toolchain)"
 
 work="$(mktemp -d)"
 trap 'sudo rm -rf "$work"' EXIT
