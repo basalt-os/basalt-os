@@ -10,8 +10,8 @@
 %global debug_package %{nil}
 
 Name:           basalt-assistant
-Version:        0.13.4
-Release:        2%{?dist}
+Version:        0.13.5
+Release:        1%{?dist}
 Summary:        Basalt OS system assistant: diagnosis, proposals, confirmed changes, audit
 # The command runner is adapted from tui-kit (MIT).
 # The table of NVIDIA GPUs is derived from NVIDIA's supported-gpus.json (Zlib).
@@ -215,6 +215,17 @@ fi
 %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{modulename}
 
 %changelog
+* Mon Nov 23 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.5-1
+- The update check runs dnf makecache with -y, so dnf imports the keys
+  named by the repositories' gpgkey files, and it fails when a
+  repository's metadata did not verify instead of reporting that no
+  updates are waiting.
+- The assistant never proposes widening an agent's confinement: a
+  denial of a basalt_agent_* domain is reported as suspicious with no
+  action, the domain's own type is not a candidate file type, and a file
+  directly in a home directory no longer leads to a rule for the whole
+  home.
+
 * Mon Nov 16 2026 Basalt OS project <noreply@basalt-os.org> - 0.13.4-2
 - Built with the official Go 1.27.4 (checksum pinned) instead of Fedora's
   golang 1.26, which has standard library vulnerabilities on reachable
