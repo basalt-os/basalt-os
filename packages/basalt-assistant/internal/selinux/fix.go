@@ -253,8 +253,10 @@ func (z Analyzer) Analyze(ctx context.Context, g Group) Fix {
 		g.Count, strings.Join(a.Perms, " "), dom, a.Comm, a.Class, objectName(a)))
 	f.Features["permissive"] = a.Permissive
 
-	if dom == "basalt_assistant_t" {
-		// The assistant never proposes widening its own confinement.
+	if dom == "basalt_assistant_t" || agentDomain(dom) {
+		// The assistant never proposes widening its own confinement, nor
+		// the confinement of the agents (basalt_agent_*): a denial there is
+		// the policy keeping an agent out of the person's files.
 		f.Features["sensitive_target"] = true
 	}
 	if sensitiveClasses[a.Class] || sensitiveTypes[tgt] || hasAny(a.Perms, "ptrace", "sys_module", "setenforce", "load_policy", "sys_rawio", "mac_admin") {
@@ -276,6 +278,9 @@ func (z Analyzer) Analyze(ctx context.Context, g Group) Fix {
 	z.finishErrors(&f)
 	if dom == "basalt_assistant_t" {
 		f.Explanation = "a denial of the assistant itself (basalt_assistant_t): its confinement held; this is a bug in the assistant or its policy, never something to allow from here"
+	}
+	if agentDomain(dom) {
+		f.Explanation = fmt.Sprintf("a denial of an agent (%s): its confinement held; an agent gets more access only through its own grants, never from a label change here", dom)
 	}
 	if f.Explanation == "" {
 		f.Explanation = "no known fix for this denial; review it (audit2why, sesearch) before changing policy, and do not generate a module from it blindly"
@@ -538,10 +543,18 @@ func labelDir(p, class string) string {
 	if class != "dir" {
 		dir = path.Dir(p)
 	}
-	if topDirs[dir] || dir == "/" {
+	// A home directory itself (/home/NAME) is as wide as a top-level one:
+	// a rule there would relabel every file of that person.
+	if topDirs[dir] || dir == "/" || path.Dir(dir) == "/home" {
 		return p
 	}
 	return dir
+}
+
+// agentDomain reports the SELinux domains of agents (basalt-agent's
+// basalt_agent_* types, the MCP clients of the shell among them).
+func agentDomain(dom string) bool {
+	return strings.HasPrefix(dom, "basalt_agent_")
 }
 
 // PseudoPath reports a path on a kernel pseudo file system (/proc, /sys):
@@ -579,7 +592,10 @@ func (z Analyzer) candidateType(ctx context.Context, dom, class, perm, p string,
 	stem := strings.TrimSuffix(dom, "_t") + "_"
 	var cands []string
 	for _, r := range z.rules(ctx, AllowQuery(dom, "", class, perm)) {
-		if r.Bool == "" && strings.HasPrefix(r.Target, stem) && strings.HasSuffix(r.Target, "_t") && !genericTypes[r.Target] {
+		// The domain's own type is never a file label: rules on it cover
+		// the process's /proc entries, and a file labeled with it would be
+		// readable and writable by every process of that domain.
+		if r.Bool == "" && r.Target != dom && strings.HasPrefix(r.Target, stem) && strings.HasSuffix(r.Target, "_t") && !genericTypes[r.Target] {
 			cands = append(cands, r.Target)
 		}
 	}
