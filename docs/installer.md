@@ -485,7 +485,7 @@ release (`go 1.27.4`, the first 1.27 release without the known standard
 library vulnerabilities the installer reaches, and the oldest Go that may
 build it) and `build.sh` puts that official release, checked
 against the SHA-256 pinned in `scripts/go-toolchain.conf` (shared with
-basalt-agent, basalt-assistant and basalt-shell), first in the
+basalt-agent, basalt-assistant, basalt-shell and cotty), first in the
 container's PATH. `go mod vendor`
 (verified against `go.sum`) makes the vendor tarball that is the RPM's
 second source; rpmbuild runs offline (`GOPROXY=off`, `GOTOOLCHAIN=local`).

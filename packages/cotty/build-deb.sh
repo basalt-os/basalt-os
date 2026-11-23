@@ -33,10 +33,15 @@ cotty_fetch "$work"
 mkdir -p "$work/deb" "$work/dist"
 cp -p "$pkg"/deb/* "$pkg/third-party-licenses.sh" "$work/deb/"
 
-log "cotty $COTTY_VERSION .deb (commit ${COTTY_COMMIT:0:12}; ${arches[*]}) in $FEDORA_IMAGE"
-in_fedora -v "$work:/w" -e VER="$COTTY_VERSION" -e EPOCH="$COTTY_EPOCH" -e ARCHES="${arches[*]}" \
+# Go: the official release pinned in scripts/go-toolchain.conf, as for the
+# RPM build (it cross-compiles arm64 too).
+tarball="$(go_toolchain)"
+log "cotty $COTTY_VERSION .deb (commit ${COTTY_COMMIT:0:12}; ${arches[*]}) in $FEDORA_IMAGE (Go $GO_VERSION)"
+in_fedora -v "$work:/w" -v "$tarball:/go.tar.gz:ro" -e VER="$COTTY_VERSION" -e EPOCH="$COTTY_EPOCH" -e ARCHES="${arches[*]}" \
   -e NFPM_VERSION="$NFPM_VERSION" "$FEDORA_IMAGE" bash -euc '
-  dnf -q -y install golang tar gzip >/dev/null 2>&1 || { echo "dnf install failed"; exit 1; }
+  dnf -q -y install tar gzip git >/dev/null 2>&1 || { echo "dnf install failed"; exit 1; }
+  tar -C /opt -xzf /go.tar.gz
+  export PATH=/opt/go/bin:$PATH
   export SOURCE_DATE_EPOCH="$EPOCH" GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux
   mkdir -p /tmp/src /tmp/tools
   tar -xzf "/w/SOURCES/cotty-$VER.tar.gz" -C /tmp/src

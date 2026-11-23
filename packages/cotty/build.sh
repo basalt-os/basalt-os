@@ -14,6 +14,10 @@
 #
 # OUT_DIR receives the binary RPMs and the source RPM, as for the other
 # testing packages.
+#
+# Go: the official release pinned in scripts/go-toolchain.conf (checksum
+# verified), not Fedora's golang; GOTOOLCHAIN=local, so a cotty commit whose
+# go.mod asks for a newer Go fails instead of fetching one.
 source "$(dirname "$0")/../../scripts/lib.sh"
 pkg="$REPO_ROOT/packages/cotty"
 out="${1:-$RPM_DIR/testing}"
@@ -27,10 +31,13 @@ cotty_fetch "$work"
 cp -p "$pkg/cotty.spec" "$work/SPECS/"
 cp -p "$pkg/third-party-licenses.sh" "$work/SOURCES/"
 
-log "cotty $COTTY_VERSION (commit ${COTTY_COMMIT:0:12}) in $FEDORA_IMAGE"
-in_fedora -v "$work:/rpmbuild" -e VER="$COTTY_VERSION" -e EPOCH="$COTTY_EPOCH" -e COMMIT="$COTTY_COMMIT" "$FEDORA_IMAGE" bash -euc '
-  dnf -q -y install rpm-build systemd-rpm-macros golang tar gzip >/dev/null 2>&1 ||
+tarball="$(go_toolchain)"
+log "cotty $COTTY_VERSION (commit ${COTTY_COMMIT:0:12}) in $FEDORA_IMAGE (Go $GO_VERSION)"
+in_fedora -v "$work:/rpmbuild" -v "$tarball:/go.tar.gz:ro" -e VER="$COTTY_VERSION" -e EPOCH="$COTTY_EPOCH" -e COMMIT="$COTTY_COMMIT" "$FEDORA_IMAGE" bash -euc '
+  dnf -q -y install rpm-build systemd-rpm-macros tar gzip >/dev/null 2>&1 ||
     { echo "dnf install failed"; exit 1; }
+  tar -C /opt -xzf /go.tar.gz
+  export PATH=/opt/go/bin:$PATH GOTOOLCHAIN=local
   # Vendor the modules go.sum pins (the only network use), as a reproducible
   # archive: sorted names, fixed owner and times.
   mkdir -p /tmp/v

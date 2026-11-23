@@ -29,7 +29,10 @@ Source0:        cotty-%{version}.tar.gz
 Source1:        cotty-%{version}-vendor.tar.gz
 Source2:        third-party-licenses.sh
 
-BuildRequires:  golang >= 1.26
+# Go: built with the official Go release pinned in scripts/go-toolchain.conf,
+# not Fedora's golang, which can lag behind Go's security releases (cotty's
+# go.mod names go 1.27.4 since its 2026-11-16 commit). build.sh puts a
+# checksum-verified copy first in PATH; nothing is downloaded here.
 BuildRequires:  systemd-rpm-macros
 
 %description
@@ -116,10 +119,17 @@ fi
 %{_bindir}/cotty-guard
 %{_unitdir}/cotty-guard.service
 
-# The entry's version comes from packages/cotty/source.conf, so a pin bump
-# changes no line here.
+# The newest entry's version comes from packages/cotty/source.conf, so a pin
+# bump changes no line here; older entries name the version they shipped.
 %changelog
-* Wed Nov 04 2026 Basalt OS project <noreply@basalt-os.org> - %{version}-%{release}
+* Mon Nov 23 2026 Basalt OS project <noreply@basalt-os.org> - %{version}-%{release}
+- Snapshot of cotty main with the confirm policy and assurance level fixes
+  (completion, history recall, forged confinement, '!' in agent text) and
+  updated Go modules.
+- Built with the official Go 1.27.4 (checksum pinned) instead of Fedora's
+  golang: cotty's go.mod now names go 1.27.4.
+
+* Wed Nov 04 2026 Basalt OS project <noreply@basalt-os.org> - 0.1.0~git20261104225151.6ef77470a88d-1
 - First package for basalt-testing: cotty (session broker, attach, MCP
   server, cotty agent) and cotty-guard (BPF LSM service, not enabled at
   installation, uninstalled with the package).
