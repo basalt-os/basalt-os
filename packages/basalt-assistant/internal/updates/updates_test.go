@@ -302,3 +302,20 @@ func TestReportsAreKnown(t *testing.T) {
 		}
 	}
 }
+
+func TestMetadataNotVerified(t *testing.T) {
+	// dnf 5.4 with no terminal to answer the key question: the repository
+	// is skipped and the run still ends with "Metadata cache created.".
+	skipped := "Importing OpenPGP key 0xA395B302:\n" +
+		" UserID     : \"OpenBasalt release key <openbasalt@openbasalt.org>\"\n" +
+		"Is this ok [y/N]:  Basalt OS 44 - x86_64  100% |  10.1 KiB/s |   2.3 KiB |  00m00s\n" +
+		">>> repomd.xml GPG signature verification error: Signing key not found\n" +
+		"Repositories loaded.\nMetadata cache created.\n"
+	if !MetadataNotVerified(skipped) {
+		t.Fatal("a skipped repository was taken for a good check")
+	}
+	good := "Updating and loading repositories:\nRepositories loaded.\nMetadata cache created.\n"
+	if MetadataNotVerified(good) {
+		t.Fatal("a good check was taken for a failure")
+	}
+}

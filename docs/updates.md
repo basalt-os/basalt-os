@@ -25,7 +25,7 @@ sudo basalt channels remove vscode [--apply]
 
 | Action | Commands | Class at the gate | Snapshot |
 |---|---|---|---|
-| `update.check` | `dnf makecache --refresh` | Look (C0) | no: nothing is installed |
+| `update.check` | `dnf -y makecache --refresh` (-y lets dnf take the repository keys from their gpgkey files; a repository whose metadata does not verify fails the check) | Look (C0) | no: nothing is installed |
 | `update.install` | live: `dnf -y upgrade --downloadonly NEVRA...`, `dnf -y upgrade NEVRA...`; offline: `dnf -y upgrade --offline NEVRA...`, then `dnf -y offline reboot` | System change (C2) | before and after (offline: the after one at the next start) |
 | `update.rollback` | `basalt-rollback --yes N` | System change (C2) | works on snapshots |
 | `repo.enable`, `repo.disable` | `dnf config-manager setopt REPO.enabled=1` (or `=0`); for a basalt-nonfree channel not yet defined, first `dnf -y install` and `upgrade basalt-nonfree-release` | System change (C2) | no: one setting |
