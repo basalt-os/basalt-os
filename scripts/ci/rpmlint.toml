@@ -32,4 +32,10 @@ Filters = [
     # which Go refuses in cgo binaries.
     'statically-linked-binary /usr/bin/cotty',
     'statically-linked-binary /usr/bin/cotty-guard',
+    # basalt-shell's Settings entry shows only in the Basalt session
+    # (OnlyShowIn=Basalt; the session sets XDG_CURRENT_DESKTOP=sway:Basalt and
+    # the shell's launcher matches it). desktop-file-validate, which rpmlint runs,
+    # wants unregistered desktop names to start with X-; moving to X-Basalt
+    # is a change in basalt-shell (entry and session together).
+    'invalid-desktopfile /usr/share/applications/org.basalt.Settings.desktop value "Basalt;" for key "OnlyShowIn"',
 ]
