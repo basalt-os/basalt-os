@@ -41,7 +41,7 @@ const (
 	JournalVacuum     = "journal.vacuum"     // journalctl --vacuum-size
 	DnfClean          = "dnf.clean"          // dnf clean packages
 	DriverInstall     = "driver.install"     // basalt-nonfree on, NVIDIA driver installed, trial boot armed
-	UpdateCheck       = "update.check"       // dnf makecache --refresh (look: run without a proposal)
+	UpdateCheck       = "update.check"       // dnf -y makecache --refresh (look: run without a proposal)
 	UpdateInstall     = "update.install"     // download, then install exactly the previewed updates
 	UpdateRollback    = "update.rollback"    // basalt-rollback to the snapshot taken before an update
 	RepoEnable        = "repo.enable"        // dnf config-manager setopt REPO.enabled=1
@@ -532,7 +532,13 @@ func (a Action) Commands() ([]runner.Command, error) {
 				Description: "make the next start a trial: it checks the driver and goes back to nouveau if it fails"},
 		}, nil
 	case UpdateCheck:
-		return []runner.Command{{Argv: []string{"dnf", "makecache", "--refresh"},
+		// -y: dnf keeps the keys that check repository metadata in a
+		// keyring of its own and asks before it adds a key there; without
+		// a terminal that question is answered no, the repository is
+		// skipped (skip_if_unavailable) and dnf still exits 0. The keys it
+		// adds come only from the repositories' gpgkey files on this
+		// system (basalt-release's for the Basalt repositories).
+		return []runner.Command{{Argv: []string{"dnf", "-y", "makecache", "--refresh"},
 			Description: "download the newest list of packages from every enabled repository (nothing is installed)"}}, nil
 	case UpdateInstall:
 		pk := UpdatePackages(p["packages"])

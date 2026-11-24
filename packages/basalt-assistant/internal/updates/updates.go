@@ -742,3 +742,16 @@ func uniq(xs []string, max int) []string {
 	}
 	return out
 }
+
+// MetadataNotVerified reports dnf output where a repository's metadata
+// signature did not verify (no key, a bad or an expired signature). dnf
+// then skips that repository and may still exit 0, so its packages and
+// updates silently drop out of the lists.
+func MetadataNotVerified(out string) bool {
+	for _, m := range []string{"GPG signature verification error", "Signing key not found", "signature verification failed"} {
+		if strings.Contains(out, m) {
+			return true
+		}
+	}
+	return false
+}

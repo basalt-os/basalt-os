@@ -232,3 +232,41 @@ func TestServiceDomain(t *testing.T) {
 		t.Fatalf("%q %v", d, err)
 	}
 }
+
+// An agent's denial is its confinement holding: no fix is ever proposed,
+// least of all a label of the person's home with the agent's own type.
+func TestAgentDenialIsNeverFixed(t *testing.T) {
+	a, _ := ParseAVC(`avc:  denied  { write } for  pid=6620 comm="basalt-shell" path="/home/labuser/out.err" dev="dm-0" ino=563 scontext=unconfined_u:unconfined_r:basalt_agent_mcp_t:s0-s0:c0.c1023 tcontext=unconfined_u:object_r:user_home_t:s0 tclass=file permissive=0`)
+	a.Path = "/home/labuser/out.err"
+	r := fake(map[string]runner.Result{
+		"matchpathcon -n /home/labuser/out.err":              {Out: "unconfined_u:object_r:user_home_t:s0"},
+		"sesearch -A -s basalt_agent_mcp_t -c file -p write": {Out: "allow basalt_agent_mcp_t basalt_agent_mcp_t:file { append getattr ioctl lock open read write };"},
+	})
+	f := Analyzer{R: r}.Analyze(context.Background(), Group{AVC: a, Count: 1})
+	if f.Class != ClassSuspicious || len(f.Actions) != 0 {
+		t.Fatalf("class %s actions %+v", f.Class, f.Actions)
+	}
+}
+
+// The domain's own type (rules for its /proc entries) is never offered as
+// a file label.
+func TestCandidateTypeSkipsTheDomainItself(t *testing.T) {
+	r := fake(map[string]runner.Result{
+		"sesearch -A -s myapp_t -c file -p write": {Out: "allow myapp_t myapp_t:file { open read write };"},
+	})
+	if got := (Analyzer{R: r}).begin().candidateType(context.Background(), "myapp_t", "file", "write", "/srv/myapp/x", true); got != "" {
+		t.Fatalf("candidate %q, want none", got)
+	}
+}
+
+func TestLabelDirNeverAWholeHome(t *testing.T) {
+	for p, want := range map[string]string{
+		"/home/ana/notes.txt":        "/home/ana/notes.txt",
+		"/home/ana/site/logs/a.log":  "/home/ana/site/logs",
+		"/srv/nginx-logs/access.log": "/srv/nginx-logs",
+	} {
+		if got := labelDir(p, "file"); got != want {
+			t.Errorf("labelDir(%s) = %s, want %s", p, got, want)
+		}
+	}
+}

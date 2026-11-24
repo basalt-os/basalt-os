@@ -100,7 +100,9 @@ func (a *app) updates(ctx context.Context) error {
 		cmds, _ := chk.Commands()
 		start := time.Now()
 		res := runner.Exec{}.Run(ctx, cmds[0])
-		ok := res.OK()
+		// A repository whose metadata signature does not verify is skipped
+		// and dnf still exits 0: that is a failed check, not "no updates".
+		ok := res.OK() && !updates.MetadataNotVerified(res.Out)
 		checked := time.Time{}
 		if ok {
 			checked = time.Now()
