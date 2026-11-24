@@ -318,7 +318,11 @@ EOF
 if [[ "$OB_REPO" == basalt ]]; then
   verify_pkg=basalt-release
 else
-  first="$(printf '%s\n' "${rpms[@]}" | grep -v '\.src\.rpm$' | head -1)"
+  # A loop, not a pipe into head: head exits early, the writer gets SIGPIPE
+  # and pipefail turns that into a silent exit 141 with a long list.
+  first=""
+  for f in "${rpms[@]}"; do [[ "$f" == *.src.rpm ]] || { first="$f"; break; }; done
+  [[ -n "$first" ]] || die "no binary RPM in $in"
   verify_pkg="$(rpm -qp --qf '%{NAME}' "$in/$first" 2>/dev/null)" || die "cannot read the name of $first"
 fi
 verify_out="$(verify "$pubkey")" || die "verification failed; do not publish $out"
