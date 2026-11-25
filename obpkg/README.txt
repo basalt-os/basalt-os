@@ -19,9 +19,11 @@ Basalt OS installs come with /basalt/, /basalt-tools/ (on) and
 basalt-tools: official OpenBasalt tools for Basalt OS and other
 Fedora-based systems where they apply, signed by the packages subkey
 above. More tools will be added over time.
-Currently: Samba Conductor 0.2.0 (conductor, conductor-idp, conductor-sync,
-conductor-backup, conductor-provisioner, conductor-files and their -selinux
-packages), https://github.com/openbasalt/samba-conductor
+Currently: Samba Conductor 0.3.0, released 2026-11-24 (conductor 0.3.0,
+conductor-idp 0.2.0, conductor-sync 0.3.0, conductor-backup 0.2.0,
+conductor-provisioner 0.1.2, conductor-files and their -selinux packages),
+https://github.com/openbasalt/samba-conductor
+Upgrade notes: https://github.com/openbasalt/samba-conductor-docs/blob/main/upgrading.md
 
 On Basalt OS it is enabled by default since basalt-release 44-7:
   sudo dnf install conductor
@@ -56,8 +58,9 @@ apt: OpenBasalt packages for Debian 13, Ubuntu 26.04 and Ubuntu 24.04
 (amd64, arm64), one suite (stable) for all of them, component main,
 metadata signed by the packages subkey above. An opt-in testing suite
 carries packages before their stable release.
-Currently: Samba Conductor 0.2.0 (conductor, conductor-idp, conductor-sync,
-conductor-backup, conductor-provisioner, conductor-files).
+Currently: Samba Conductor 0.3.0, released 2026-11-24 (conductor 0.3.0,
+conductor-idp 0.2.0, conductor-sync 0.3.0, conductor-backup 0.2.0,
+conductor-provisioner 0.1.2, conductor-files).
 
   curl -fsSLO https://obpkg.org/keys/openbasalt-release-key.asc
   gpg --show-keys --with-fingerprint openbasalt-release-key.asc
